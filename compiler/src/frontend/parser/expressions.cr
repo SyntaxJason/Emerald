@@ -77,6 +77,7 @@ module Emerald
         uses_it = true
       end
 
+      body_start = @pos
       stmts = [] of AST::Node
       until peek.type == TokenType::RBrace || at_end?
         stmt_start = @pos
@@ -93,9 +94,10 @@ module Emerald
           stmts << parse_statement
         end
       end
+      body_end = @pos
       expect(TokenType::RBrace)
 
-      if uses_it
+      if uses_it && @tokens[body_start...body_end].any? { |t| t.type == TokenType::Identifier && t.value == "it" }
         params << AST::Param.new(
           AST::NamedType.new("Any").at(start_tok.line, start_tok.col).as(AST::NamedType),
           "it"

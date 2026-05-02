@@ -108,9 +108,11 @@ module Emerald
       property name : String
       property args : Array(Node)
       property receiver_type : String
+      property expected_type : String
 
       def initialize(@receiver, @name, @args)
         @receiver_type = ""
+        @expected_type = ""
       end
     end
 
