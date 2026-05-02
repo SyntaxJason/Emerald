@@ -247,6 +247,16 @@ module Emerald
         end
       end
 
+      if declared && init.is_a?(AST::MethodCall)
+        mc = init.as(AST::MethodCall)
+        if mc.receiver.is_a?(AST::Identifier) && mc.name == "new"
+          recv_name = mc.receiver.as(AST::Identifier).name
+          if {"Channel", "Mutex"}.includes?(recv_name)
+            mc.expected_type = declared
+          end
+        end
+      end
+
       init_type = check_expr(init, scope)
       final_declared = declared || init_type
       unless types_compatible?(final_declared, init_type)
@@ -736,8 +746,9 @@ module Emerald
         unless expr.args.empty?
           raise TypeError.new("Channel.new takes no arguments", expr.line, expr.col)
         end
-        expr.receiver_type = "Channel"
-        return "Channel<?>"
+        result = expr.expected_type.empty? ? "Channel<?>" : expr.expected_type
+        expr.receiver_type = result
+        return result
       else
         raise TypeError.new("'#{type_name}' has no static method '#{expr.name}'",
           expr.line, expr.col)
@@ -800,20 +811,22 @@ module Emerald
 
     private def check_member_assign(expr : AST::MemberAssign, scope : Scope) : String
       receiver_type = check_expr(expr.receiver, scope)
-      info = @resolver.registry[receiver_type]
+      base, subs = base_type_and_subs(receiver_type)
+      info = @resolver.registry[base]
       unless info
         raise TypeError.new("Cannot assign to member of #{receiver_type}", expr.line, expr.col)
       end
-      f = @resolver.registry.lookup_field(receiver_type, expr.name)
+      f = @resolver.registry.lookup_field(base, expr.name)
       unless f
         raise TypeError.new("Type #{receiver_type} has no field '#{expr.name}'", expr.line, expr.col)
       end
       value_type = check_expr(expr.value, scope)
-      unless types_compatible?(f.type_name, value_type)
-        raise TypeError.new("Cannot assign #{value_type} to field '#{expr.name}' of type #{f.type_name}",
+      field_type = apply_subs(f.type_name, subs)
+      unless types_compatible?(field_type, value_type)
+        raise TypeError.new("Cannot assign #{value_type} to field '#{expr.name}' of type #{field_type}",
           expr.line, expr.col)
       end
-      f.type_name
+      field_type
     end
 
     private def check_lambda(expr : AST::LambdaExpr, scope : Scope) : String
@@ -1021,6 +1034,16 @@ module Emerald
 
       if expected.starts_with?("Fn(") && actual.starts_with?("Fn(")
         return expected == actual
+      end
+
+      if expected.includes?("<") && actual.includes?("<")
+        exp_lt = expected.index("<").not_nil!
+        act_lt = actual.index("<").not_nil!
+        if expected[0...exp_lt] == actual[0...act_lt]
+          exp_args = expected[(exp_lt + 1)..-2]
+          act_args = actual[(act_lt + 1)..-2]
+          return true if exp_args == "?" || act_args == "?"
+        end
       end
 
       if @resolver.registry[actual] && @resolver.registry[expected]
