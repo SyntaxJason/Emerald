@@ -1,0 +1,12 @@
+main() {
+    Fiber<Int> task = Fiber.spawn { 
+        Int sum = 0;
+        for (i in 1..100) {
+            sum = sum + i;
+        }
+        sum
+    };
+
+    Int result = task.await();
+    println("Sum 1..100 = $(result)");
+}

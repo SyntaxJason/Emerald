@@ -1,0 +1,3 @@
+main() {
+    println("Hello from Sprint 6 - Generics + Concurrency");
+}

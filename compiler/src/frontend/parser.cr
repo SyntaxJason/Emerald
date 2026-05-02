@@ -1,0 +1,6 @@
+require "./parser/base"
+require "./parser/types"
+require "./parser/patterns"
+require "./parser/expressions"
+require "./parser/statements"
+require "./parser/declarations"

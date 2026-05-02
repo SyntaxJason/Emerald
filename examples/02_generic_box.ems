@@ -1,0 +1,26 @@
+public class Box<T> {
+    private T value;
+
+    public Box(T value) {
+        this.value = value;
+    }
+
+    public T get() {
+        return this.value;
+    }
+
+    public Void set(T newValue) {
+        this.value = newValue;
+    }
+}
+
+main() {
+    Box<Int> intBox = Box(42);
+    Box<String> strBox = Box("hello");
+
+    println("Int box: $(intBox.get())");
+    println("Str box: $(strBox.get())");
+
+    intBox.set(99);
+    println("After set: $(intBox.get())");
+}

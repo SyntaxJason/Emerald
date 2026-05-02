@@ -1,0 +1,6 @@
+require "./ast/nodes"
+require "./ast/types"
+require "./ast/declarations"
+require "./ast/statements"
+require "./ast/expressions"
+require "./ast/patterns"

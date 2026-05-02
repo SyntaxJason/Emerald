@@ -1,0 +1,22 @@
+main() {
+    Channel<Int> ch = Channel.new();
+
+    Fiber<Void> producer = Fiber.spawn {
+        for (i in 1..5) {
+            ch.send(i * 10);
+        }
+        ch.close();
+    };
+
+    Fiber<Int> consumer = Fiber.spawn {
+        Int total = 0;
+        for (j in 1..5) {
+            total = total + ch.receive();
+        }
+        total
+    };
+
+    producer.await();
+    Int result = consumer.await();
+    println("Total received: $(result)");
+}

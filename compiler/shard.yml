@@ -1,0 +1,14 @@
+name: emeraldc
+version: 0.6.0
+description: Compiler for the Emerald language
+
+authors:
+  - SyntaxJason
+
+targets:
+  emeraldc:
+    main: src/emeraldc.cr
+
+crystal: ">= 1.0.0"
+
+license: MIT

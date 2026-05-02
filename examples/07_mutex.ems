@@ -1,0 +1,39 @@
+public class Counter {
+    private Int count;
+    private Mutex lock;
+
+    public Counter() {
+        this.count = 0;
+        this.lock = Mutex.new();
+    }
+
+    public Void increment() {
+        this.lock.synchronize(() -> {
+            this.count = this.count + 1;
+        });
+    }
+
+    public Int value() {
+        return this.count;
+    }
+}
+
+main() {
+    Counter counter = Counter();
+
+    Fiber<Void> a = Fiber.spawn {
+        for (i in 1..100) {
+            counter.increment();
+        }
+    };
+
+    Fiber<Void> b = Fiber.spawn {
+        for (j in 1..100) {
+            counter.increment();
+        }
+    };
+
+    a.await();
+    b.await();
+    println("Final count: $(counter.value())");
+}
