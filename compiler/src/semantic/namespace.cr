@@ -5,6 +5,7 @@ require "./registry"
 module Emerald
   RESERVED_NAMES = ["Result", "Ok", "Err"]
   BUILTIN_CONTAINER_NAMES = ["List", "Map", "Set", "Fiber", "Thread", "VirtualThread", "Channel", "Mutex"]
+  MACRO_AST_TYPES = ["MethodAST", "ClassAST", "ParamAST", "FieldAST", "BlockAST", "StatementAST", "ExpressionAST"]
   DEFAULT_ROOT_NAMESPACE = "Emerald"
 
   class NamespaceResolver
@@ -22,9 +23,15 @@ module Emerald
     end
 
     def add_alias(name : String, target_fqn : String, line : Int32, col : Int32)
-      if @aliases.has_key?(name)
-        raise ResolveError.new("Alias '#{name}' already declared", line, col)
+      if existing = @aliases[name]?
+        return if existing == target_fqn
+
+        raise ResolveError.new(
+          "Import alias '#{name}' already points to #{existing}; cannot also point to #{target_fqn}. Use 'use #{target_fqn} as ...'",
+          line,
+          col)
       end
+
       @aliases[name] = target_fqn
     end
 
@@ -35,10 +42,29 @@ module Emerald
       if BUILTIN_CONTAINER_NAMES.includes?(name)
         return name
       end
+      if MACRO_AST_TYPES.includes?(name)
+        return name
+      end
+
+      local_fqn = current_ns.empty? ? name : "#{current_ns}::#{name}"
+      local_type = @registry[local_fqn] ? local_fqn : nil
 
       if target = @aliases[name]?
+        if local_type && local_type != target
+          raise ResolveError.new(
+            "Imported alias '#{name}' points to #{target}, but local type #{local_type} exists. Use 'use #{target} as ...' to avoid the conflict.",
+            line,
+            col)
+        end
+
+        unless @registry[target]
+          raise ResolveError.new("Imported type '#{target}' for alias '#{name}' does not exist", line, col)
+        end
+
         return target
       end
+
+      return local_type if local_type
 
       candidates = @registry.resolve_simple(name)
       case candidates.size
@@ -47,10 +73,8 @@ module Emerald
       when 1
         candidates[0]
       else
-        in_current = candidates.find { |c| ns_of(c) == current_ns }
-        return in_current if in_current
         raise ResolveError.new(
-          "Ambiguous type '#{name}' - exists in: #{candidates.join(", ")}. Use a fully-qualified name or alias.",
+          "Ambiguous type '#{name}' - matches: #{candidates.join(", ")}. Use 'use ... as ...' or a fully-qualified name.",
           line, col
         )
       end

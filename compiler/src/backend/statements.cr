@@ -34,7 +34,7 @@ module Emerald
     end
 
     private def emit_return(io : IO, stmt : AST::ReturnStmt)
-      indent(io); io << "return"
+      indent(io); io << (@in_captured_block ? "next" : "return")
       if v = stmt.value
         io << " "
         emit_expr(io, v)

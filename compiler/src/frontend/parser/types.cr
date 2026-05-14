@@ -19,6 +19,16 @@ module Emerald
              else
                raise ParseError.new("Expected type, got #{tok.type} ('#{tok.value}')", tok.line, tok.col)
              end
+
+      if tok.type == TokenType::Identifier
+        segments = [name]
+        while peek.type == TokenType::ColonColon
+          consume
+          segments << expect(TokenType::Identifier).value
+        end
+        name = segments.join("::")
+      end
+
       base = AST::NamedType.new(name).at(tok.line, tok.col).as(AST::NamedType)
 
       if peek.type == TokenType::Lt && could_be_generic_args?
@@ -34,6 +44,21 @@ module Emerald
       end
 
       base
+    end
+
+    def type_ref_to_source(ref : AST::TypeRef) : String
+      case ref
+      when AST::NamedType
+        ref.name
+      when AST::GenericType
+        args = ref.type_args.map { |arg| type_ref_to_source(arg) }.join(",")
+        "#{ref.name}<#{args}>"
+      when AST::FunctionType
+        params = ref.param_types.map { |param| type_ref_to_source(param) }.join(",")
+        "Fn(#{params}):#{type_ref_to_source(ref.return_type)}"
+      else
+        "Unknown"
+      end
     end
 
     def looks_like_fn_type? : Bool
@@ -116,6 +141,10 @@ module Emerald
         return
       end
       consume
+      while peek.type == TokenType::ColonColon
+        consume
+        consume
+      end
       if peek.type == TokenType::Lt
         depth = 1
         consume

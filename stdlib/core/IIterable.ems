@@ -1,0 +1,5 @@
+namespace Std::Core;
+
+public interface IIterable<T> {
+    public IIterator<T> iterator();
+}

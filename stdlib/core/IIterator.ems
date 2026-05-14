@@ -1,0 +1,7 @@
+namespace Std::Core;
+
+public interface IIterator<T> {
+    public Bool hasNext();
+
+    public T next();
+}

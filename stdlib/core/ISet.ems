@@ -1,0 +1,7 @@
+namespace Std::Core;
+
+public interface ISet<T> extends ICollection<T> {
+    public Bool add(T value);
+
+    public Bool remove(T value);
+}

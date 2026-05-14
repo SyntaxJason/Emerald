@@ -21,21 +21,26 @@ module Emerald
       @@string_methods ||= build_string_methods
     end
 
+
     def int_methods : Hash(String, BuiltinMethod)
       @@int_methods ||= build_int_methods
     end
+
 
     def float_methods : Hash(String, BuiltinMethod)
       @@float_methods ||= build_float_methods
     end
 
+
     def bool_methods : Hash(String, BuiltinMethod)
       @@bool_methods ||= build_bool_methods
     end
 
+
     def char_methods : Hash(String, BuiltinMethod)
       @@char_methods ||= build_char_methods
     end
+
 
     def for_type(type : String) : Hash(String, BuiltinMethod)?
       case type
@@ -57,15 +62,18 @@ module Emerald
       end
     end
 
+
     def is_builtin_container?(type : String) : Bool
       type.starts_with?("List<") || type.starts_with?("Map<") || type.starts_with?("Set<")
     end
+
 
     def extract_type_arg(t : String) : String
       open = t.index("<").not_nil!
       inner = t[(open + 1)..-2]
       inner
     end
+
 
     def extract_type_args2(t : String) : Tuple(String, String)
       open = t.index("<").not_nil!
@@ -90,114 +98,9 @@ module Emerald
       end
     end
 
-    private def build_string_methods : Hash(String, BuiltinMethod)
-      m = {} of String => BuiltinMethod
-      m["length"]      = BuiltinMethod.new("length", [] of String, "Int", "(%recv%).size.to_i64")
-      m["isEmpty"]     = BuiltinMethod.new("isEmpty", [] of String, "Bool", "(%recv%).empty?")
-      m["charAt"]      = BuiltinMethod.new("charAt", ["Int"], "Char", "(%recv%)[%a0%]")
-      m["substring"]   = BuiltinMethod.new("substring", ["Int", "Int"], "String", "(%recv%)[%a0%...%a1%]")
-      m["split"]       = BuiltinMethod.new("split", ["String"], "List<String>", "(%recv%).split(%a0%)")
-      m["trim"]        = BuiltinMethod.new("trim", [] of String, "String", "(%recv%).strip")
-      m["toUpper"]     = BuiltinMethod.new("toUpper", [] of String, "String", "(%recv%).upcase")
-      m["toLower"]     = BuiltinMethod.new("toLower", [] of String, "String", "(%recv%).downcase")
-      m["contains"]    = BuiltinMethod.new("contains", ["String"], "Bool", "(%recv%).includes?(%a0%)")
-      m["startsWith"]  = BuiltinMethod.new("startsWith", ["String"], "Bool", "(%recv%).starts_with?(%a0%)")
-      m["endsWith"]    = BuiltinMethod.new("endsWith", ["String"], "Bool", "(%recv%).ends_with?(%a0%)")
-      m["replace"]     = BuiltinMethod.new("replace", ["String", "String"], "String", "(%recv%).gsub(%a0%, %a1%)")
-      m["indexOf"]     = BuiltinMethod.new("indexOf", ["String"], "Int", "((%recv%).index(%a0%) || -1).to_i64")
-      m["toInt"]       = BuiltinMethod.new("toInt", [] of String, "Int", "(%recv%).to_i64")
-      m["toFloat"]     = BuiltinMethod.new("toFloat", [] of String, "Float", "(%recv%).to_f64")
-      m["repeat"]      = BuiltinMethod.new("repeat", ["Int"], "String", "(%recv%) * %a0%")
-      m["reverse"]     = BuiltinMethod.new("reverse", [] of String, "String", "(%recv%).reverse")
-      m
-    end
 
-    private def build_int_methods : Hash(String, BuiltinMethod)
-      m = {} of String => BuiltinMethod
-      m["toString"] = BuiltinMethod.new("toString", [] of String, "String", "(%recv%).to_s")
-      m["toFloat"]  = BuiltinMethod.new("toFloat", [] of String, "Float", "(%recv%).to_f64")
-      m["abs"]      = BuiltinMethod.new("abs", [] of String, "Int", "(%recv%).abs")
-      m
-    end
-
-    private def build_float_methods : Hash(String, BuiltinMethod)
-      m = {} of String => BuiltinMethod
-      m["toString"] = BuiltinMethod.new("toString", [] of String, "String", "(%recv%).to_s")
-      m["toInt"]    = BuiltinMethod.new("toInt", [] of String, "Int", "(%recv%).to_i64")
-      m["abs"]      = BuiltinMethod.new("abs", [] of String, "Float", "(%recv%).abs")
-      m["isNaN"]    = BuiltinMethod.new("isNaN", [] of String, "Bool", "(%recv%).nan?")
-      m
-    end
-
-    private def build_bool_methods : Hash(String, BuiltinMethod)
-      m = {} of String => BuiltinMethod
-      m["toString"] = BuiltinMethod.new("toString", [] of String, "String", "(%recv%).to_s")
-      m
-    end
-
-    private def build_char_methods : Hash(String, BuiltinMethod)
-      m = {} of String => BuiltinMethod
-      m["toString"]     = BuiltinMethod.new("toString", [] of String, "String", "(%recv%).to_s")
-      m["isDigit"]      = BuiltinMethod.new("isDigit", [] of String, "Bool", "(%recv%).ascii_number?")
-      m["isLetter"]     = BuiltinMethod.new("isLetter", [] of String, "Bool", "(%recv%).ascii_letter?")
-      m["isWhitespace"] = BuiltinMethod.new("isWhitespace", [] of String, "Bool", "(%recv%).whitespace?")
-      m
-    end
-
-    def list_methods(t : String) : Hash(String, BuiltinMethod)
-      m = {} of String => BuiltinMethod
-      m["length"]    = BuiltinMethod.new("length", [] of String, "Int", "(%recv%).size.to_i64")
-      m["isEmpty"]   = BuiltinMethod.new("isEmpty", [] of String, "Bool", "(%recv%).empty?")
-      m["get"]       = BuiltinMethod.new("get", ["Int"], t, "(%recv%)[%a0%]")
-      m["set"]       = BuiltinMethod.new("set", ["Int", t], "Void", "(%recv%)[%a0%] = %a1%")
-      m["add"]       = BuiltinMethod.new("add", [t], "Void", "(%recv%) << %a0%")
-      m["addAt"]     = BuiltinMethod.new("addAt", ["Int", t], "Void", "(%recv%).insert(%a0%, %a1%)")
-      m["remove"]    = BuiltinMethod.new("remove", [t], "Bool", "((%recv%).delete(%a0%) != nil)")
-      m["removeAt"]  = BuiltinMethod.new("removeAt", ["Int"], t, "(%recv%).delete_at(%a0%)")
-      m["contains"]  = BuiltinMethod.new("contains", [t], "Bool", "(%recv%).includes?(%a0%)")
-      m["indexOf"]   = BuiltinMethod.new("indexOf", [t], "Int", "((%recv%).index(%a0%) || -1).to_i64")
-      m["clear"]     = BuiltinMethod.new("clear", [] of String, "Void", "(%recv%).clear")
-      m["forEach"]   = BuiltinMethod.new("forEach", ["Fn(#{t}):Void"], "Void", "(%recv%).each { |__e| %a0%.call(__e) }")
-      m["map"]       = BuiltinMethod.new("map", ["Fn(#{t}):?"], "List<?>", "(%recv%).map { |__e| %a0%.call(__e) }")
-      m["filter"]    = BuiltinMethod.new("filter", ["Fn(#{t}):Bool"], "List<#{t}>", "(%recv%).select { |__e| %a0%.call(__e) }")
-      m["reduce"]    = BuiltinMethod.new("reduce", ["?", "Fn(?,#{t}):?"], "?", "(%recv%).reduce(%a0%) { |__acc, __e| %a1%.call(__acc, __e) }")
-      m["find"]      = BuiltinMethod.new("find", ["Fn(#{t}):Bool"], t, "((%recv%).find { |__e| %a0%.call(__e) }).not_nil!")
-      m["any"]       = BuiltinMethod.new("any", ["Fn(#{t}):Bool"], "Bool", "(%recv%).any? { |__e| %a0%.call(__e) }")
-      m["all"]       = BuiltinMethod.new("all", ["Fn(#{t}):Bool"], "Bool", "(%recv%).all? { |__e| %a0%.call(__e) }")
-      m["toString"]  = BuiltinMethod.new("toString", [] of String, "String", "(%recv%).to_s")
-      m
-    end
-
-    def map_methods(k : String, v : String) : Hash(String, BuiltinMethod)
-      m = {} of String => BuiltinMethod
-      m["length"]   = BuiltinMethod.new("length", [] of String, "Int", "(%recv%).size.to_i64")
-      m["isEmpty"]  = BuiltinMethod.new("isEmpty", [] of String, "Bool", "(%recv%).empty?")
-      m["get"]      = BuiltinMethod.new("get", [k], v, "(%recv%)[%a0%]")
-      m["put"]      = BuiltinMethod.new("put", [k, v], "Void", "(%recv%)[%a0%] = %a1%")
-      m["remove"]   = BuiltinMethod.new("remove", [k], "Bool", "((%recv%).delete(%a0%) != nil)")
-      m["has"]      = BuiltinMethod.new("has", [k], "Bool", "(%recv%).has_key?(%a0%)")
-      m["keys"]     = BuiltinMethod.new("keys", [] of String, "List<#{k}>", "(%recv%).keys")
-      m["values"]   = BuiltinMethod.new("values", [] of String, "List<#{v}>", "(%recv%).values")
-      m["clear"]    = BuiltinMethod.new("clear", [] of String, "Void", "(%recv%).clear")
-      m["forEach"]  = BuiltinMethod.new("forEach", ["Fn(#{k},#{v}):Void"], "Void", "(%recv%).each { |__k, __v| %a0%.call(__k, __v) }")
-      m["toString"] = BuiltinMethod.new("toString", [] of String, "String", "(%recv%).to_s")
-      m
-    end
-
-    def set_methods(t : String) : Hash(String, BuiltinMethod)
-      m = {} of String => BuiltinMethod
-      m["length"]     = BuiltinMethod.new("length", [] of String, "Int", "(%recv%).size.to_i64")
-      m["isEmpty"]    = BuiltinMethod.new("isEmpty", [] of String, "Bool", "(%recv%).empty?")
-      m["add"]        = BuiltinMethod.new("add", [t], "Void", "(%recv%) << %a0%")
-      m["remove"]     = BuiltinMethod.new("remove", [t], "Bool", "((%recv%).delete(%a0%) != nil)")
-      m["contains"]   = BuiltinMethod.new("contains", [t], "Bool", "(%recv%).includes?(%a0%)")
-      m["clear"]      = BuiltinMethod.new("clear", [] of String, "Void", "(%recv%).clear")
-      m["union"]      = BuiltinMethod.new("union", ["Set<#{t}>"], "Set<#{t}>", "(%recv%) | %a0%")
-      m["intersect"]  = BuiltinMethod.new("intersect", ["Set<#{t}>"], "Set<#{t}>", "(%recv%) & %a0%")
-      m["difference"] = BuiltinMethod.new("difference", ["Set<#{t}>"], "Set<#{t}>", "(%recv%) - %a0%")
-      m["forEach"]    = BuiltinMethod.new("forEach", ["Fn(#{t}):Void"], "Void", "(%recv%).each { |__e| %a0%.call(__e) }")
-      m["toString"]   = BuiltinMethod.new("toString", [] of String, "String", "(%recv%).to_s")
-      m
-    end
   end
 end
+
+require "./builtin_methods/primitives"
+require "./builtin_methods/containers"

@@ -5,6 +5,8 @@ require "./semantic/type_checker"
 require "./backend/codegen"
 require "./runtime/stdlib_loader"
 require "./runtime/project_loader"
+require "./macro_engine/expander"
+require "./diagnostics"
 
 module Emerald
   class Driver
@@ -14,6 +16,14 @@ module Emerald
 
         resolver = Resolver.new
         resolver.resolve(program)
+
+        expander = MacroEngine::MacroExpander.new
+        expander.expand(program, resolver)
+
+        unless program.macro_registry.macros.empty?
+          resolver = Resolver.new
+          resolver.resolve(program)
+        end
 
         checker = TypeChecker.new(resolver)
         checker.check(program)
@@ -37,16 +47,16 @@ module Emerald
         puts "Built: #{output}"
         true
       rescue ex : LexError
-        STDERR.puts "Error: #{ex.message}"
+        DiagnosticRenderer.render(STDERR, source_file, "error", ex.message || "lexer error", ex.line, ex.col)
         false
       rescue ex : ParseError
-        STDERR.puts "Error: #{ex.message}"
+        DiagnosticRenderer.render(STDERR, source_file, "error", ex.message || "parse error", ex.line, ex.col)
         false
       rescue ex : ResolveError
-        STDERR.puts "Error: #{ex.message}"
+        DiagnosticRenderer.render(STDERR, source_file, "error", ex.message || "resolve error", ex.line, ex.col)
         false
       rescue ex : TypeError
-        STDERR.puts "Error: #{ex.message}"
+        DiagnosticRenderer.render(STDERR, source_file, "error", ex.message || "type error", ex.line, ex.col, ex.hint, ex.length)
         false
       end
     end

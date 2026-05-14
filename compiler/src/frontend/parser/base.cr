@@ -66,6 +66,18 @@ module Emerald
       AST::QualifiedName.new(segments).at(tok.line, tok.col).as(AST::QualifiedName)
     end
 
+    private def parse_qualified_name_segments : Array(String)
+      segments = [] of String
+      segments << expect(TokenType::Identifier).value
+
+      while peek.type == TokenType::ColonColon
+        consume
+        segments << expect(TokenType::Identifier).value
+      end
+
+      segments
+    end
+
     def peek : Token
       @tokens[@pos]
     end
@@ -108,6 +120,27 @@ module Emerald
       when TokenType::KwFinal then consume; AST::Mutability::Final
       when TokenType::KwCryo  then consume; AST::Mutability::Cryo
       else                         AST::Mutability::Mutable
+      end
+    end
+
+    private def keyword_token?(type : TokenType) : Bool
+      case type
+      when TokenType::KwIf, TokenType::KwElse, TokenType::KwWhile,
+           TokenType::KwFor, TokenType::KwIn, TokenType::KwReturn,
+           TokenType::KwBreak, TokenType::KwContinue, TokenType::KwMatch,
+           TokenType::KwIs, TokenType::KwNew, TokenType::KwAbstract,
+           TokenType::KwDefault, TokenType::KwClass, TokenType::KwData,
+           TokenType::KwInterface, TokenType::KwExtends, TokenType::KwImplements,
+           TokenType::KwPublic, TokenType::KwPrivate, TokenType::KwProtected,
+           TokenType::KwInternal, TokenType::KwFinal, TokenType::KwCryo,
+           TokenType::KwInt, TokenType::KwFloat, TokenType::KwBool,
+           TokenType::KwChar, TokenType::KwString, TokenType::KwVoid,
+           TokenType::KwThis, TokenType::KwNamespace, TokenType::KwUse,
+           TokenType::KwAs, TokenType::KwAlias, TokenType::KwMain,
+           TokenType::KwMacro, TokenType::KwOn
+        true
+      else
+        false
       end
     end
   end

@@ -1,0 +1,9 @@
+namespace Std::Core;
+
+public interface ICollection<T> extends IIterable<T> {
+    public Int size();
+
+    public Bool isEmpty();
+
+    public Bool contains(T value);
+}

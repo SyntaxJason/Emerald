@@ -25,11 +25,13 @@ module Emerald
       property declarations : Array(Node)
       property namespace_decl : QualifiedName?
       property source_path : String?
+      property macro_registry : MacroRegistry
 
       def initialize
         @declarations = [] of Node
         @namespace_decl = nil
         @source_path = nil
+        @macro_registry = MacroRegistry.new
       end
     end
 

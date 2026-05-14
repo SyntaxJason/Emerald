@@ -1,0 +1,15 @@
+namespace Std::Core;
+
+public interface IMap<K, V> {
+    public Int size();
+
+    public Bool isEmpty();
+
+    public Bool containsKey(K key);
+
+    public V get(K key);
+
+    public Void put(K key, V value);
+
+    public V remove(K key);
+}

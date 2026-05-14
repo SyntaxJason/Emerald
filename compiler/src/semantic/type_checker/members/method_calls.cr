@@ -1,0 +1,132 @@
+require "../members"
+
+module Emerald
+  class TypeChecker
+    private def check_method_call(expr : AST::MethodCall, scope : Scope) : String
+      if expr.receiver.is_a?(AST::Identifier)
+        recv_id = expr.receiver.as(AST::Identifier)
+        sym = scope.lookup(recv_id.name)
+        if sym.is_a?(TypeSymbol) && sym.as(TypeSymbol).kind == "builtin"
+          return check_static_builtin_call(expr, recv_id.name, scope)
+        end
+      end
+
+      receiver_type = check_expr(expr.receiver, scope)
+      expr.receiver_type = receiver_type
+
+      if conc_ret = check_concurrency_instance_method(expr, receiver_type, scope)
+        return conc_ret
+      end
+
+      if methods = BuiltinMethods.for_type(receiver_type)
+        m = methods[expr.name]?
+        if m
+          unless expr.args.size == m.param_types.size
+            raise TypeError.new(
+              "Method '#{expr.name}' on #{receiver_type} expects #{m.param_types.size} arguments, got #{expr.args.size}",
+              expr.line, expr.col)
+          end
+          inferred_substitutions = {} of String => String
+          expr.args.each_with_index do |arg, i|
+            actual = check_expr(arg, scope)
+            expected = m.param_types[i]
+            if expected == "?"
+              inferred_substitutions["?"] = actual
+            elsif expected.includes?("?")
+              expected = substitute_placeholders(expected, inferred_substitutions, actual)
+            end
+            unless types_compatible?(expected, actual) || expected.includes?("?")
+              raise TypeError.new("Argument #{i + 1} of '#{expr.name}': expected #{expected}, got #{actual}",
+                arg.line, arg.col)
+            end
+          end
+          ret = m.return_type
+          if ret.includes?("?")
+            inferred_substitutions.each do |k, v|
+              ret = ret.gsub("?", v)
+            end
+          end
+          return ret
+        end
+        raise TypeError.new("Type #{receiver_type} has no method '#{expr.name}'", expr.line, expr.col)
+      end
+
+      base, subs = base_type_and_subs(receiver_type)
+      info = @resolver.registry[base]
+      unless info
+        raise TypeError.new("Cannot call method '#{expr.name}' on type #{receiver_type}", expr.line, expr.col)
+      end
+      m = @resolver.registry.lookup_method(base, expr.name)
+      unless m
+        raise TypeError.new("Type #{receiver_type} has no method '#{expr.name}'", expr.line, expr.col)
+      end
+      if dm = m.deprecated_message
+        STDERR.puts "Warning: method '#{expr.name}' is deprecated: #{dm} (at #{expr.line}:#{expr.col})"
+      end
+      unless expr.args.size == m.param_types.size
+        raise TypeError.new(
+          "Method '#{expr.name}' expects #{m.param_types.size} arguments, got #{expr.args.size}",
+          expr.line, expr.col)
+      end
+      expr.args.each_with_index do |arg, i|
+        actual = check_expr(arg, scope)
+        expected = apply_subs(m.param_types[i], subs)
+        unless types_compatible?(expected, actual)
+          raise TypeError.new("Argument #{i + 1} of '#{expr.name}': expected #{expected}, got #{actual}",
+            arg.line, arg.col)
+        end
+      end
+      apply_subs(m.return_type, subs)
+    end
+
+    private def substitute_placeholders(template : String, subs : Hash(String, String), latest : String) : String
+      result = template
+      subs.each do |k, v|
+        result = result.gsub("?", v)
+      end
+      if result.includes?("?")
+        result = result.gsub("?", latest)
+      end
+      result
+    end
+
+    private def check_static_builtin_call(expr : AST::MethodCall, type_name : String, scope : Scope) : String
+      case {type_name, expr.name}
+      when {"Fiber", "spawn"}, {"Thread", "spawn"}, {"VirtualThread", "spawn"}
+        unless expr.args.size == 1
+          raise TypeError.new("#{type_name}.spawn expects 1 lambda argument, got #{expr.args.size}",
+            expr.line, expr.col)
+        end
+        arg_type = check_expr(expr.args[0], scope)
+        unless arg_type.starts_with?("Fn(")
+          raise TypeError.new("#{type_name}.spawn requires a lambda, got #{arg_type}",
+            expr.line, expr.col)
+        end
+        params, ret = TypeSystem.parse_fn_type_string(arg_type)
+        unless params.empty?
+          raise TypeError.new("#{type_name}.spawn lambda must take no arguments",
+            expr.line, expr.col)
+        end
+        expr.receiver_type = type_name
+        return "#{type_name}<#{ret}>"
+      when {"Mutex", "new"}
+        unless expr.args.empty?
+          raise TypeError.new("Mutex.new takes no arguments", expr.line, expr.col)
+        end
+        expr.receiver_type = "Mutex"
+        return "Mutex"
+      when {"Channel", "new"}
+        unless expr.args.empty?
+          raise TypeError.new("Channel.new takes no arguments", expr.line, expr.col)
+        end
+        result = expr.expected_type.empty? ? "Channel<?>" : expr.expected_type
+        expr.receiver_type = result
+        return result
+      else
+        raise TypeError.new("'#{type_name}' has no static method '#{expr.name}'",
+          expr.line, expr.col)
+      end
+    end
+
+  end
+end

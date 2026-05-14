@@ -38,9 +38,18 @@ module Emerald
       property is_override : Bool
       property is_default : Bool
       property is_abstract : Bool
+      property is_synchronized : Bool
+      property is_async : Bool
+      property deprecated_message : String?
+      property annotations : Array(Annotation)
 
       def initialize(@visibility, @name, @params, @return_type, @body,
-                     @is_override = false, @is_default = false, @is_abstract = false); end
+                     @is_override = false, @is_default = false, @is_abstract = false)
+        @is_synchronized = false
+        @is_async = false
+        @deprecated_message = nil
+        @annotations = [] of Annotation
+      end
     end
 
     class ConstructorDecl < Node
@@ -82,11 +91,17 @@ module Emerald
       property constructors : Array(ConstructorDecl)
       property namespace : String
       property type_params : Array(String)
+      property deprecated_message : String?
+      property needs_lock_field : Bool
+      property annotations : Array(Annotation)
 
       def initialize(@visibility, @name, @is_data, @is_abstract,
                      @base, @interfaces, @fields, @methods, @constructors,
                      @type_params = [] of String)
         @namespace = ""
+        @deprecated_message = nil
+        @needs_lock_field = false
+        @annotations = [] of Annotation
       end
     end
 

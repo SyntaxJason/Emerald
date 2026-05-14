@@ -16,8 +16,11 @@ module Emerald
     getter return_type : String
     getter visibility : AST::Visibility
     getter is_abstract : Bool
+    property deprecated_message : String?
 
-    def initialize(@name, @param_types, @return_type, @visibility, @is_abstract = false); end
+    def initialize(@name, @param_types, @return_type, @visibility, @is_abstract = false)
+      @deprecated_message = nil
+    end
   end
 
   class ConstructorInfo

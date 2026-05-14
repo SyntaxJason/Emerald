@@ -1,0 +1,11 @@
+namespace Std::Core;
+
+public interface IList<T> extends ICollection<T> {
+    public T get(Int index);
+
+    public Void set(Int index, T value);
+
+    public Void add(T value);
+
+    public T removeAt(Int index);
+}

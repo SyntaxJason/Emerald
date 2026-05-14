@@ -47,8 +47,12 @@ module Emerald
     KwIs
 
     KwNamespace
+    KwUse
+    KwAs
     KwAlias
     KwMain
+    KwMacro
+    KwOn
 
     LParen
     RParen
@@ -79,6 +83,7 @@ module Emerald
     DotDot
 
     At
+    Dollar
     Colon
     ColonColon
 
