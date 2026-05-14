@@ -1,5 +1,0 @@
-namespace Std::Core;
-
-public interface IComparable<T> {
-    public Int compareTo(T other);
-}
