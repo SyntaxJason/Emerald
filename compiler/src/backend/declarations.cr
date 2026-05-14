@@ -28,7 +28,9 @@ module Emerald
       @indent += 1
 
       decl.interfaces.each do |iface|
-        iface_fqn = iface.includes?("::") ? iface : @resolver.registry.resolve_simple(iface).first
+        iface_base = base_type_name(iface)
+        candidates = iface_base.includes?("::") ? [iface_base] : @resolver.registry.resolve_simple(iface_base)
+        iface_fqn = candidates.empty? ? iface_base : candidates.first
         indent(io); io << "include " << mangle_fqn(iface_fqn) << "\n"
       end
 

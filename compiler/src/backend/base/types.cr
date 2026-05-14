@@ -53,14 +53,25 @@ module Emerald
         elsif t.includes?("<") && t.ends_with?(">")
           gen_open = t.index("<").not_nil!
           base = t[0...gen_open]
+          base_fqn = runtime_type_fqn(base)
           args_str = t[(gen_open + 1)..-2]
           args = split_top_level_args(args_str)
           crystal_args = args.map { |a| crystal_type(a.strip) }
-          "#{mangle_fqn(base)}(#{crystal_args.join(", ")})"
+          "#{mangle_fqn(base_fqn)}(#{crystal_args.join(", ")})"
         else
-          mangle_fqn(t)
+          mangle_fqn(runtime_type_fqn(t))
         end
       end
+    end
+
+    private def runtime_type_fqn(type_name : String) : String
+      return type_name if type_name.empty?
+      return type_name if type_name.includes?("::")
+
+      candidates = @resolver.registry.resolve_simple(type_name)
+      return candidates.first if candidates.size == 1
+
+      type_name
     end
 
     private def split_top_level_args(s : String) : Array(String)

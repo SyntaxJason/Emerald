@@ -61,6 +61,9 @@ module Emerald
         @current_type_params = saved
       when AST::InterfaceDecl
         info = @registry[fqn_of(decl.name, decl.namespace)].not_nil!
+        saved = @current_type_params
+        @current_type_params = decl.type_params
+
         info.interfaces = decl.extends_interfaces.map { |i| resolve_type_usage_name(i, decl.namespace, decl.line, decl.col) }
         decl.methods.each do |m|
           info.methods[m.name] = MethodInfo.new(
@@ -71,6 +74,8 @@ module Emerald
             m.body.nil?
           )
         end
+
+        @current_type_params = saved
       end
     end
 
@@ -134,28 +139,29 @@ module Emerald
     private def split_type_usage_arguments(value : String) : Array(String)
       result = [] of String
       depth = 0
-      buffer = String.build do |io|
-        value.each_char do |char|
-          case char
-          when '<'
-            depth += 1
-            io << char
-          when '>'
-            depth -= 1
-            io << char
-          when ','
-            if depth == 0
-              result << io.to_s.strip
-              io.clear
-            else
-              io << char
-            end
+      buffer = ""
+
+      value.each_char do |char|
+        case char
+        when '<'
+          depth += 1
+          buffer += char.to_s
+        when '>'
+          depth -= 1
+          buffer += char.to_s
+        when ','
+          if depth == 0
+            result << buffer.strip
+            buffer = ""
           else
-            io << char
+            buffer += char.to_s
           end
+        else
+          buffer += char.to_s
         end
-        result << io.to_s.strip
       end
+
+      result << buffer.strip
       result.reject(&.empty?)
     end
 
