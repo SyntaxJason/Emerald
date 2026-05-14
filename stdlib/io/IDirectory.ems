@@ -3,7 +3,21 @@ namespace Std::Io;
 public interface IDirectory extends IFileSystemEntry {
     public Bool create();
 
+    public Bool ensureExists();
+
     public Bool delete();
 
+    public Bool deleteIfExists();
+
+    public Bool contains(String name);
+
     public Std::Collections::IList<String> list();
+
+    public IPath childPath(String name);
+
+    public IFile file(String name);
+
+    public IDirectory directory(String name);
+
+    public IFileInfo info(String name);
 }

@@ -39,6 +39,14 @@ public class Path implements IPath {
         return Path(Path.join(this.valueText, segment));
     }
 
+    public IPath resolve(String segment) {
+        return this.join(segment);
+    }
+
+    public IPath sibling(String name) {
+        return this.parent().join(name);
+    }
+
     public String toString() {
         return this.valueText;
     }

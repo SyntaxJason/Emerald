@@ -7,6 +7,8 @@ public interface IIntRange {
 
     public Bool contains(Int value);
 
+    public Int clamp(Int value);
+
     public Int length();
 
     public Bool isEmpty();

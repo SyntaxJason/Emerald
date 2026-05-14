@@ -27,8 +27,32 @@ public class TextWriter implements ITextWriter, IClosable, IFlushable {
         File.writeText(this.writerPath.value(), text);
     }
 
+    public Void writeLine(String text) {
+        this.writeText(text + "\n");
+    }
+
+    public Std::Result::IResult<Bool, String> tryWriteText(String text) {
+        return File.tryWriteText(this.writerPath.value(), text);
+    }
+
+    public Std::Result::IResult<Bool, String> tryWriteLine(String text) {
+        return this.tryWriteText(text + "\n");
+    }
+
     public Void appendText(String text) {
         File.appendText(this.writerPath.value(), text);
+    }
+
+    public Void appendLine(String text) {
+        this.appendText(text + "\n");
+    }
+
+    public Std::Result::IResult<Bool, String> tryAppendText(String text) {
+        return File.tryAppendText(this.writerPath.value(), text);
+    }
+
+    public Std::Result::IResult<Bool, String> tryAppendLine(String text) {
+        return this.tryAppendText(text + "\n");
     }
 
     public Void flush() {

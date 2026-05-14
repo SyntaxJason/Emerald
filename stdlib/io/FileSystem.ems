@@ -1,22 +1,50 @@
 namespace Std::Io;
 
-public class FileSystem {
+public class FileSystem implements IFileSystem {
     public FileSystem() {
     }
 
-    public Path path(String value) {
+    public IPath path(String value) {
         return Path(value);
     }
 
-    public File file(String value) {
+    public IPath currentPath() {
+        return Path.current();
+    }
+
+    public IPath workingDirectory() {
+        return this.currentPath();
+    }
+
+    public IFile file(String value) {
         return File(value);
     }
 
-    public Directory directory(String value) {
+    public IFile fileAt(IPath path) {
+        return File(path);
+    }
+
+    public IFile fileInWorkingDirectory(String name) {
+        return this.fileAt(this.workingDirectory().join(name));
+    }
+
+    public IDirectory directory(String value) {
         return Directory(value);
     }
 
-    public FileInfo info(String value) {
+    public IDirectory directoryAt(IPath path) {
+        return Directory(path);
+    }
+
+    public IDirectory directoryInWorkingDirectory(String name) {
+        return this.directoryAt(this.workingDirectory().join(name));
+    }
+
+    public IFileInfo info(String value) {
         return FileInfo(value);
+    }
+
+    public IFileInfo infoAt(IPath path) {
+        return FileInfo(path);
     }
 }

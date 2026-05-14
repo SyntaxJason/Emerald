@@ -45,6 +45,10 @@ public class HashSet<T> implements ISet<T> {
         this.storage.clear();
     }
 
+    public IList<T> toList() {
+        return ArrayList(this.storage.keys());
+    }
+
     public Void forEach(Std::Functional::IConsumer<T> consumer) {
         List<T> keys = this.storage.keys();
         Int index = 0;

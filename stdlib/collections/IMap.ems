@@ -7,11 +7,15 @@ public interface IMap<K, V> {
 
     public Bool containsKey(K key);
 
+    public Bool containsValue(V value);
+
     public V get(K key);
 
     public V getOr(K key, V fallback);
 
     public Void put(K key, V value);
+
+    public Bool putIfAbsent(K key, V value);
 
     public V remove(K key);
 

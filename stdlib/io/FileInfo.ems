@@ -27,6 +27,10 @@ public class FileInfo implements IFileInfo {
         return File.exists(this.infoPath.value()) || Directory.exists(this.infoPath.value());
     }
 
+    public Bool isMissing() {
+        return !this.exists();
+    }
+
     public Bool isFile() {
         return File.isFile(this.infoPath.value());
     }

@@ -2,4 +2,10 @@ namespace Std::Io;
 
 public interface IAppendableText {
     public Void appendText(String text);
+
+    public Void appendLine(String text);
+
+    public Std::Result::IResult<Bool, String> tryAppendText(String text);
+
+    public Std::Result::IResult<Bool, String> tryAppendLine(String text);
 }

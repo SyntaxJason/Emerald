@@ -1,0 +1,25 @@
+namespace Std::Io;
+
+public interface IFileSystem {
+    public IPath path(String value);
+
+    public IPath currentPath();
+
+    public IPath workingDirectory();
+
+    public IFile file(String value);
+
+    public IFile fileAt(IPath path);
+
+    public IFile fileInWorkingDirectory(String name);
+
+    public IDirectory directory(String value);
+
+    public IDirectory directoryAt(IPath path);
+
+    public IDirectory directoryInWorkingDirectory(String name);
+
+    public IFileInfo info(String value);
+
+    public IFileInfo infoAt(IPath path);
+}

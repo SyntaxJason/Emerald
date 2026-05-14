@@ -21,6 +21,18 @@ public class IntRange implements IIntRange {
         return value >= this.startValue && value <= this.finishValue;
     }
 
+    public Int clamp(Int value) {
+        if (value < this.startValue) {
+            return this.startValue;
+        }
+
+        if (value > this.finishValue) {
+            return this.finishValue;
+        }
+
+        return value;
+    }
+
     public Int length() {
         if (this.finishValue < this.startValue) {
             return 0;

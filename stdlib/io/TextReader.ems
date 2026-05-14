@@ -27,8 +27,16 @@ public class TextReader implements ITextReader, IClosable {
         return File.readText(this.readerPath.value());
     }
 
+    public String readOr(String fallback) {
+        return this.tryReadText().unwrapOr(fallback);
+    }
+
     public Std::Collections::IList<String> readLines() {
         return Std::Collections::ArrayList(File.readLines(this.readerPath.value()));
+    }
+
+    public Std::Result::IResult<String, String> tryReadText() {
+        return File.tryReadText(this.readerPath.value());
     }
 
     public Void close() {

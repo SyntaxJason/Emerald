@@ -2,4 +2,10 @@ namespace Std::Io;
 
 public interface IWritableText {
     public Void writeText(String text);
+
+    public Void writeLine(String text);
+
+    public Std::Result::IResult<Bool, String> tryWriteText(String text);
+
+    public Std::Result::IResult<Bool, String> tryWriteLine(String text);
 }

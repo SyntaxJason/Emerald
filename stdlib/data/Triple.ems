@@ -22,4 +22,16 @@ public class Triple<A, B, C> implements ITriple<A, B, C> {
     public C third() {
         return this.right;
     }
+
+    public A left() {
+        return this.left;
+    }
+
+    public B middle() {
+        return this.middle;
+    }
+
+    public C right() {
+        return this.right;
+    }
 }

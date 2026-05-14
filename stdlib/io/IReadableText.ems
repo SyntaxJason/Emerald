@@ -3,5 +3,9 @@ namespace Std::Io;
 public interface IReadableText {
     public String readText();
 
+    public String readOr(String fallback);
+
     public Std::Collections::IList<String> readLines();
+
+    public Std::Result::IResult<String, String> tryReadText();
 }

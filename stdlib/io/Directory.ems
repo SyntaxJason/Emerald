@@ -39,11 +39,47 @@ public class Directory implements IDirectory {
         return Directory.create(this.directoryPath.value());
     }
 
+    public Bool ensureExists() {
+        if (this.exists()) {
+            return true;
+        }
+
+        return this.create();
+    }
+
     public Bool delete() {
         return Directory.delete(this.directoryPath.value());
     }
 
+    public Bool deleteIfExists() {
+        if (!this.exists()) {
+            return true;
+        }
+
+        return this.delete();
+    }
+
+    public Bool contains(String name) {
+        return this.info(name).exists();
+    }
+
     public Std::Collections::IList<String> list() {
         return Std::Collections::ArrayList(Directory.list(this.directoryPath.value()));
+    }
+
+    public IPath childPath(String name) {
+        return this.directoryPath.join(name);
+    }
+
+    public IFile file(String name) {
+        return File(this.childPath(name));
+    }
+
+    public IDirectory directory(String name) {
+        return Directory(this.childPath(name));
+    }
+
+    public IFileInfo info(String name) {
+        return FileInfo(this.childPath(name));
     }
 }

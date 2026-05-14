@@ -1,21 +1,17 @@
 namespace Std::Io;
 
-public interface IFile extends IFileSystemEntry {
-    public String readText();
-
-    public Std::Result::IResult<String, String> tryReadText();
-
-    public Void writeText(String text);
-
-    public Std::Result::IResult<Bool, String> tryWriteText(String text);
-
-    public Void appendText(String text);
-
-    public Std::Result::IResult<Bool, String> tryAppendText(String text);
-
+public interface IFile extends IFileSystemEntry, IReadableText, IWritableText, IAppendableText {
     public Bool delete();
 
+    public Bool deleteIfExists();
+
+    public Void clear();
+
+    public Bool ensureParentDirectory();
+
     public Int size();
+
+    public IFileInfo info();
 
     public ITextReader reader();
 

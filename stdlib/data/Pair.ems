@@ -16,4 +16,12 @@ public class Pair<A, B> implements IPair<A, B> {
     public B second() {
         return this.right;
     }
+
+    public A left() {
+        return this.left;
+    }
+
+    public B right() {
+        return this.right;
+    }
 }

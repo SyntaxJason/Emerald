@@ -31,6 +31,26 @@ public class ArrayList<T> implements IList<T> {
         return this.items.get(index);
     }
 
+    public T getOr(Int index, T fallback) {
+        if (index < 0) {
+            return fallback;
+        }
+
+        if (index >= this.items.length()) {
+            return fallback;
+        }
+
+        return this.items.get(index);
+    }
+
+    public T firstOr(T fallback) {
+        return this.getOr(0, fallback);
+    }
+
+    public T lastOr(T fallback) {
+        return this.getOr(this.items.length() - 1, fallback);
+    }
+
     public Void set(Int index, T value) {
         this.items.set(index, value);
     }

@@ -39,6 +39,14 @@ public class File implements IFile {
         return File.readText(this.filePath.value());
     }
 
+    public String readOr(String fallback) {
+        return this.tryReadText().unwrapOr(fallback);
+    }
+
+    public Std::Collections::IList<String> readLines() {
+        return Std::Collections::ArrayList(File.readLines(this.filePath.value()));
+    }
+
     public Std::Result::IResult<String, String> tryReadText() {
         return File.tryReadText(this.filePath.value());
     }
@@ -47,24 +55,60 @@ public class File implements IFile {
         File.writeText(this.filePath.value(), text);
     }
 
+    public Void writeLine(String text) {
+        this.writeText(text + "\n");
+    }
+
     public Std::Result::IResult<Bool, String> tryWriteText(String text) {
         return File.tryWriteText(this.filePath.value(), text);
+    }
+
+    public Std::Result::IResult<Bool, String> tryWriteLine(String text) {
+        return this.tryWriteText(text + "\n");
     }
 
     public Void appendText(String text) {
         File.appendText(this.filePath.value(), text);
     }
 
+    public Void appendLine(String text) {
+        this.appendText(text + "\n");
+    }
+
     public Std::Result::IResult<Bool, String> tryAppendText(String text) {
         return File.tryAppendText(this.filePath.value(), text);
+    }
+
+    public Std::Result::IResult<Bool, String> tryAppendLine(String text) {
+        return this.tryAppendText(text + "\n");
     }
 
     public Bool delete() {
         return File.delete(this.filePath.value());
     }
 
+    public Bool deleteIfExists() {
+        if (!this.exists()) {
+            return true;
+        }
+
+        return this.delete();
+    }
+
+    public Void clear() {
+        this.writeText("");
+    }
+
+    public Bool ensureParentDirectory() {
+        return Directory(this.filePath.parent()).ensureExists();
+    }
+
     public Int size() {
         return File.size(this.filePath.value());
+    }
+
+    public IFileInfo info() {
+        return FileInfo(this.filePath);
     }
 
     public ITextReader reader() {

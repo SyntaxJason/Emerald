@@ -23,6 +23,10 @@ public class HashMap<K, V> implements IMap<K, V> {
         return this.storage.has(key);
     }
 
+    public Bool containsValue(V value) {
+        return this.storage.values().contains(value);
+    }
+
     public V get(K key) {
         return this.storage.get(key);
     }
@@ -37,6 +41,15 @@ public class HashMap<K, V> implements IMap<K, V> {
 
     public Void put(K key, V value) {
         this.storage.put(key, value);
+    }
+
+    public Bool putIfAbsent(K key, V value) {
+        if (this.storage.has(key)) {
+            return false;
+        }
+
+        this.storage.put(key, value);
+        return true;
     }
 
     public V remove(K key) {

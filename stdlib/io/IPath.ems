@@ -17,5 +17,9 @@ public interface IPath {
 
     public IPath join(String segment);
 
+    public IPath resolve(String segment);
+
+    public IPath sibling(String name);
+
     public String toString();
 }

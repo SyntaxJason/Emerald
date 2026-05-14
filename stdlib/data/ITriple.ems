@@ -6,4 +6,10 @@ public interface ITriple<A, B, C> {
     public B second();
 
     public C third();
+
+    public A left();
+
+    public B middle();
+
+    public C right();
 }

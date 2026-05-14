@@ -3,6 +3,12 @@ namespace Std::Collections;
 public interface IList<T> extends ICollection<T> {
     public T get(Int index);
 
+    public T getOr(Int index, T fallback);
+
+    public T firstOr(T fallback);
+
+    public T lastOr(T fallback);
+
     public Void set(Int index, T value);
 
     public Void add(T value);
