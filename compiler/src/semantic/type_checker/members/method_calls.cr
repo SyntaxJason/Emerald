@@ -5,6 +5,11 @@ module Emerald
     private def check_method_call(expr : AST::MethodCall, scope : Scope) : String
       if expr.receiver.is_a?(AST::Identifier)
         recv_id = expr.receiver.as(AST::Identifier)
+
+        if ret = check_static_stdlib_call(expr, recv_id.name, scope)
+          return ret
+        end
+
         sym = scope.lookup(recv_id.name)
         if sym.is_a?(TypeSymbol) && sym.as(TypeSymbol).kind == "builtin"
           return check_static_builtin_call(expr, recv_id.name, scope)
@@ -90,7 +95,99 @@ module Emerald
       result
     end
 
+    private def check_static_stdlib_call(expr : AST::MethodCall, type_name : String, scope : Scope) : String?
+      case {type_name, expr.name}
+      when {"Duration", "millis"}
+        check_static_int_args(expr, type_name, 1, scope)
+        return static_stdlib_return_type(type_name)
+      when {"Duration", "seconds"}
+        check_static_int_args(expr, type_name, 1, scope)
+        return static_stdlib_return_type(type_name)
+      when {"Duration", "minutes"}
+        check_static_int_args(expr, type_name, 1, scope)
+        return static_stdlib_return_type(type_name)
+      when {"Duration", "hours"}
+        check_static_int_args(expr, type_name, 1, scope)
+        return static_stdlib_return_type(type_name)
+      when {"Duration", "days"}
+        check_static_int_args(expr, type_name, 1, scope)
+        return static_stdlib_return_type(type_name)
+      when {"OffsetDateTime", "now"}
+        check_static_int_args(expr, type_name, 0, scope)
+        return static_stdlib_return_type(type_name)
+      when {"OffsetDateTime", "utcNow"}
+        check_static_int_args(expr, type_name, 0, scope)
+        return static_stdlib_return_type(type_name)
+      when {"OffsetDateTime", "of"}
+        check_static_int_args(expr, type_name, 7, scope)
+        return static_stdlib_return_type(type_name)
+      when {"Console", "print"}
+        check_static_any_args(expr, type_name, 1, scope)
+        return "Void"
+      when {"Console", "println"}
+        check_static_any_args(expr, type_name, 1, scope)
+        return "Void"
+      when {"Console", "error"}
+        check_static_any_args(expr, type_name, 1, scope)
+        return "Void"
+      when {"Math", "abs"}
+        check_static_int_args(expr, type_name, 1, scope)
+        return "Int"
+      when {"Math", "min"}
+        check_static_int_args(expr, type_name, 2, scope)
+        return "Int"
+      when {"Math", "max"}
+        check_static_int_args(expr, type_name, 2, scope)
+        return "Int"
+      when {"Math", "clamp"}
+        check_static_int_args(expr, type_name, 3, scope)
+        return "Int"
+      end
+
+      nil
+    end
+
+    private def check_static_any_args(expr : AST::MethodCall, type_name : String, count : Int32, scope : Scope)
+      unless expr.args.size == count
+        raise TypeError.new(
+          "#{type_name}.#{expr.name} expects #{count} arguments, got #{expr.args.size}",
+          expr.line, expr.col)
+      end
+
+      expr.args.each do |arg|
+        check_expr(arg, scope)
+      end
+    end
+
+    private def check_static_int_args(expr : AST::MethodCall, type_name : String, count : Int32, scope : Scope)
+      unless expr.args.size == count
+        raise TypeError.new(
+          "#{type_name}.#{expr.name} expects #{count} arguments, got #{expr.args.size}",
+          expr.line, expr.col)
+      end
+
+      expr.args.each_with_index do |arg, index|
+        actual = check_expr(arg, scope)
+
+        unless actual == "Int"
+          raise TypeError.new(
+            "Argument #{index + 1} of '#{type_name}.#{expr.name}': expected Int, got #{actual}",
+            arg.line, arg.col)
+        end
+      end
+    end
+
+    private def static_stdlib_return_type(type_name : String) : String
+      candidates = @resolver.registry.resolve_simple(type_name)
+
+      candidates.empty? ? type_name : candidates.first
+    end
+
     private def check_static_builtin_call(expr : AST::MethodCall, type_name : String, scope : Scope) : String
+      if ret = check_static_stdlib_call(expr, type_name, scope)
+        return ret
+      end
+
       case {type_name, expr.name}
       when {"Fiber", "spawn"}, {"Thread", "spawn"}, {"VirtualThread", "spawn"}
         unless expr.args.size == 1
