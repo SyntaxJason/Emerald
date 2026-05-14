@@ -1,0 +1,93 @@
+namespace Std::Time;
+
+public class Duration {
+    private Int millis;
+
+    public Duration(Int millis) {
+        this.millis = millis;
+    }
+
+    public Int toMillis() {
+        return this.millis;
+    }
+
+    public Int toSeconds() {
+        return this.millis / 1000;
+    }
+
+    public Int toMinutes() {
+        return this.millis / 60000;
+    }
+
+    public Int toHours() {
+        return this.millis / 3600000;
+    }
+
+    public Int toDays() {
+        return this.millis / 86400000;
+    }
+
+    public Duration plus(Duration other) {
+        return Duration(this.millis + other.toMillis());
+    }
+
+    public Duration minus(Duration other) {
+        return Duration(this.millis - other.toMillis());
+    }
+
+    public Duration multipliedBy(Int factor) {
+        return Duration(this.millis * factor);
+    }
+
+    public Bool equals(Duration other) {
+        return this.millis == other.toMillis();
+    }
+
+    public Int compareTo(Duration other) {
+        if (this.millis < other.toMillis()) {
+            return 0 - 1;
+        }
+
+        if (this.millis > other.toMillis()) {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    public Duration abs() {
+        if (this.millis >= 0) {
+            return this;
+        }
+
+        return Duration(0 - this.millis);
+    }
+
+    public Bool isZero() {
+        return this.millis == 0;
+    }
+
+    public Bool isPositive() {
+        return this.millis > 0;
+    }
+
+    public Bool isNegative() {
+        return this.millis < 0;
+    }
+
+    public Bool isGreaterThan(Duration other) {
+        return this.millis > other.toMillis();
+    }
+
+    public Bool isLessThan(Duration other) {
+        return this.millis < other.toMillis();
+    }
+
+    public Bool equals(Duration other) {
+        return this.millis == other.toMillis();
+    }
+
+    public String toString() {
+        return this.millis.toString() + "ms";
+    }
+}

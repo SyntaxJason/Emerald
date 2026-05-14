@@ -37,7 +37,7 @@ module Emerald
         @namespace_resolver.add_function(fqn, sym)
       end
 
-      ["Fiber", "Thread", "VirtualThread", "Channel"].each do |name|
+      ["Fiber", "Thread", "VirtualThread", "Channel", "Console", "Math"].each do |name|
         @global_scope.declare(name, TypeSymbol.new(name, "builtin", name), 0, 0)
       end
       @global_scope.declare("Mutex", TypeSymbol.new("Mutex", "builtin", "Mutex"), 0, 0)

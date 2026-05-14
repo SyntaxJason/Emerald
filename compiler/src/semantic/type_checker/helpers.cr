@@ -103,7 +103,60 @@ module Emerald
       if @resolver.registry[actual] && @resolver.registry[expected]
         return @resolver.registry.assignable?(actual, expected)
       end
+
+      return true if generic_interface_compatible?(expected, actual)
+
       false
+    end
+
+    private def generic_interface_compatible?(expected : String, actual : String) : Bool
+      normalized_expected = normalize_registry_type_name(expected)
+      normalized_actual = normalize_registry_type_name(actual)
+
+      expected_base, _expected_subs = base_type_and_subs(normalized_expected)
+      actual_base, actual_subs = base_type_and_subs(normalized_actual)
+
+      return false if expected_base == actual_base
+
+      actual_info = @resolver.registry[actual_base]
+      return false unless actual_info
+
+      if base = actual_info.base
+        normalized_base = normalize_registry_type_name(apply_subs(base, actual_subs))
+        return true if types_compatible?(normalized_expected, normalized_base)
+      end
+
+      actual_info.interfaces.each do |iface|
+        normalized_iface = normalize_registry_type_name(apply_subs(iface, actual_subs))
+        return true if types_compatible?(normalized_expected, normalized_iface)
+      end
+
+      false
+    end
+
+    private def normalize_registry_type_name(type_name : String) : String
+      unless type_name.includes?("<") && type_name.ends_with?(">")
+        return normalize_registry_base_type(type_name)
+      end
+
+      open = type_name.index("<").not_nil!
+      base = type_name[0...open]
+      args = split_top_level(type_name[(open + 1)..-2]).map do |arg|
+        normalize_registry_type_name(arg)
+      end
+
+      "#{normalize_registry_base_type(base)}<#{args.join(",")}>"
+    end
+
+    private def normalize_registry_base_type(base : String) : String
+      return base if Resolver::BUILTIN_TYPES.includes?(base)
+      return base if RESERVED_NAMES.includes?(base)
+      return base if BUILTIN_CONTAINER_NAMES.includes?(base)
+      return base if MACRO_AST_TYPES.includes?(base)
+      return base if base.includes?("::")
+
+      candidates = @resolver.registry.resolve_simple(base)
+      candidates.empty? ? base : candidates.first
     end
 
     private def type_ref_to_fqn(ref : AST::TypeRef) : String

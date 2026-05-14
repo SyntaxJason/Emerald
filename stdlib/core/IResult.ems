@@ -1,0 +1,11 @@
+namespace Std::Core;
+
+public interface IResult<T, E> {
+    public Bool isOk();
+
+    public Bool isErr();
+
+    public T unwrapOr(T fallback);
+
+    public E errorOr(E fallback);
+}

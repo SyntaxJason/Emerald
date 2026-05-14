@@ -1,0 +1,9 @@
+namespace Std::Core;
+
+public interface IOption<T> {
+    public Bool isSome();
+
+    public Bool isNone();
+
+    public T orElse(T fallback);
+}

@@ -1,0 +1,18 @@
+namespace Std::Core;
+
+public class None<T> implements IOption<T> {
+    public None() {
+    }
+
+    public Bool isSome() {
+        return false;
+    }
+
+    public Bool isNone() {
+        return true;
+    }
+
+    public T orElse(T fallback) {
+        return fallback;
+    }
+}

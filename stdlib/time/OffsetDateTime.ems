@@ -1,0 +1,195 @@
+namespace Std::Time;
+
+public class OffsetDateTime {
+    private Int year;
+    private Int month;
+    private Int day;
+    private Int hour;
+    private Int minute;
+    private Int second;
+    private Int offsetMinutes;
+
+    public OffsetDateTime(Int year, Int month, Int day, Int hour, Int minute, Int second, Int offsetMinutes) {
+        this.year = year;
+        this.month = month;
+        this.day = day;
+        this.hour = hour;
+        this.minute = minute;
+        this.second = second;
+        this.offsetMinutes = offsetMinutes;
+    }
+
+    public Int getYear() {
+        return this.year;
+    }
+
+    public Int getMonth() {
+        return this.month;
+    }
+
+    public Int getDay() {
+        return this.day;
+    }
+
+    public Int getHour() {
+        return this.hour;
+    }
+
+    public Int getMinute() {
+        return this.minute;
+    }
+
+    public Int getSecond() {
+        return this.second;
+    }
+
+    public Int getOffsetMinutes() {
+        return this.offsetMinutes;
+    }
+
+    public Int getOffsetHours() {
+        return this.offsetMinutes / 60;
+    }
+
+    public Int getOffsetMinutePart() {
+        Int value = this.offsetMinutes;
+
+        if (value < 0) {
+            value = 0 - value;
+        }
+
+        Int hours = value / 60;
+        return value - (hours * 60);
+    }
+
+    public Bool isUtc() {
+        return this.offsetMinutes == 0;
+    }
+
+    public OffsetDateTime withDate(Int year, Int month, Int day) {
+        return OffsetDateTime(year, month, day, this.hour, this.minute, this.second, this.offsetMinutes);
+    }
+
+    public Int compareTo(OffsetDateTime other) {
+        if (this.year != other.getYear()) {
+            return this.compareInt(this.year, other.getYear());
+        }
+
+        if (this.month != other.getMonth()) {
+            return this.compareInt(this.month, other.getMonth());
+        }
+
+        if (this.day != other.getDay()) {
+            return this.compareInt(this.day, other.getDay());
+        }
+
+        if (this.hour != other.getHour()) {
+            return this.compareInt(this.hour, other.getHour());
+        }
+
+        if (this.minute != other.getMinute()) {
+            return this.compareInt(this.minute, other.getMinute());
+        }
+
+        if (this.second != other.getSecond()) {
+            return this.compareInt(this.second, other.getSecond());
+        }
+
+        return this.compareInt(this.offsetMinutes, other.getOffsetMinutes());
+    }
+
+    public Bool isBefore(OffsetDateTime other) {
+        return this.compareTo(other) < 0;
+    }
+
+    public Bool isAfter(OffsetDateTime other) {
+        return this.compareTo(other) > 0;
+    }
+
+    public Bool isEqual(OffsetDateTime other) {
+        return this.compareTo(other) == 0;
+    }
+
+    private Int compareInt(Int left, Int right) {
+        if (left < right) {
+            return 0 - 1;
+        }
+
+        if (left > right) {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    public OffsetDateTime withTime(Int hour, Int minute, Int second) {
+        return OffsetDateTime(this.year, this.month, this.day, hour, minute, second, this.offsetMinutes);
+    }
+
+    public OffsetDateTime withOffsetMinutes(Int offsetMinutes) {
+        return OffsetDateTime(this.year, this.month, this.day, this.hour, this.minute, this.second, offsetMinutes);
+    }
+
+    public Bool hasSameDate(OffsetDateTime other) {
+        return this.year == other.getYear() && this.month == other.getMonth() && this.day == other.getDay();
+    }
+
+    public Bool hasSameTime(OffsetDateTime other) {
+        return this.hour == other.getHour() && this.minute == other.getMinute() && this.second == other.getSecond();
+    }
+
+    public Bool hasSameOffset(OffsetDateTime other) {
+        return this.offsetMinutes == other.getOffsetMinutes();
+    }
+
+    public String toDateString() {
+        return this.pad4(this.year) + "-" + this.pad2(this.month) + "-" + this.pad2(this.day);
+    }
+
+    public String toTimeString() {
+        return this.pad2(this.hour) + ":" + this.pad2(this.minute) + ":" + this.pad2(this.second);
+    }
+
+    public String toString() {
+        return this.toDateString() + "T" + this.toTimeString() + this.offsetString();
+    }
+
+    private String offsetString() {
+        String sign = "+";
+        Int value = this.offsetMinutes;
+
+        if (value < 0) {
+            sign = "-";
+            value = 0 - value;
+        }
+
+        Int hours = value / 60;
+        Int minutes = value - (hours * 60);
+
+        return sign + this.pad2(hours) + ":" + this.pad2(minutes);
+    }
+
+    private String pad2(Int value) {
+        if (value < 10) {
+            return "0" + value.toString();
+        }
+
+        return value.toString();
+    }
+
+    private String pad4(Int value) {
+        if (value < 10) {
+            return "000" + value.toString();
+        }
+
+        if (value < 100) {
+            return "00" + value.toString();
+        }
+
+        if (value < 1000) {
+            return "0" + value.toString();
+        }
+
+        return value.toString();
+    }
+}

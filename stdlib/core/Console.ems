@@ -1,0 +1,6 @@
+namespace Std::Core;
+
+public class Console {
+    public Console() {
+    }
+}

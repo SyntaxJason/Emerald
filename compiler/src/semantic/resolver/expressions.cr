@@ -23,8 +23,12 @@ module Emerald
         end
         expr.args.each { |a| resolve_expr(a, scope) }
       when AST::MethodCall
-        resolve_expr(expr.receiver, scope)
-        expr.args.each { |a| resolve_expr(a, scope) }
+        if expr.receiver.is_a?(AST::Identifier) && static_stdlib_receiver?(expr.receiver.as(AST::Identifier).name)
+          expr.args.each { |a| resolve_expr(a, scope) }
+        else
+          resolve_expr(expr.receiver, scope)
+          expr.args.each { |a| resolve_expr(a, scope) }
+        end
       when AST::MemberAccess
         resolve_expr(expr.receiver, scope)
       when AST::MemberAssign
@@ -111,6 +115,13 @@ module Emerald
           end
         end
       end
+    end
+
+    private def static_stdlib_receiver?(name : String) : Bool
+      name == "Console" ||
+        name == "Math" ||
+        name == "Duration" ||
+        name == "OffsetDateTime"
     end
 
     private def bind_pattern(pat : AST::Pattern, scope : Scope)
