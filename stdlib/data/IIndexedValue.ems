@@ -1,0 +1,7 @@
+namespace Std::Data;
+
+public interface IIndexedValue<T> {
+    public Int index();
+
+    public T value();
+}

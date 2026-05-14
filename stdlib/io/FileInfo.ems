@@ -1,0 +1,41 @@
+namespace Std::Io;
+
+public class FileInfo implements IFileInfo {
+    private Path infoPath;
+
+    public FileInfo(String path) {
+        this.infoPath = Path(path);
+    }
+
+    public FileInfo(Path path) {
+        this.infoPath = path;
+    }
+
+    public FileInfo(IPath path) {
+        this.infoPath = Path(path.value());
+    }
+
+    public IPath path() {
+        return this.infoPath;
+    }
+
+    public String name() {
+        return this.infoPath.fileName();
+    }
+
+    public Bool exists() {
+        return File.exists(this.infoPath.value()) || Directory.exists(this.infoPath.value());
+    }
+
+    public Bool isFile() {
+        return File.isFile(this.infoPath.value());
+    }
+
+    public Bool isDirectory() {
+        return Directory.exists(this.infoPath.value());
+    }
+
+    public Int size() {
+        return File.size(this.infoPath.value());
+    }
+}

@@ -1,0 +1,35 @@
+namespace Std::Data;
+
+public class IntRange implements IIntRange {
+    private Int startValue;
+    private Int finishValue;
+
+    public IntRange(Int start, Int finish) {
+        this.startValue = start;
+        this.finishValue = finish;
+    }
+
+    public Int start() {
+        return this.startValue;
+    }
+
+    public Int finish() {
+        return this.finishValue;
+    }
+
+    public Bool contains(Int value) {
+        return value >= this.startValue && value <= this.finishValue;
+    }
+
+    public Int length() {
+        if (this.finishValue < this.startValue) {
+            return 0;
+        }
+
+        return this.finishValue - this.startValue + 1;
+    }
+
+    public Bool isEmpty() {
+        return this.finishValue < this.startValue;
+    }
+}

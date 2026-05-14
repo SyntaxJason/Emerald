@@ -1,0 +1,11 @@
+namespace Std::Option;
+
+public interface IOption<T> {
+    public Bool isSome();
+
+    public Bool isNone();
+
+    public T unwrapOr(T fallback);
+
+    public T orElse(T fallback);
+}

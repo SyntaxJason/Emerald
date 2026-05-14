@@ -1,0 +1,29 @@
+namespace Std::Result;
+
+public class Success<T, E> implements IResult<T, E> {
+    private T value;
+
+    public Success(T value) {
+        this.value = value;
+    }
+
+    public Bool isSuccess() {
+        return true;
+    }
+
+    public Bool isFailure() {
+        return false;
+    }
+
+    public T unwrapOr(T fallback) {
+        return this.value;
+    }
+
+    public E errorOr(E fallback) {
+        return fallback;
+    }
+
+    public T value() {
+        return this.value;
+    }
+}

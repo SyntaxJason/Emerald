@@ -1,0 +1,10 @@
+namespace Std::Functional;
+
+public class IdentityFunction<T> implements IUnaryOperator<T> {
+    public IdentityFunction() {
+    }
+
+    public T apply(T value) {
+        return value;
+    }
+}

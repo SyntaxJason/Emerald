@@ -1,0 +1,39 @@
+namespace Std::Io;
+
+public class TextWriter implements ITextWriter, IClosable, IFlushable {
+    private Path writerPath;
+
+    public TextWriter(String path) {
+        this.writerPath = Path(path);
+    }
+
+    public TextWriter(Path path) {
+        this.writerPath = path;
+    }
+
+    public TextWriter(IPath path) {
+        this.writerPath = Path(path.value());
+    }
+
+    public IPath path() {
+        return this.writerPath;
+    }
+
+    public Bool exists() {
+        return File.exists(this.writerPath.value());
+    }
+
+    public Void writeText(String text) {
+        File.writeText(this.writerPath.value(), text);
+    }
+
+    public Void appendText(String text) {
+        File.appendText(this.writerPath.value(), text);
+    }
+
+    public Void flush() {
+    }
+
+    public Void close() {
+    }
+}

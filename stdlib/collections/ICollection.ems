@@ -1,0 +1,17 @@
+namespace Std::Collections;
+
+public interface ICollection<T> extends IIterable<T> {
+    public Int size();
+
+    public Bool isEmpty();
+
+    public Bool contains(T value);
+
+    public Void clear();
+
+    public Void forEach(Std::Functional::IConsumer<T> consumer);
+
+    public Bool any(Std::Functional::IPredicate<T> predicate);
+
+    public Bool all(Std::Functional::IPredicate<T> predicate);
+}

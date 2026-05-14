@@ -1,0 +1,19 @@
+namespace Std::Collections;
+
+public class MapEntry<K, V> implements IMapEntry<K, V> {
+    private K storedKey;
+    private V storedValue;
+
+    public MapEntry(K key, V value) {
+        this.storedKey = key;
+        this.storedValue = value;
+    }
+
+    public K key() {
+        return this.storedKey;
+    }
+
+    public V value() {
+        return this.storedValue;
+    }
+}

@@ -1,0 +1,9 @@
+namespace Std::Io;
+
+public interface IDirectory extends IFileSystemEntry {
+    public Bool create();
+
+    public Bool delete();
+
+    public Std::Collections::IList<String> list();
+}

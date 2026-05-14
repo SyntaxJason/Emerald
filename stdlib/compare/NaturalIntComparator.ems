@@ -1,0 +1,10 @@
+namespace Std::Compare;
+
+public class NaturalIntComparator implements IComparator<Int> {
+    public NaturalIntComparator() {
+    }
+
+    public Int compare(Int left, Int right) {
+        return left - right;
+    }
+}

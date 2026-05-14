@@ -39,8 +39,14 @@ module Emerald
 
       decl.fields.each do |f|
         if init = f.initializer
-          init_type = check_expr(init, @resolver.global_scope)
           declared = type_ref_to_fqn(f.type_ref)
+          if init.is_a?(AST::NewExpr)
+            init.as(AST::NewExpr).expected_type = declared
+          end
+          if init.is_a?(AST::LambdaExpr)
+            init.as(AST::LambdaExpr).expected_type = declared
+          end
+          init_type = check_expr(init, @resolver.global_scope)
           unless types_compatible?(declared, init_type)
             raise TypeError.new("Field '#{f.name}': expected #{declared}, got #{init_type}", f.line, f.col)
           end

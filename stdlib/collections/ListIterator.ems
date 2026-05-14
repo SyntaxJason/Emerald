@@ -1,0 +1,21 @@
+namespace Std::Collections;
+
+public class ListIterator<T> implements IIterator<T> {
+    private List<T> items;
+    private Int position;
+
+    public ListIterator(List<T> items) {
+        this.items = items;
+        this.position = 0;
+    }
+
+    public Bool hasNext() {
+        return this.position < this.items.length();
+    }
+
+    public T next() {
+        T value = this.items.get(this.position);
+        this.position = this.position + 1;
+        return value;
+    }
+}

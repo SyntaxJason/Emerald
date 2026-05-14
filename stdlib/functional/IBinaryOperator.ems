@@ -1,0 +1,5 @@
+namespace Std::Functional;
+
+public interface IBinaryOperator<T> {
+    public T apply(T left, T right);
+}

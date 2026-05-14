@@ -1,0 +1,36 @@
+namespace Std::Io;
+
+public class TextReader implements ITextReader, IClosable {
+    private Path readerPath;
+
+    public TextReader(String path) {
+        this.readerPath = Path(path);
+    }
+
+    public TextReader(Path path) {
+        this.readerPath = path;
+    }
+
+    public TextReader(IPath path) {
+        this.readerPath = Path(path.value());
+    }
+
+    public IPath path() {
+        return this.readerPath;
+    }
+
+    public Bool exists() {
+        return File.exists(this.readerPath.value());
+    }
+
+    public String readText() {
+        return File.readText(this.readerPath.value());
+    }
+
+    public Std::Collections::IList<String> readLines() {
+        return Std::Collections::ArrayList(File.readLines(this.readerPath.value()));
+    }
+
+    public Void close() {
+    }
+}

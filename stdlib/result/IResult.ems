@@ -1,0 +1,11 @@
+namespace Std::Result;
+
+public interface IResult<T, E> {
+    public Bool isSuccess();
+
+    public Bool isFailure();
+
+    public T unwrapOr(T fallback);
+
+    public E errorOr(E fallback);
+}

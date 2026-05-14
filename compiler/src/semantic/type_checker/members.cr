@@ -27,8 +27,14 @@ module Emerald
       unless f
         raise TypeError.new("Type #{receiver_type} has no field '#{expr.name}'", expr.line, expr.col)
       end
-      value_type = check_expr(expr.value, scope)
       field_type = apply_subs(f.type_name, subs)
+      if expr.value.is_a?(AST::NewExpr)
+        expr.value.as(AST::NewExpr).expected_type = field_type
+      end
+      if expr.value.is_a?(AST::LambdaExpr)
+        expr.value.as(AST::LambdaExpr).expected_type = field_type
+      end
+      value_type = check_expr(expr.value, scope)
       unless types_compatible?(field_type, value_type)
         raise TypeError.new("Cannot assign #{value_type} to field '#{expr.name}' of type #{field_type}",
           expr.line, expr.col)

@@ -121,7 +121,10 @@ module Emerald
       name == "Console" ||
         name == "Math" ||
         name == "Duration" ||
-        name == "OffsetDateTime"
+        name == "OffsetDateTime" ||
+        name == "Path" ||
+        name == "File" ||
+        name == "Directory"
     end
 
     private def bind_pattern(pat : AST::Pattern, scope : Scope)

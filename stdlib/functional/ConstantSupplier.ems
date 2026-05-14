@@ -1,0 +1,13 @@
+namespace Std::Functional;
+
+public class ConstantSupplier<T> implements ISupplier<T> {
+    private T stored;
+
+    public ConstantSupplier(T value) {
+        this.stored = value;
+    }
+
+    public T get() {
+        return this.stored;
+    }
+}

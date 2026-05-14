@@ -1,0 +1,10 @@
+namespace Std::Functional;
+
+public class AlwaysTruePredicate<T> implements IPredicate<T> {
+    public AlwaysTruePredicate() {
+    }
+
+    public Bool test(T value) {
+        return true;
+    }
+}

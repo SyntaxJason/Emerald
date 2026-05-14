@@ -11,14 +11,18 @@ module Emerald
       @registry = @resolver.registry
       @match_var_counter = 0
       @match_tmp_counter = 0
+      @sam_lambda_counter = 0
+      @sam_lambda_adapters = [] of AST::LambdaExpr
       @in_captured_block = false
     end
 
 
     def generate : String
+      prepare_sam_lambdas(@program)
       String.build do |io|
         RuntimePrelude.emit(io)
         emit_interfaces(io)
+        emit_sam_lambda_adapters(io)
         emit_classes(io)
         emit_functions(io)
         emit_top_level_then_main(io)

@@ -1,0 +1,9 @@
+namespace Std::Data;
+
+public interface ITriple<A, B, C> {
+    public A first();
+
+    public B second();
+
+    public C third();
+}

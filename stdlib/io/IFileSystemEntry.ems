@@ -1,0 +1,13 @@
+namespace Std::Io;
+
+public interface IFileSystemEntry {
+    public IPath path();
+
+    public String name();
+
+    public Bool exists();
+
+    public Bool isFile();
+
+    public Bool isDirectory();
+}

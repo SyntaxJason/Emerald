@@ -1,0 +1,5 @@
+namespace Std::Data;
+
+public interface IBox<T> {
+    public T value();
+}

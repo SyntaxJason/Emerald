@@ -1,0 +1,9 @@
+namespace Std::Io;
+
+public interface ITextReader extends IReadableText {
+    public IPath path();
+
+    public Bool exists();
+
+    public Void close();
+}

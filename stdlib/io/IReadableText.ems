@@ -1,0 +1,7 @@
+namespace Std::Io;
+
+public interface IReadableText {
+    public String readText();
+
+    public Std::Collections::IList<String> readLines();
+}

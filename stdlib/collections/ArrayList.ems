@@ -1,0 +1,115 @@
+namespace Std::Collections;
+
+public class ArrayList<T> implements IList<T> {
+    private List<T> items;
+
+    public ArrayList() {
+        this.items = List();
+    }
+
+    public ArrayList(List<T> values) {
+        this.items = values;
+    }
+
+    public IIterator<T> iterator() {
+        return ListIterator(this.items);
+    }
+
+    public Int size() {
+        return this.items.length();
+    }
+
+    public Bool isEmpty() {
+        return this.items.isEmpty();
+    }
+
+    public Bool contains(T value) {
+        return this.items.contains(value);
+    }
+
+    public T get(Int index) {
+        return this.items.get(index);
+    }
+
+    public Void set(Int index, T value) {
+        this.items.set(index, value);
+    }
+
+    public Void add(T value) {
+        this.items.add(value);
+    }
+
+    public Void addAt(Int index, T value) {
+        this.items.addAt(index, value);
+    }
+
+    public Bool remove(T value) {
+        return this.items.remove(value);
+    }
+
+    public T removeAt(Int index) {
+        return this.items.removeAt(index);
+    }
+
+    public Int indexOf(T value) {
+        return this.items.indexOf(value);
+    }
+
+    public Void clear() {
+        this.items.clear();
+    }
+
+    public Void forEach(Std::Functional::IConsumer<T> consumer) {
+        Int index = 0;
+
+        while (index < this.items.length()) {
+            consumer.accept(this.items.get(index));
+            index = index + 1;
+        }
+    }
+
+    public Bool any(Std::Functional::IPredicate<T> predicate) {
+        Int index = 0;
+
+        while (index < this.items.length()) {
+            if (predicate.test(this.items.get(index))) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    public Bool all(Std::Functional::IPredicate<T> predicate) {
+        Int index = 0;
+
+        while (index < this.items.length()) {
+            if (!predicate.test(this.items.get(index))) {
+                return false;
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+
+    public IList<T> filter(Std::Functional::IPredicate<T> predicate) {
+        ArrayList<T> result = ArrayList();
+        Int index = 0;
+
+        while (index < this.items.length()) {
+            T value = this.items.get(index);
+
+            if (predicate.test(value)) {
+                result.add(value);
+            }
+
+            index = index + 1;
+        }
+
+        return result;
+    }
+}

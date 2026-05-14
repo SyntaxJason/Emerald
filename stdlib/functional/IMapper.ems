@@ -1,0 +1,5 @@
+namespace Std::Functional;
+
+public interface IMapper<T, R> {
+    public R map(T value);
+}

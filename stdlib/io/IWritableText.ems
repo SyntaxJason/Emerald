@@ -1,0 +1,5 @@
+namespace Std::Io;
+
+public interface IWritableText {
+    public Void writeText(String text);
+}

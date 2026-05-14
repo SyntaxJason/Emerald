@@ -1,0 +1,5 @@
+namespace Std::Functional;
+
+public interface IReducer<T, R> {
+    public R reduce(R accumulator, T value);
+}

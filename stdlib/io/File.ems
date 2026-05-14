@@ -1,0 +1,77 @@
+namespace Std::Io;
+
+public class File implements IFile {
+    private Path filePath;
+
+    public File(String path) {
+        this.filePath = Path(path);
+    }
+
+    public File(Path path) {
+        this.filePath = path;
+    }
+
+    public File(IPath path) {
+        this.filePath = Path(path.value());
+    }
+
+    public IPath path() {
+        return this.filePath;
+    }
+
+    public String name() {
+        return this.filePath.fileName();
+    }
+
+    public Bool exists() {
+        return File.exists(this.filePath.value());
+    }
+
+    public Bool isFile() {
+        return File.isFile(this.filePath.value());
+    }
+
+    public Bool isDirectory() {
+        return false;
+    }
+
+    public String readText() {
+        return File.readText(this.filePath.value());
+    }
+
+    public Std::Result::IResult<String, String> tryReadText() {
+        return File.tryReadText(this.filePath.value());
+    }
+
+    public Void writeText(String text) {
+        File.writeText(this.filePath.value(), text);
+    }
+
+    public Std::Result::IResult<Bool, String> tryWriteText(String text) {
+        return File.tryWriteText(this.filePath.value(), text);
+    }
+
+    public Void appendText(String text) {
+        File.appendText(this.filePath.value(), text);
+    }
+
+    public Std::Result::IResult<Bool, String> tryAppendText(String text) {
+        return File.tryAppendText(this.filePath.value(), text);
+    }
+
+    public Bool delete() {
+        return File.delete(this.filePath.value());
+    }
+
+    public Int size() {
+        return File.size(this.filePath.value());
+    }
+
+    public ITextReader reader() {
+        return TextReader(this.filePath);
+    }
+
+    public ITextWriter writer() {
+        return TextWriter(this.filePath);
+    }
+}

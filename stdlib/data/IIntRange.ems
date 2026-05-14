@@ -1,0 +1,13 @@
+namespace Std::Data;
+
+public interface IIntRange {
+    public Int start();
+
+    public Int finish();
+
+    public Bool contains(Int value);
+
+    public Int length();
+
+    public Bool isEmpty();
+}

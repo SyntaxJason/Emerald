@@ -1,0 +1,49 @@
+namespace Std::Io;
+
+public class Directory implements IDirectory {
+    private Path directoryPath;
+
+    public Directory(String path) {
+        this.directoryPath = Path(path);
+    }
+
+    public Directory(Path path) {
+        this.directoryPath = path;
+    }
+
+    public Directory(IPath path) {
+        this.directoryPath = Path(path.value());
+    }
+
+    public IPath path() {
+        return this.directoryPath;
+    }
+
+    public String name() {
+        return this.directoryPath.fileName();
+    }
+
+    public Bool exists() {
+        return Directory.exists(this.directoryPath.value());
+    }
+
+    public Bool isFile() {
+        return false;
+    }
+
+    public Bool isDirectory() {
+        return Directory.exists(this.directoryPath.value());
+    }
+
+    public Bool create() {
+        return Directory.create(this.directoryPath.value());
+    }
+
+    public Bool delete() {
+        return Directory.delete(this.directoryPath.value());
+    }
+
+    public Std::Collections::IList<String> list() {
+        return Std::Collections::ArrayList(Directory.list(this.directoryPath.value()));
+    }
+}

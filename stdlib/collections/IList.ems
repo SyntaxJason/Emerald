@@ -1,0 +1,19 @@
+namespace Std::Collections;
+
+public interface IList<T> extends ICollection<T> {
+    public T get(Int index);
+
+    public Void set(Int index, T value);
+
+    public Void add(T value);
+
+    public Void addAt(Int index, T value);
+
+    public Bool remove(T value);
+
+    public T removeAt(Int index);
+
+    public Int indexOf(T value);
+
+    public IList<T> filter(Std::Functional::IPredicate<T> predicate);
+}

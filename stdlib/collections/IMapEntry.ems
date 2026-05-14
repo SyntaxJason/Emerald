@@ -1,0 +1,7 @@
+namespace Std::Collections;
+
+public interface IMapEntry<K, V> {
+    public K key();
+
+    public V value();
+}

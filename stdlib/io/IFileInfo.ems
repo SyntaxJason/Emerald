@@ -1,0 +1,15 @@
+namespace Std::Io;
+
+public interface IFileInfo {
+    public IPath path();
+
+    public String name();
+
+    public Bool exists();
+
+    public Bool isFile();
+
+    public Bool isDirectory();
+
+    public Int size();
+}

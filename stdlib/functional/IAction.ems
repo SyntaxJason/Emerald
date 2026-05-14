@@ -1,0 +1,5 @@
+namespace Std::Functional;
+
+public interface IAction {
+    public Void call();
+}

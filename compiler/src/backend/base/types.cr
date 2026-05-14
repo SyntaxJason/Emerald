@@ -54,6 +54,9 @@ module Emerald
           gen_open = t.index("<").not_nil!
           base = t[0...gen_open]
           base_fqn = runtime_type_fqn(base)
+          base_info = @resolver.registry[base_fqn]
+          return mangle_fqn(base_fqn) if base_info && base_info.is_interface
+
           args_str = t[(gen_open + 1)..-2]
           args = split_top_level_args(args_str)
           crystal_args = args.map { |a| crystal_type(a.strip) }

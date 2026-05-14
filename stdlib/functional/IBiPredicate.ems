@@ -1,0 +1,5 @@
+namespace Std::Functional;
+
+public interface IBiPredicate<T, U> {
+    public Bool test(T first, U second);
+}

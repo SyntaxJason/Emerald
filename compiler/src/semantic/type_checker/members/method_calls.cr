@@ -56,15 +56,12 @@ module Emerald
         raise TypeError.new("Type #{receiver_type} has no method '#{expr.name}'", expr.line, expr.col)
       end
 
-      base, subs = base_type_and_subs(receiver_type)
-      info = @resolver.registry[base]
-      unless info
-        raise TypeError.new("Cannot call method '#{expr.name}' on type #{receiver_type}", expr.line, expr.col)
-      end
-      m = @resolver.registry.lookup_method(base, expr.name)
-      unless m
+      method_lookup = lookup_method_with_subs(receiver_type, expr.name)
+      unless method_lookup
         raise TypeError.new("Type #{receiver_type} has no method '#{expr.name}'", expr.line, expr.col)
       end
+      m = method_lookup[0]
+      subs = method_lookup[1]
       if dm = m.deprecated_message
         STDERR.puts "Warning: method '#{expr.name}' is deprecated: #{dm} (at #{expr.line}:#{expr.col})"
       end
@@ -74,8 +71,11 @@ module Emerald
           expr.line, expr.col)
       end
       expr.args.each_with_index do |arg, i|
-        actual = check_expr(arg, scope)
         expected = apply_subs(m.param_types[i], subs)
+        if arg.is_a?(AST::LambdaExpr)
+          arg.as(AST::LambdaExpr).expected_type = expected
+        end
+        actual = check_expr(arg, scope)
         unless types_compatible?(expected, actual)
           raise TypeError.new("Argument #{i + 1} of '#{expr.name}': expected #{expected}, got #{actual}",
             arg.line, arg.col)
@@ -142,6 +142,69 @@ module Emerald
       when {"Math", "clamp"}
         check_static_int_args(expr, type_name, 3, scope)
         return "Int"
+      when {"Path", "current"}
+        check_static_string_args(expr, type_name, 0, scope)
+        return static_stdlib_return_type(type_name)
+      when {"Path", "join"}
+        check_static_string_args(expr, type_name, 2, scope)
+        return "String"
+      when {"Path", "fileName"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "String"
+      when {"Path", "extension"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "String"
+      when {"Path", "parent"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "String"
+      when {"File", "readText"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "String"
+      when {"File", "readLines"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "List<String>"
+      when {"File", "writeText"}
+        check_static_string_args(expr, type_name, 2, scope)
+        return "Void"
+      when {"File", "appendText"}
+        check_static_string_args(expr, type_name, 2, scope)
+        return "Void"
+      when {"File", "tryReadText"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "Std::Result::IResult<String,String>"
+      when {"File", "tryWriteText"}
+        check_static_string_args(expr, type_name, 2, scope)
+        return "Std::Result::IResult<Bool,String>"
+      when {"File", "tryAppendText"}
+        check_static_string_args(expr, type_name, 2, scope)
+        return "Std::Result::IResult<Bool,String>"
+      when {"File", "exists"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "Bool"
+      when {"File", "isFile"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "Bool"
+      when {"File", "isDirectory"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "Bool"
+      when {"File", "delete"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "Bool"
+      when {"File", "size"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "Int"
+      when {"Directory", "exists"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "Bool"
+      when {"Directory", "create"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "Bool"
+      when {"Directory", "delete"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "Bool"
+      when {"Directory", "list"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "List<String>"
       end
 
       nil
@@ -156,6 +219,24 @@ module Emerald
 
       expr.args.each do |arg|
         check_expr(arg, scope)
+      end
+    end
+
+    private def check_static_string_args(expr : AST::MethodCall, type_name : String, count : Int32, scope : Scope)
+      unless expr.args.size == count
+        raise TypeError.new(
+          "#{type_name}.#{expr.name} expects #{count} arguments, got #{expr.args.size}",
+          expr.line, expr.col)
+      end
+
+      expr.args.each_with_index do |arg, index|
+        actual = check_expr(arg, scope)
+
+        unless actual == "String"
+          raise TypeError.new(
+            "Argument #{index + 1} of '#{type_name}.#{expr.name}': expected String, got #{actual}",
+            arg.line, arg.col)
+        end
       end
     end
 

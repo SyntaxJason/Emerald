@@ -1,0 +1,5 @@
+namespace Std::Functional;
+
+public interface IBiConsumer<T, U> {
+    public Void accept(T first, U second);
+}

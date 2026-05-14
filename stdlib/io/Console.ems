@@ -1,0 +1,6 @@
+namespace Std::Io;
+
+public class Console {
+    public Console() {
+    }
+}

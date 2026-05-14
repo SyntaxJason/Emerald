@@ -1,0 +1,95 @@
+namespace Std::Collections;
+
+public class HashMap<K, V> implements IMap<K, V> {
+    private Map<K, V> storage;
+
+    public HashMap() {
+        this.storage = Map();
+    }
+
+    public HashMap(Map<K, V> values) {
+        this.storage = values;
+    }
+
+    public Int size() {
+        return this.storage.length();
+    }
+
+    public Bool isEmpty() {
+        return this.storage.isEmpty();
+    }
+
+    public Bool containsKey(K key) {
+        return this.storage.has(key);
+    }
+
+    public V get(K key) {
+        return this.storage.get(key);
+    }
+
+    public V getOr(K key, V fallback) {
+        if (this.storage.has(key)) {
+            return this.storage.get(key);
+        }
+
+        return fallback;
+    }
+
+    public Void put(K key, V value) {
+        this.storage.put(key, value);
+    }
+
+    public V remove(K key) {
+        V value = this.storage.get(key);
+        this.storage.remove(key);
+        return value;
+    }
+
+    public V removeOr(K key, V fallback) {
+        if (!this.storage.has(key)) {
+            return fallback;
+        }
+
+        V value = this.storage.get(key);
+        this.storage.remove(key);
+        return value;
+    }
+
+    public Void clear() {
+        this.storage.clear();
+    }
+
+    public IList<K> keys() {
+        return ArrayList(this.storage.keys());
+    }
+
+    public IList<V> values() {
+        return ArrayList(this.storage.values());
+    }
+
+    public IList<IMapEntry<K, V>> entries() {
+        ArrayList<IMapEntry<K, V>> result = ArrayList();
+        List<K> keys = this.storage.keys();
+        Int index = 0;
+
+        while (index < keys.length()) {
+            K key = keys.get(index);
+            IMapEntry<K, V> entry = MapEntry(key, this.storage.get(key));
+            result.add(entry);
+            index = index + 1;
+        }
+
+        return result;
+    }
+
+    public Void forEach(Std::Functional::IBiConsumer<K, V> consumer) {
+        List<K> keys = this.storage.keys();
+        Int index = 0;
+
+        while (index < keys.length()) {
+            K key = keys.get(index);
+            consumer.accept(key, this.storage.get(key));
+            index = index + 1;
+        }
+    }
+}

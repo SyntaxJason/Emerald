@@ -17,7 +17,8 @@ module Emerald
         @namespace_resolver.add_function(fqn, sym)
       when AST::ClassDecl
         check_reserved!(decl.name, decl.line, decl.col)
-        fqn = fqn_of(decl.name, ns)
+        decl_ns = decl.namespace.empty? ? ns : decl.namespace
+        fqn = fqn_of(decl.name, decl_ns)
         info = ClassInfo.new(decl.name, fqn, decl.is_data, decl.is_abstract, false)
         info.type_params = decl.type_params.dup
         @registry.register(info, decl.line, decl.col)
@@ -27,7 +28,8 @@ module Emerald
         end
       when AST::InterfaceDecl
         check_reserved!(decl.name, decl.line, decl.col)
-        fqn = fqn_of(decl.name, ns)
+        decl_ns = decl.namespace.empty? ? ns : decl.namespace
+        fqn = fqn_of(decl.name, decl_ns)
         info = ClassInfo.new(decl.name, fqn, false, false, true)
         info.type_params = decl.type_params.dup
         @registry.register(info, decl.line, decl.col)

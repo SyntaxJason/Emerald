@@ -1,0 +1,5 @@
+namespace Std::Functional;
+
+public interface ISupplier<T> {
+    public T get();
+}

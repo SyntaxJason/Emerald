@@ -1,0 +1,9 @@
+namespace Std::Functional;
+
+public class NoopAction implements IAction {
+    public NoopAction() {
+    }
+
+    public Void call() {
+    }
+}

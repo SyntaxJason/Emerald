@@ -1,0 +1,5 @@
+namespace Std::Io;
+
+public interface IAppendableText {
+    public Void appendText(String text);
+}

@@ -1,0 +1,7 @@
+namespace Std::Functional;
+
+public interface IObserver<T> {
+    public Void onNext(T value);
+
+    public Void onComplete();
+}

@@ -1,0 +1,29 @@
+namespace Std::Collections;
+
+public interface IMap<K, V> {
+    public Int size();
+
+    public Bool isEmpty();
+
+    public Bool containsKey(K key);
+
+    public V get(K key);
+
+    public V getOr(K key, V fallback);
+
+    public Void put(K key, V value);
+
+    public V remove(K key);
+
+    public V removeOr(K key, V fallback);
+
+    public Void clear();
+
+    public IList<K> keys();
+
+    public IList<V> values();
+
+    public IList<IMapEntry<K, V>> entries();
+
+    public Void forEach(Std::Functional::IBiConsumer<K, V> consumer);
+}

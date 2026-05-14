@@ -1,0 +1,19 @@
+namespace Std::Data;
+
+public class IndexedValue<T> implements IIndexedValue<T> {
+    private Int storedIndex;
+    private T storedValue;
+
+    public IndexedValue(Int index, T value) {
+        this.storedIndex = index;
+        this.storedValue = value;
+    }
+
+    public Int index() {
+        return this.storedIndex;
+    }
+
+    public T value() {
+        return this.storedValue;
+    }
+}

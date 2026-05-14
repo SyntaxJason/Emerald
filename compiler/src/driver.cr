@@ -13,6 +13,7 @@ module Emerald
     def self.compile(source_file : String, output : String) : Bool
       begin
         program = ProjectLoader.load(source_file)
+        StdlibLoader.load_into(program)
 
         resolver = Resolver.new
         resolver.resolve(program)

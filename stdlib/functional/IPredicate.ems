@@ -1,0 +1,5 @@
+namespace Std::Functional;
+
+public interface IPredicate<T> {
+    public Bool test(T value);
+}

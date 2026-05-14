@@ -115,6 +115,69 @@ module Emerald
       when {"Math", "clamp"}
         emit_static_math_clamp(io, expr)
         return true
+      when {"Path", "current"}
+        emit_static_path_current(io)
+        return true
+      when {"Path", "join"}
+        emit_static_path_join(io, expr)
+        return true
+      when {"Path", "fileName"}
+        emit_static_path_single(io, expr, "basename")
+        return true
+      when {"Path", "extension"}
+        emit_static_path_single(io, expr, "extname")
+        return true
+      when {"Path", "parent"}
+        emit_static_path_single(io, expr, "dirname")
+        return true
+      when {"File", "readText"}
+        emit_static_file_read_text(io, expr)
+        return true
+      when {"File", "readLines"}
+        emit_static_file_read_lines(io, expr)
+        return true
+      when {"File", "writeText"}
+        emit_static_file_write_text(io, expr)
+        return true
+      when {"File", "appendText"}
+        emit_static_file_append_text(io, expr)
+        return true
+      when {"File", "tryReadText"}
+        emit_static_file_try_read_text(io, expr)
+        return true
+      when {"File", "tryWriteText"}
+        emit_static_file_try_write_text(io, expr)
+        return true
+      when {"File", "tryAppendText"}
+        emit_static_file_try_append_text(io, expr)
+        return true
+      when {"File", "exists"}
+        emit_static_file_predicate(io, expr, "exists?")
+        return true
+      when {"File", "isFile"}
+        emit_static_file_predicate(io, expr, "file?")
+        return true
+      when {"File", "isDirectory"}
+        emit_static_file_directory_predicate(io, expr)
+        return true
+      when {"File", "delete"}
+        emit_static_file_delete(io, expr)
+        return true
+      when {"File", "size"}
+        emit_static_file_size(io, expr)
+        return true
+      when {"Directory", "exists"}
+        emit_static_directory_predicate(io, expr)
+        return true
+      when {"Directory", "create"}
+        emit_static_directory_create(io, expr)
+        return true
+      when {"Directory", "delete"}
+        emit_static_directory_delete(io, expr)
+        return true
+      when {"Directory", "list"}
+        emit_static_directory_list(io, expr)
+        return true
       end
 
       false
@@ -187,6 +250,126 @@ module Emerald
       io << "].max), "
       emit_expr(io, expr.args[2])
       io << "].min)"
+    end
+
+    private def emit_static_path_current(io : IO)
+      io << crystal_type("Std::Io::Path") << ".new(::Dir.current)"
+    end
+
+    private def emit_static_path_join(io : IO, expr : AST::MethodCall)
+      io << "::File.join("
+      emit_expr(io, expr.args[0])
+      io << ", "
+      emit_expr(io, expr.args[1])
+      io << ")"
+    end
+
+    private def emit_static_path_single(io : IO, expr : AST::MethodCall, method_name : String)
+      io << "::File." << method_name << "("
+      emit_expr(io, expr.args[0])
+      io << ")"
+    end
+
+    private def emit_static_file_read_text(io : IO, expr : AST::MethodCall)
+      io << "::File.read("
+      emit_expr(io, expr.args[0])
+      io << ")"
+    end
+
+    private def emit_static_file_read_lines(io : IO, expr : AST::MethodCall)
+      io << "::File.read_lines("
+      emit_expr(io, expr.args[0])
+      io << ")"
+    end
+
+    private def emit_static_file_write_text(io : IO, expr : AST::MethodCall)
+      io << "::File.write("
+      emit_expr(io, expr.args[0])
+      io << ", "
+      emit_expr(io, expr.args[1])
+      io << ")"
+    end
+
+    private def emit_static_file_append_text(io : IO, expr : AST::MethodCall)
+      io << "(::File.open("
+      emit_expr(io, expr.args[0])
+      io << ", \"a\") { |__emerald_file| __emerald_file << "
+      emit_expr(io, expr.args[1])
+      io << " }; nil)"
+    end
+
+    private def emit_static_file_try_read_text(io : IO, expr : AST::MethodCall)
+      io << "(begin; " << crystal_type("Std::Result::Success<String,String>") << ".new(::File.read("
+      emit_expr(io, expr.args[0])
+      io << ")); rescue ex : Exception; " << crystal_type("Std::Result::Failure<String,String>") << ".new(ex.message || \"IO error\"); end)"
+    end
+
+    private def emit_static_file_try_write_text(io : IO, expr : AST::MethodCall)
+      io << "(begin; ::File.write("
+      emit_expr(io, expr.args[0])
+      io << ", "
+      emit_expr(io, expr.args[1])
+      io << "); " << crystal_type("Std::Result::Success<Bool,String>") << ".new(true); rescue ex : Exception; " << crystal_type("Std::Result::Failure<Bool,String>") << ".new(ex.message || \"IO error\"); end)"
+    end
+
+    private def emit_static_file_try_append_text(io : IO, expr : AST::MethodCall)
+      io << "(begin; ::File.open("
+      emit_expr(io, expr.args[0])
+      io << ", \"a\") { |__emerald_file| __emerald_file << "
+      emit_expr(io, expr.args[1])
+      io << " }; " << crystal_type("Std::Result::Success<Bool,String>") << ".new(true); rescue ex : Exception; " << crystal_type("Std::Result::Failure<Bool,String>") << ".new(ex.message || \"IO error\"); end)"
+    end
+
+    private def emit_static_file_predicate(io : IO, expr : AST::MethodCall, method_name : String)
+      io << "::File." << method_name << "("
+      emit_expr(io, expr.args[0])
+      io << ")"
+    end
+
+    private def emit_static_file_directory_predicate(io : IO, expr : AST::MethodCall)
+      io << "::Dir.exists?("
+      emit_expr(io, expr.args[0])
+      io << ")"
+    end
+
+    private def emit_static_file_delete(io : IO, expr : AST::MethodCall)
+      io << "(begin; if ::File.exists?("
+      emit_expr(io, expr.args[0])
+      io << "); ::File.delete("
+      emit_expr(io, expr.args[0])
+      io << "); true; else false; end; rescue ex : Exception; false; end)"
+    end
+
+    private def emit_static_file_size(io : IO, expr : AST::MethodCall)
+      io << "(::File.exists?("
+      emit_expr(io, expr.args[0])
+      io << ") ? ::File.size("
+      emit_expr(io, expr.args[0])
+      io << ").to_i64 : 0_i64)"
+    end
+
+    private def emit_static_directory_predicate(io : IO, expr : AST::MethodCall)
+      io << "::Dir.exists?("
+      emit_expr(io, expr.args[0])
+      io << ")"
+    end
+
+    private def emit_static_directory_create(io : IO, expr : AST::MethodCall)
+      io << "(begin; ::Dir.mkdir_p("
+      emit_expr(io, expr.args[0])
+      io << "); true; rescue ex : Exception; false; end)"
+    end
+
+    private def emit_static_directory_delete(io : IO, expr : AST::MethodCall)
+      io << "(begin; ::Dir.delete("
+      emit_expr(io, expr.args[0])
+      io << "); true; rescue ex : Exception; false; end)"
+    end
+
+    private def emit_static_directory_list(io : IO, expr : AST::MethodCall)
+      io << "::Dir.children("
+      emit_expr(io, expr.args[0])
+      io << ")"
     end
 
     private def emit_member_assign(io : IO, expr : AST::MemberAssign)

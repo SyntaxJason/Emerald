@@ -1,0 +1,9 @@
+namespace Std::Functional;
+
+public class NoopConsumer<T> implements IConsumer<T> {
+    public NoopConsumer() {
+    }
+
+    public Void accept(T value) {
+    }
+}

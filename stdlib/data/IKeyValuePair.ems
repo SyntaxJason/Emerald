@@ -1,0 +1,7 @@
+namespace Std::Data;
+
+public interface IKeyValuePair<K, V> {
+    public K key();
+
+    public V value();
+}

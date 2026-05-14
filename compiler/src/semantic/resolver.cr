@@ -56,18 +56,35 @@ module Emerald
              DEFAULT_ROOT_NAMESPACE
            end
       assign_namespaces(program, ns)
-      program.declarations.each { |d| collect_declaration(d, ns) }
+      program.declarations.each { |d| collect_declaration(d, namespace_for_declaration(d, ns)) }
       program.declarations.each { |d| collect_class_members(d) }
-      program.declarations.each { |d| resolve_declaration(d, ns) }
+      program.declarations.each { |d| resolve_declaration(d, namespace_for_declaration(d, ns)) }
     end
 
 
     private def assign_namespaces(program : AST::Program, ns : String)
       program.declarations.each do |d|
         case d
-        when AST::ClassDecl     then d.namespace = ns
-        when AST::InterfaceDecl then d.namespace = ns
+        when AST::FunctionDecl
+          d.namespace = ns if d.namespace.empty?
+        when AST::ClassDecl
+          d.namespace = ns if d.namespace.empty?
+        when AST::InterfaceDecl
+          d.namespace = ns if d.namespace.empty?
         end
+      end
+    end
+
+    private def namespace_for_declaration(decl : AST::Node, fallback : String) : String
+      case decl
+      when AST::FunctionDecl
+        decl.namespace.empty? ? fallback : decl.namespace
+      when AST::ClassDecl
+        decl.namespace.empty? ? fallback : decl.namespace
+      when AST::InterfaceDecl
+        decl.namespace.empty? ? fallback : decl.namespace
+      else
+        fallback
       end
     end
 

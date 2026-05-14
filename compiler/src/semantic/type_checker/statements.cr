@@ -13,6 +13,9 @@ module Emerald
         check_var_decl(stmt, scope)
       when AST::AssignStmt
         sym = scope.lookup(stmt.target).as(VarSymbol)
+        if stmt.value.is_a?(AST::LambdaExpr)
+          stmt.value.as(AST::LambdaExpr).expected_type = sym.type_name
+        end
         value_type = check_expr(stmt.value, scope)
         unless types_compatible?(sym.type_name, value_type)
           raise TypeError.new("Cannot assign #{value_type} to '#{stmt.target}' of type #{sym.type_name}",
@@ -23,6 +26,14 @@ module Emerald
       when AST::ReturnStmt
         expected = @current_function_return || "Void"
         if v = stmt.value
+          unless expected == "Any" || expected == "Void"
+            if v.is_a?(AST::NewExpr)
+              v.as(AST::NewExpr).expected_type = expected
+            end
+            if v.is_a?(AST::LambdaExpr)
+              v.as(AST::LambdaExpr).expected_type = expected
+            end
+          end
           actual = check_expr(v, scope)
           if expected == "Any"
             @lambda_first_return_type ||= actual
@@ -80,6 +91,10 @@ module Emerald
       if declared && init.is_a?(AST::NewExpr)
         ne = init.as(AST::NewExpr)
         ne.expected_type = declared
+      end
+
+      if declared && init.is_a?(AST::LambdaExpr)
+        init.as(AST::LambdaExpr).expected_type = declared
       end
 
       if declared && init.is_a?(AST::MethodCall)

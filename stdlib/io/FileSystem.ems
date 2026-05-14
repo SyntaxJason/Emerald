@@ -1,0 +1,22 @@
+namespace Std::Io;
+
+public class FileSystem {
+    public FileSystem() {
+    }
+
+    public Path path(String value) {
+        return Path(value);
+    }
+
+    public File file(String value) {
+        return File(value);
+    }
+
+    public Directory directory(String value) {
+        return Directory(value);
+    }
+
+    public FileInfo info(String value) {
+        return FileInfo(value);
+    }
+}

@@ -1,0 +1,29 @@
+namespace Std::Option;
+
+public class Some<T> implements IOption<T> {
+    private T value;
+
+    public Some(T value) {
+        this.value = value;
+    }
+
+    public Bool isSome() {
+        return true;
+    }
+
+    public Bool isNone() {
+        return false;
+    }
+
+    public T unwrapOr(T fallback) {
+        return this.value;
+    }
+
+    public T orElse(T fallback) {
+        return this.value;
+    }
+
+    public T value() {
+        return this.value;
+    }
+}

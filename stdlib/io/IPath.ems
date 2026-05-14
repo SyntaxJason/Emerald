@@ -1,0 +1,21 @@
+namespace Std::Io;
+
+public interface IPath {
+    public String value();
+
+    public Bool isEmpty();
+
+    public Bool startsWith(String prefix);
+
+    public Bool endsWith(String suffix);
+
+    public String fileName();
+
+    public String extension();
+
+    public IPath parent();
+
+    public IPath join(String segment);
+
+    public String toString();
+}

@@ -1,0 +1,45 @@
+namespace Std::Io;
+
+public class Path implements IPath {
+    private String valueText;
+
+    public Path(String value) {
+        this.valueText = value;
+    }
+
+    public String value() {
+        return this.valueText;
+    }
+
+    public Bool isEmpty() {
+        return this.valueText.isEmpty();
+    }
+
+    public Bool startsWith(String prefix) {
+        return this.valueText.startsWith(prefix);
+    }
+
+    public Bool endsWith(String suffix) {
+        return this.valueText.endsWith(suffix);
+    }
+
+    public String fileName() {
+        return Path.fileName(this.valueText);
+    }
+
+    public String extension() {
+        return Path.extension(this.valueText);
+    }
+
+    public IPath parent() {
+        return Path(Path.parent(this.valueText));
+    }
+
+    public IPath join(String segment) {
+        return Path(Path.join(this.valueText, segment));
+    }
+
+    public String toString() {
+        return this.valueText;
+    }
+}

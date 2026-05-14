@@ -7,8 +7,13 @@ module Emerald
       property return_type : TypeRef?
       property body : Node
       property is_expression_body : Bool
+      property expected_type : String
+      property sam_adapter_name : String
 
-      def initialize(@params, @return_type, @body, @is_expression_body); end
+      def initialize(@params, @return_type, @body, @is_expression_body)
+        @expected_type = ""
+        @sam_adapter_name = ""
+      end
     end
 
     class OkExpr < Node

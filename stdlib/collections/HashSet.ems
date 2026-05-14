@@ -1,0 +1,87 @@
+namespace Std::Collections;
+
+public class HashSet<T> implements ISet<T> {
+    private Map<T, Bool> storage;
+
+    public HashSet() {
+        this.storage = Map();
+    }
+
+    public IIterator<T> iterator() {
+        return ListIterator(this.storage.keys());
+    }
+
+    public Int size() {
+        return this.storage.length();
+    }
+
+    public Bool isEmpty() {
+        return this.storage.isEmpty();
+    }
+
+    public Bool contains(T value) {
+        return this.storage.has(value);
+    }
+
+    public Bool add(T value) {
+        if (this.storage.has(value)) {
+            return false;
+        }
+
+        this.storage.put(value, true);
+        return true;
+    }
+
+    public Bool remove(T value) {
+        if (!this.storage.has(value)) {
+            return false;
+        }
+
+        this.storage.remove(value);
+        return true;
+    }
+
+    public Void clear() {
+        this.storage.clear();
+    }
+
+    public Void forEach(Std::Functional::IConsumer<T> consumer) {
+        List<T> keys = this.storage.keys();
+        Int index = 0;
+
+        while (index < keys.length()) {
+            consumer.accept(keys.get(index));
+            index = index + 1;
+        }
+    }
+
+    public Bool any(Std::Functional::IPredicate<T> predicate) {
+        List<T> keys = this.storage.keys();
+        Int index = 0;
+
+        while (index < keys.length()) {
+            if (predicate.test(keys.get(index))) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    public Bool all(Std::Functional::IPredicate<T> predicate) {
+        List<T> keys = this.storage.keys();
+        Int index = 0;
+
+        while (index < keys.length()) {
+            if (!predicate.test(keys.get(index))) {
+                return false;
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+}

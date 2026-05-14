@@ -1,0 +1,5 @@
+namespace Std::Functional;
+
+public interface IConsumer<T> {
+    public Void accept(T value);
+}

@@ -1,0 +1,5 @@
+namespace Std::Compare;
+
+public interface IEquatable<T> {
+    public Bool equals(T other);
+}

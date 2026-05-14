@@ -1,0 +1,29 @@
+namespace Std::Result;
+
+public class Failure<T, E> implements IResult<T, E> {
+    private E error;
+
+    public Failure(E error) {
+        this.error = error;
+    }
+
+    public Bool isSuccess() {
+        return false;
+    }
+
+    public Bool isFailure() {
+        return true;
+    }
+
+    public T unwrapOr(T fallback) {
+        return fallback;
+    }
+
+    public E errorOr(E fallback) {
+        return this.error;
+    }
+
+    public E error() {
+        return this.error;
+    }
+}

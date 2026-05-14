@@ -1,0 +1,19 @@
+namespace Std::Data;
+
+public class Pair<A, B> implements IPair<A, B> {
+    private A left;
+    private B right;
+
+    public Pair(A first, B second) {
+        this.left = first;
+        this.right = second;
+    }
+
+    public A first() {
+        return this.left;
+    }
+
+    public B second() {
+        return this.right;
+    }
+}

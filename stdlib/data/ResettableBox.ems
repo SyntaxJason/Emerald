@@ -1,0 +1,23 @@
+namespace Std::Data;
+
+public class ResettableBox<T> implements IMutableBox<T>, IResettable {
+    private T initialValue;
+    private T stored;
+
+    public ResettableBox(T value) {
+        this.initialValue = value;
+        this.stored = value;
+    }
+
+    public T value() {
+        return this.stored;
+    }
+
+    public Void set(T value) {
+        this.stored = value;
+    }
+
+    public Void reset() {
+        this.stored = this.initialValue;
+    }
+}

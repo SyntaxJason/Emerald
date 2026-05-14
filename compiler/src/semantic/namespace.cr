@@ -50,15 +50,15 @@ module Emerald
       local_type = @registry[local_fqn] ? local_fqn : nil
 
       if target = @aliases[name]?
+        unless @registry[target]
+          raise ResolveError.new("Imported type '#{target}' for alias '#{name}' does not exist", line, col)
+        end
+
         if local_type && local_type != target
           raise ResolveError.new(
             "Imported alias '#{name}' points to #{target}, but local type #{local_type} exists. Use 'use #{target} as ...' to avoid the conflict.",
             line,
             col)
-        end
-
-        unless @registry[target]
-          raise ResolveError.new("Imported type '#{target}' for alias '#{name}' does not exist", line, col)
         end
 
         return target

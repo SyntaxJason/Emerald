@@ -1,0 +1,19 @@
+namespace Std::Data;
+
+public class KeyValuePair<K, V> implements IKeyValuePair<K, V> {
+    private K storedKey;
+    private V storedValue;
+
+    public KeyValuePair(K key, V value) {
+        this.storedKey = key;
+        this.storedValue = value;
+    }
+
+    public K key() {
+        return this.storedKey;
+    }
+
+    public V value() {
+        return this.storedValue;
+    }
+}

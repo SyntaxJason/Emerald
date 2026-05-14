@@ -1,0 +1,6 @@
+namespace Std::Math;
+
+public class Math {
+    public Math() {
+    }
+}

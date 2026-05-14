@@ -1,0 +1,11 @@
+namespace Std::Io;
+
+public interface ITextWriter extends IWritableText, IAppendableText {
+    public IPath path();
+
+    public Bool exists();
+
+    public Void flush();
+
+    public Void close();
+}

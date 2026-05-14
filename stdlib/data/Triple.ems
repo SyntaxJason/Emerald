@@ -1,0 +1,25 @@
+namespace Std::Data;
+
+public class Triple<A, B, C> implements ITriple<A, B, C> {
+    private A left;
+    private B middle;
+    private C right;
+
+    public Triple(A first, B second, C third) {
+        this.left = first;
+        this.middle = second;
+        this.right = third;
+    }
+
+    public A first() {
+        return this.left;
+    }
+
+    public B second() {
+        return this.middle;
+    }
+
+    public C third() {
+        return this.right;
+    }
+}
