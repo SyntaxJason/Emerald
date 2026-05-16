@@ -1,0 +1,48 @@
+namespace Std::WebSocket;
+
+public class WebSocketMessage implements IWebSocketMessage {
+    private String messageKind;
+    private String messageText;
+
+    public WebSocketMessage(String text) {
+        this.messageKind = "text";
+        this.messageText = text;
+    }
+
+    public WebSocketMessage(String kind, String text) {
+        this.messageKind = kind.toLowerCase();
+        this.messageText = text;
+    }
+
+    public String kind() {
+        return this.messageKind;
+    }
+
+    public String text() {
+        return this.messageText;
+    }
+
+    public Bool isText() {
+        return this.messageKind.equals("text");
+    }
+
+    public Bool isBinary() {
+        return this.messageKind.equals("binary");
+    }
+
+    public Bool isClose() {
+        return this.messageKind.equals("close");
+    }
+
+    public Bool isControl() {
+        if (this.messageKind.equals("close")) {
+            return true;
+        }
+
+        if (this.messageKind.equals("ping")) {
+            return true;
+        }
+
+        return this.messageKind.equals("pong");
+    }
+}

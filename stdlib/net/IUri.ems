@@ -1,0 +1,23 @@
+namespace Std::Net;
+
+public interface IUri {
+    public String value();
+
+    public Bool isEmpty();
+
+    public Bool hasScheme();
+
+    public String scheme();
+
+    public String host();
+
+    public String path();
+
+    public Bool isSecure();
+
+    public Bool isHttp();
+
+    public Bool isWebSocket();
+
+    public String toString();
+}

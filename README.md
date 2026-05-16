@@ -87,31 +87,34 @@ Run the full suite without rebuilding:
 
 The STDLib is planned to be interface-first.
 
-Early foundation:
+Namespace layout:
 
 ```txt
-Std::Core::IEquatable<T>
-Std::Core::IComparable<T>
-Std::Core::IIterator<T>
-Std::Core::IIterable<T>
-Std::Core::ICollection<T>
-Std::Core::IList<T>
-Std::Core::ISet<T>
-Std::Core::IMap<K, V>
+Std::Collections
+Std::Compare
+Std::Data
+Std::Functional
+Std::Io
+Std::Math
+Std::Option
+Std::Result
+Std::Time
 ```
 
 The next major STDLib targets are:
 
 ```txt
-Option<T>
-Result<T, E>
-Duration
-OffsetDateTime
-ArrayList<T>
-HashMap<K, V>
+Std::Collections::ArrayList<T>
+Std::Collections::HashMap<K, V>
+Std::Io::File
+Std::Io::Path
+Std::Io::TextReader
+Std::Io::TextWriter
 ```
 
-The STDLib should avoid hidden compiler magic where possible. Core library behavior should be implemented as normal Emerald code first.
+The STDLib should avoid hidden compiler magic where possible. Library behavior should be implemented as normal Emerald code first.
+
+API conventions are documented in `STD_API_STYLE.md`.
 
 ## Macro system
 

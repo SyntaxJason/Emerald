@@ -1,0 +1,26 @@
+namespace Std::Http;
+
+public class HttpClient implements IHttpClient {
+    public HttpClient() {
+    }
+
+    public Std::Result::IResult<IHttpResponse, String> get(String url) {
+        return Http.get(url);
+    }
+
+    public Std::Result::IResult<IHttpResponse, String> postText(String url, String body) {
+        return Http.postText(url, body);
+    }
+
+    public Std::Result::IResult<IHttpResponse, String> send(IHttpRequest request) {
+        if (request.isGet()) {
+            return this.get(request.url());
+        }
+
+        if (request.isPost()) {
+            return this.postText(request.url(), request.body());
+        }
+
+        return Std::Result::Failure("Unsupported HTTP method: " + request.method());
+    }
+}

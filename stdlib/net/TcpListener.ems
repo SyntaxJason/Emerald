@@ -1,0 +1,43 @@
+namespace Std::Net;
+
+public class TcpListener implements ITcpListener {
+    private Int listenerHandle;
+    private Endpoint localEndpoint;
+
+    public TcpListener(Int handle, IEndpoint endpoint) {
+        this.listenerHandle = handle;
+        this.localEndpoint = Endpoint(endpoint.host(), endpoint.port());
+    }
+
+    public IEndpoint endpoint() {
+        return this.localEndpoint;
+    }
+
+    public Int handle() {
+        return this.listenerHandle;
+    }
+
+    public Bool isOpen() {
+        return Tcp.listenerIsOpen(this.listenerHandle);
+    }
+
+    public Std::Result::IResult<ITcpConnection, String> accept() {
+        return Tcp.accept(this.listenerHandle);
+    }
+
+    public Bool close() {
+        return Tcp.closeListener(this.listenerHandle);
+    }
+
+    public Bool closeIfOpen() {
+        if (!this.isOpen()) {
+            return true;
+        }
+
+        return this.close();
+    }
+
+    public Std::Result::IResult<Bool, String> tryClose() {
+        return Tcp.tryCloseListener(this.listenerHandle);
+    }
+}

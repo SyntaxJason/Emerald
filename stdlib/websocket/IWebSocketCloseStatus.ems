@@ -1,0 +1,15 @@
+namespace Std::WebSocket;
+
+public interface IWebSocketCloseStatus {
+    public Int code();
+
+    public String reason();
+
+    public Bool isNormal();
+
+    public Bool isGoingAway();
+
+    public Bool isError();
+
+    public String toString();
+}

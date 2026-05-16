@@ -1,0 +1,11 @@
+namespace Std::WebSocket;
+
+public interface IWebSocketSession {
+    public String url();
+
+    public Bool isOpen();
+
+    public Std::Result::IResult<Bool, String> sendText(String text);
+
+    public Std::Result::IResult<Bool, String> close(IWebSocketCloseStatus status);
+}

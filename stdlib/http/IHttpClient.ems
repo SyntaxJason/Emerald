@@ -1,0 +1,9 @@
+namespace Std::Http;
+
+public interface IHttpClient {
+    public Std::Result::IResult<IHttpResponse, String> get(String url);
+
+    public Std::Result::IResult<IHttpResponse, String> postText(String url, String body);
+
+    public Std::Result::IResult<IHttpResponse, String> send(IHttpRequest request);
+}

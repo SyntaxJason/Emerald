@@ -69,6 +69,9 @@ module Emerald
     end
 
     private def emit_static_stdlib_call(io : IO, expr : AST::MethodCall, type_name : String) : Bool
+      intrinsic = RuntimeStaticIntrinsics.find(type_name, expr.name)
+      return false unless intrinsic
+
       case {type_name, expr.name}
       when {"Duration", "millis"}
         emit_duration_factory(io, expr, "1_i64")
@@ -102,6 +105,39 @@ module Emerald
         return true
       when {"Console", "error"}
         emit_static_console_call(io, expr, "STDERR.puts")
+        return true
+      when {"Console", "write"}
+        emit_static_console_call(io, expr, "print")
+        return true
+      when {"Console", "writeLine"}
+        emit_static_console_call(io, expr, "puts")
+        return true
+      when {"Console", "errorLine"}
+        emit_static_console_call(io, expr, "STDERR.puts")
+        return true
+      when {"Console", "blankLine"}
+        emit_static_console_blank_line(io)
+        return true
+      when {"Console", "readLine"}
+        emit_static_console_read_line(io)
+        return true
+      when {"Console", "readLineOr"}
+        emit_static_console_read_line_or(io, expr)
+        return true
+      when {"Console", "tryReadLine"}
+        emit_static_console_try_read_line(io)
+        return true
+      when {"Console", "prompt"}
+        emit_static_console_prompt(io, expr)
+        return true
+      when {"Console", "promptOr"}
+        emit_static_console_prompt_or(io, expr)
+        return true
+      when {"Console", "confirm"}
+        emit_static_console_confirm(io, expr)
+        return true
+      when {"Console", "confirmOr"}
+        emit_static_console_confirm_or(io, expr)
         return true
       when {"Math", "abs"}
         emit_static_math_abs(io, expr)
@@ -178,9 +214,123 @@ module Emerald
       when {"Directory", "list"}
         emit_static_directory_list(io, expr)
         return true
+      when {"Http", "get"}
+        emit_static_http_get(io, expr)
+        return true
+      when {"Http", "postText"}
+        emit_static_http_post_text(io, expr)
+        return true
+      when {"Tcp", "connect"}
+        emit_static_tcp_connect(io, expr)
+        return true
+      when {"Tcp", "listen"}
+        emit_static_tcp_listen(io, expr)
+        return true
+      when {"Tcp", "isOpen"}
+        emit_static_tcp_handle_predicate(io, expr, "socket_open?")
+        return true
+      when {"Tcp", "listenerIsOpen"}
+        emit_static_tcp_handle_predicate(io, expr, "listener_open?")
+        return true
+      when {"Tcp", "readText"}
+        emit_static_tcp_handle_string(io, expr, "read_text")
+        return true
+      when {"Tcp", "readLine"}
+        emit_static_tcp_handle_string(io, expr, "read_line")
+        return true
+      when {"Tcp", "tryReadText"}
+        emit_static_tcp_try_read(io, expr, "read_text")
+        return true
+      when {"Tcp", "tryReadLine"}
+        emit_static_tcp_try_read(io, expr, "read_line")
+        return true
+      when {"Tcp", "writeText"}
+        emit_static_tcp_write(io, expr)
+        return true
+      when {"Tcp", "tryWriteText"}
+        emit_static_tcp_try_write(io, expr)
+        return true
+      when {"Tcp", "close"}
+        emit_static_tcp_close(io, expr, "close_socket")
+        return true
+      when {"Tcp", "tryClose"}
+        emit_static_tcp_try_close(io, expr, "close_socket")
+        return true
+      when {"Tcp", "accept"}
+        emit_static_tcp_accept(io, expr)
+        return true
+      when {"Tcp", "closeListener"}
+        emit_static_tcp_close(io, expr, "close_listener")
+        return true
+      when {"Tcp", "tryCloseListener"}
+        emit_static_tcp_try_close(io, expr, "close_listener")
+        return true
+      when {"Env", "get"}
+        emit_static_env_get(io, expr)
+        return true
+      when {"Env", "getOr"}
+        emit_static_env_get_or(io, expr)
+        return true
+      when {"Env", "has"}
+        emit_static_env_has(io, expr)
+        return true
+      when {"Env", "args"}
+        emit_static_process_args(io)
+        return true
+      when {"Env", "currentDirectory"}
+        emit_static_env_current_directory(io)
+        return true
+      when {"Process", "args"}
+        emit_static_process_args(io)
+        return true
+      when {"Process", "command"}
+        emit_static_process_command(io)
+        return true
+      when {"Process", "exit"}
+        emit_static_process_exit(io, expr)
+        return true
+      when {"System", "os"}
+        emit_static_system_os(io)
+        return true
+      when {"System", "isWindows"}
+        emit_static_system_flag(io, "win32")
+        return true
+      when {"System", "isLinux"}
+        emit_static_system_flag(io, "linux")
+        return true
+      when {"System", "lineSeparator"}
+        emit_static_system_line_separator(io)
+        return true
+      when {"System", "pathSeparator"}
+        emit_static_system_path_separator(io)
+        return true
+      when {"System", "directorySeparator"}
+        emit_static_system_directory_separator(io)
+        return true
+      when {"Random", "nextInt"}
+        emit_static_random_next_int(io, expr)
+        return true
+      when {"Random", "nextIntBetween"}
+        emit_static_random_next_int_between(io, expr)
+        return true
+      when {"Random", "nextBool"}
+        emit_static_random_next_bool(io)
+        return true
+      when {"Clock", "now"}
+        emit_offset_date_time_now(io, false)
+        return true
+      when {"Clock", "utcNow"}
+        emit_offset_date_time_now(io, true)
+        return true
+      when {"Clock", "millis"}
+        emit_static_clock_millis(io)
+        return true
+      when {"Clock", "sleep"}
+        emit_static_clock_sleep(io, expr)
+        return true
       end
 
-      false
+      raise "Runtime intrinsic #{intrinsic.receiver}.#{intrinsic.method_name} has no codegen emitter"
     end
 
     private def emit_duration_factory(io : IO, expr : AST::MethodCall, factor : String)
@@ -226,6 +376,55 @@ module Emerald
       io << target << "("
       emit_expr(io, expr.args[0])
       io << ")"
+    end
+
+    private def emit_static_console_blank_line(io : IO)
+      io << "puts"
+    end
+
+    private def emit_static_console_read_line(io : IO)
+      io << "(::STDIN.gets || \"\")"
+    end
+
+    private def emit_static_console_read_line_or(io : IO, expr : AST::MethodCall)
+      io << "(::STDIN.gets || "
+      emit_expr(io, expr.args[0])
+      io << ")"
+    end
+
+    private def emit_static_console_try_read_line(io : IO)
+      io << "(begin; __emerald_console_line = ::STDIN.gets; if __emerald_console_line; " << crystal_type("Std::Result::Success<String,String>") << ".new(__emerald_console_line); else " << crystal_type("Std::Result::Failure<String,String>") << ".new(\"No console input available\"); end; rescue ex : Exception; " << crystal_type("Std::Result::Failure<String,String>") << ".new(ex.message || \"Console input error\"); end)"
+    end
+
+    private def emit_static_console_prompt(io : IO, expr : AST::MethodCall)
+      io << "(::STDOUT.print("
+      emit_expr(io, expr.args[0])
+      io << "); ::STDOUT.flush; ::STDIN.gets || \"\")"
+    end
+
+    private def emit_static_console_prompt_or(io : IO, expr : AST::MethodCall)
+      io << "(::STDOUT.print("
+      emit_expr(io, expr.args[0])
+      io << "); ::STDOUT.flush; ::STDIN.gets || "
+      emit_expr(io, expr.args[1])
+      io << ")"
+    end
+
+    private def emit_static_console_confirm(io : IO, expr : AST::MethodCall)
+      emit_static_console_confirm_with_fallback(io, expr, "false")
+    end
+
+    private def emit_static_console_confirm_or(io : IO, expr : AST::MethodCall)
+      fallback = String.build { |sb| emit_expr(sb, expr.args[1]) }
+      emit_static_console_confirm_with_fallback(io, expr, fallback)
+    end
+
+    private def emit_static_console_confirm_with_fallback(io : IO, expr : AST::MethodCall, fallback : String)
+      io << "(begin; ::STDOUT.print("
+      emit_expr(io, expr.args[0])
+      io << "); ::STDOUT.flush; __emerald_console_line = ::STDIN.gets; if __emerald_console_line; __emerald_console_answer = __emerald_console_line.strip.downcase; __emerald_console_answer == \"y\" || __emerald_console_answer == \"yes\" || __emerald_console_answer == \"true\"; else "
+      io << fallback
+      io << "; end; end)"
     end
 
     private def emit_static_math_abs(io : IO, expr : AST::MethodCall)
@@ -370,6 +569,197 @@ module Emerald
       io << "::Dir.children("
       emit_expr(io, expr.args[0])
       io << ")"
+    end
+
+    private def emit_static_tcp_connect(io : IO, expr : AST::MethodCall)
+      io << "(begin; __emerald_socket_handle = EmeraldRuntimeSocket.connect("
+      emit_expr(io, expr.args[0])
+      io << ", "
+      emit_expr(io, expr.args[1])
+      io << "); " << crystal_type("Std::Result::Success<Std::Net::ITcpConnection,String>") << ".new("
+      io << crystal_type("Std::Net::TcpConnection") << ".new(__emerald_socket_handle, "
+      io << crystal_type("Std::Net::Endpoint") << ".new("
+      emit_expr(io, expr.args[0])
+      io << ", "
+      emit_expr(io, expr.args[1])
+      io << "))); rescue ex : Exception; " << crystal_type("Std::Result::Failure<Std::Net::ITcpConnection,String>") << ".new(ex.message || \"TCP connect error\"); end)"
+    end
+
+    private def emit_static_tcp_listen(io : IO, expr : AST::MethodCall)
+      io << "(begin; __emerald_listener_handle = EmeraldRuntimeSocket.listen("
+      emit_expr(io, expr.args[0])
+      io << ", "
+      emit_expr(io, expr.args[1])
+      io << "); " << crystal_type("Std::Result::Success<Std::Net::ITcpListener,String>") << ".new("
+      io << crystal_type("Std::Net::TcpListener") << ".new(__emerald_listener_handle, "
+      io << crystal_type("Std::Net::Endpoint") << ".new("
+      emit_expr(io, expr.args[0])
+      io << ", "
+      emit_expr(io, expr.args[1])
+      io << "))); rescue ex : Exception; " << crystal_type("Std::Result::Failure<Std::Net::ITcpListener,String>") << ".new(ex.message || \"TCP listen error\"); end)"
+    end
+
+    private def emit_static_tcp_handle_predicate(io : IO, expr : AST::MethodCall, method_name : String)
+      io << "EmeraldRuntimeSocket." << method_name << "("
+      emit_expr(io, expr.args[0])
+      io << ")"
+    end
+
+    private def emit_static_tcp_handle_string(io : IO, expr : AST::MethodCall, method_name : String)
+      io << "EmeraldRuntimeSocket." << method_name << "("
+      emit_expr(io, expr.args[0])
+      io << ")"
+    end
+
+    private def emit_static_tcp_try_read(io : IO, expr : AST::MethodCall, method_name : String)
+      io << "(begin; " << crystal_type("Std::Result::Success<String,String>") << ".new(EmeraldRuntimeSocket." << method_name << "("
+      emit_expr(io, expr.args[0])
+      io << ")); rescue ex : Exception; " << crystal_type("Std::Result::Failure<String,String>") << ".new(ex.message || \"TCP read error\"); end)"
+    end
+
+    private def emit_static_tcp_write(io : IO, expr : AST::MethodCall)
+      io << "EmeraldRuntimeSocket.write_text("
+      emit_expr(io, expr.args[0])
+      io << ", "
+      emit_expr(io, expr.args[1])
+      io << ")"
+    end
+
+    private def emit_static_tcp_try_write(io : IO, expr : AST::MethodCall)
+      io << "(begin; " << crystal_type("Std::Result::Success<Bool,String>") << ".new(EmeraldRuntimeSocket.write_text("
+      emit_expr(io, expr.args[0])
+      io << ", "
+      emit_expr(io, expr.args[1])
+      io << ")); rescue ex : Exception; " << crystal_type("Std::Result::Failure<Bool,String>") << ".new(ex.message || \"TCP write error\"); end)"
+    end
+
+    private def emit_static_tcp_close(io : IO, expr : AST::MethodCall, method_name : String)
+      io << "EmeraldRuntimeSocket." << method_name << "("
+      emit_expr(io, expr.args[0])
+      io << ")"
+    end
+
+    private def emit_static_tcp_try_close(io : IO, expr : AST::MethodCall, method_name : String)
+      io << "(begin; " << crystal_type("Std::Result::Success<Bool,String>") << ".new(EmeraldRuntimeSocket." << method_name << "("
+      emit_expr(io, expr.args[0])
+      io << ")); rescue ex : Exception; " << crystal_type("Std::Result::Failure<Bool,String>") << ".new(ex.message || \"TCP close error\"); end)"
+    end
+
+    private def emit_static_tcp_accept(io : IO, expr : AST::MethodCall)
+      io << "(begin; __emerald_socket_handle = EmeraldRuntimeSocket.accept("
+      emit_expr(io, expr.args[0])
+      io << "); " << crystal_type("Std::Result::Success<Std::Net::ITcpConnection,String>") << ".new("
+      io << crystal_type("Std::Net::TcpConnection") << ".new(__emerald_socket_handle, "
+      io << crystal_type("Std::Net::Endpoint") << ".new(\"accepted\", 0_i64))); rescue ex : Exception; " << crystal_type("Std::Result::Failure<Std::Net::ITcpConnection,String>") << ".new(ex.message || \"TCP accept error\"); end)"
+    end
+
+    private def emit_static_http_get(io : IO, expr : AST::MethodCall)
+      io << "(begin; __emerald_http_response = HTTP::Client.get("
+      emit_expr(io, expr.args[0])
+      io << "); " << crystal_type("Std::Result::Success<Std::Http::IHttpResponse,String>") << ".new("
+      emit_http_response_from_native(io)
+      io << "); rescue ex : Exception; " << crystal_type("Std::Result::Failure<Std::Http::IHttpResponse,String>") << ".new(ex.message || \"HTTP error\"); end)"
+    end
+
+    private def emit_static_http_post_text(io : IO, expr : AST::MethodCall)
+      io << "(begin; __emerald_http_response = HTTP::Client.post("
+      emit_expr(io, expr.args[0])
+      io << ", body: "
+      emit_expr(io, expr.args[1])
+      io << "); " << crystal_type("Std::Result::Success<Std::Http::IHttpResponse,String>") << ".new("
+      emit_http_response_from_native(io)
+      io << "); rescue ex : Exception; " << crystal_type("Std::Result::Failure<Std::Http::IHttpResponse,String>") << ".new(ex.message || \"HTTP error\"); end)"
+    end
+
+    private def emit_http_response_from_native(io : IO)
+      io << crystal_type("Std::Http::HttpResponse") << ".new(__emerald_http_response.status_code.to_i64, __emerald_http_response.status_message || \"\", __emerald_http_response.body)"
+    end
+
+
+    private def emit_static_env_get(io : IO, expr : AST::MethodCall)
+      io << "(ENV["
+      emit_expr(io, expr.args[0])
+      io << "]? || \"\")"
+    end
+
+    private def emit_static_env_get_or(io : IO, expr : AST::MethodCall)
+      io << "(ENV["
+      emit_expr(io, expr.args[0])
+      io << "]? || "
+      emit_expr(io, expr.args[1])
+      io << ")"
+    end
+
+    private def emit_static_env_has(io : IO, expr : AST::MethodCall)
+      io << "ENV.has_key?("
+      emit_expr(io, expr.args[0])
+      io << ")"
+    end
+
+    private def emit_static_env_current_directory(io : IO)
+      io << "::Dir.current"
+    end
+
+    private def emit_static_process_args(io : IO)
+      io << "ARGV.map(&.to_s)"
+    end
+
+    private def emit_static_process_command(io : IO)
+      io << "PROGRAM_NAME"
+    end
+
+    private def emit_static_process_exit(io : IO, expr : AST::MethodCall)
+      io << "(exit(("
+      emit_expr(io, expr.args[0])
+      io << ").to_i32); nil)"
+    end
+
+    private def emit_static_system_os(io : IO)
+      io << "({% if flag?(:win32) %}\"windows\"{% elsif flag?(:linux) %}\"linux\"{% elsif flag?(:darwin) %}\"macos\"{% else %}\"unknown\"{% end %})"
+    end
+
+    private def emit_static_system_flag(io : IO, flag_name : String)
+      io << "({% if flag?(:" << flag_name << ") %}true{% else %}false{% end %})"
+    end
+
+    private def emit_static_system_line_separator(io : IO)
+      io << "({% if flag?(:win32) %}\"\\r\\n\"{% else %}\"\\n\"{% end %})"
+    end
+
+    private def emit_static_system_path_separator(io : IO)
+      io << "({% if flag?(:win32) %}\";\"{% else %}\":\"{% end %})"
+    end
+
+    private def emit_static_system_directory_separator(io : IO)
+      io << "({% if flag?(:win32) %}\"\\\\\"{% else %}\"/\"{% end %})"
+    end
+
+    private def emit_static_random_next_int(io : IO, expr : AST::MethodCall)
+      io << "(begin; __emerald_random_max = "
+      emit_expr(io, expr.args[0])
+      io << "; __emerald_random_max <= 0_i64 ? 0_i64 : ::Random.rand(__emerald_random_max.to_i).to_i64; end)"
+    end
+
+    private def emit_static_random_next_int_between(io : IO, expr : AST::MethodCall)
+      io << "(begin; __emerald_random_min = "
+      emit_expr(io, expr.args[0])
+      io << "; __emerald_random_max = "
+      emit_expr(io, expr.args[1])
+      io << "; if __emerald_random_max <= __emerald_random_min; __emerald_random_min; else __emerald_random_min + ::Random.rand((__emerald_random_max - __emerald_random_min + 1_i64).to_i).to_i64; end; end)"
+    end
+
+    private def emit_static_random_next_bool(io : IO)
+      io << "(::Random.rand(2) == 1)"
+    end
+
+    private def emit_static_clock_millis(io : IO)
+      io << "::Time.utc.to_unix_ms.to_i64"
+    end
+
+    private def emit_static_clock_sleep(io : IO, expr : AST::MethodCall)
+      io << "(sleep(("
+      emit_expr(io, expr.args[0])
+      io << ").toMillis().to_f64 / 1000.0); nil)"
     end
 
     private def emit_member_assign(io : IO, expr : AST::MemberAssign)

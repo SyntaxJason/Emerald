@@ -1,0 +1,6 @@
+namespace Std::Http;
+
+public class Http {
+    public Http() {
+    }
+}

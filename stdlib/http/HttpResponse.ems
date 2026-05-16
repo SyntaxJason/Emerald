@@ -1,0 +1,90 @@
+namespace Std::Http;
+
+public class HttpResponse implements IHttpResponse {
+    private Int responseStatusCode;
+    private String responseReasonPhrase;
+    private String responseBody;
+    private IHttpHeaders responseHeaders;
+
+    public HttpResponse(Int statusCode, String reasonPhrase, String body) {
+        this.responseStatusCode = statusCode;
+        this.responseReasonPhrase = reasonPhrase;
+        this.responseBody = body;
+        this.responseHeaders = HttpHeaders();
+    }
+
+    public HttpResponse(Int statusCode, String reasonPhrase, String body, IHttpHeaders headers) {
+        this.responseStatusCode = statusCode;
+        this.responseReasonPhrase = reasonPhrase;
+        this.responseBody = body;
+        this.responseHeaders = headers;
+    }
+
+    public Int statusCode() {
+        return this.responseStatusCode;
+    }
+
+    public String reasonPhrase() {
+        return this.responseReasonPhrase;
+    }
+
+    public String body() {
+        return this.responseBody;
+    }
+
+    public IHttpHeaders headers() {
+        return this.responseHeaders;
+    }
+
+    public Bool isInformational() {
+        if (this.responseStatusCode < 100) {
+            return false;
+        }
+
+        return this.responseStatusCode < 200;
+    }
+
+    public Bool isSuccess() {
+        if (this.responseStatusCode < 200) {
+            return false;
+        }
+
+        return this.responseStatusCode < 300;
+    }
+
+    public Bool isRedirect() {
+        if (this.responseStatusCode < 300) {
+            return false;
+        }
+
+        return this.responseStatusCode < 400;
+    }
+
+    public Bool isClientError() {
+        if (this.responseStatusCode < 400) {
+            return false;
+        }
+
+        return this.responseStatusCode < 500;
+    }
+
+    public Bool isServerError() {
+        return this.responseStatusCode >= 500;
+    }
+
+    public Bool isError() {
+        if (this.isClientError()) {
+            return true;
+        }
+
+        return this.isServerError();
+    }
+
+    public Bool hasBody() {
+        return this.responseBody.length() > 0;
+    }
+
+    public String headerOr(String name, String fallback) {
+        return this.responseHeaders.getOr(name, fallback);
+    }
+}

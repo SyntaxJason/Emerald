@@ -1,0 +1,23 @@
+namespace Std::Http;
+
+public interface IHttpHeaders {
+    public Int size();
+
+    public Bool isEmpty();
+
+    public Bool contains(String name);
+
+    public Bool isMissing(String name);
+
+    public String getOr(String name, String fallback);
+
+    public Void set(String name, String value);
+
+    public Bool setIfMissing(String name, String value);
+
+    public Bool remove(String name);
+
+    public Void clear();
+
+    public Void forEach(Std::Functional::IBiConsumer<String, String> consumer);
+}

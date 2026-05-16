@@ -1,0 +1,27 @@
+namespace Std::Http;
+
+public interface IHttpResponse {
+    public Int statusCode();
+
+    public String reasonPhrase();
+
+    public String body();
+
+    public IHttpHeaders headers();
+
+    public Bool isInformational();
+
+    public Bool isSuccess();
+
+    public Bool isRedirect();
+
+    public Bool isClientError();
+
+    public Bool isServerError();
+
+    public Bool isError();
+
+    public Bool hasBody();
+
+    public String headerOr(String name, String fallback);
+}

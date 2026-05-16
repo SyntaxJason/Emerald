@@ -1,0 +1,51 @@
+namespace Std::Net;
+
+public class Endpoint implements IEndpoint {
+    private String hostText;
+    private Int portNumber;
+
+    public Endpoint(String host, Int port) {
+        this.hostText = host;
+        this.portNumber = port;
+    }
+
+    public String host() {
+        return this.hostText;
+    }
+
+    public Int port() {
+        return this.portNumber;
+    }
+
+    public Bool isValidPort() {
+        if (this.portNumber < 0) {
+            return false;
+        }
+
+        return this.portNumber <= 65535;
+    }
+
+    public Bool isLoopback() {
+        if (this.hostText.equals("localhost")) {
+            return true;
+        }
+
+        return this.hostText.equals("127.0.0.1");
+    }
+
+    public Bool isWildcard() {
+        if (this.hostText.equals("0.0.0.0")) {
+            return true;
+        }
+
+        return this.hostText.equals("::");
+    }
+
+    public IEndpoint withPort(Int port) {
+        return Endpoint(this.hostText, port);
+    }
+
+    public String toString() {
+        return this.hostText + ":" + this.portNumber.toString();
+    }
+}

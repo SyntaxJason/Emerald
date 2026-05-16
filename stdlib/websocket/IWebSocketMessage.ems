@@ -1,0 +1,15 @@
+namespace Std::WebSocket;
+
+public interface IWebSocketMessage {
+    public String kind();
+
+    public String text();
+
+    public Bool isText();
+
+    public Bool isBinary();
+
+    public Bool isClose();
+
+    public Bool isControl();
+}

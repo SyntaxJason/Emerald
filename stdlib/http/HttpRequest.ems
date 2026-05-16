@@ -1,0 +1,74 @@
+namespace Std::Http;
+
+public class HttpRequest implements IHttpRequest {
+    private String methodText;
+    private String urlText;
+    private String bodyText;
+    private HttpHeaders requestHeaders;
+
+    public HttpRequest(String method, String url) {
+        this.methodText = method.toUpperCase();
+        this.urlText = url;
+        this.bodyText = "";
+        this.requestHeaders = HttpHeaders();
+    }
+
+    public HttpRequest(String method, String url, String body) {
+        this.methodText = method.toUpperCase();
+        this.urlText = url;
+        this.bodyText = body;
+        this.requestHeaders = HttpHeaders();
+    }
+
+    public String method() {
+        return this.methodText;
+    }
+
+    public String url() {
+        return this.urlText;
+    }
+
+    public String body() {
+        return this.bodyText;
+    }
+
+    public IHttpHeaders headers() {
+        return this.requestHeaders;
+    }
+
+    public Bool isMethod(String method) {
+        return this.methodText.equals(method.toUpperCase());
+    }
+
+    public Bool isGet() {
+        return this.isMethod("GET");
+    }
+
+    public Bool isPost() {
+        return this.isMethod("POST");
+    }
+
+    public Bool isPut() {
+        return this.isMethod("PUT");
+    }
+
+    public Bool isDelete() {
+        return this.isMethod("DELETE");
+    }
+
+    public Bool hasBody() {
+        return this.bodyText.length() > 0;
+    }
+
+    public String headerOr(String name, String fallback) {
+        return this.requestHeaders.getOr(name, fallback);
+    }
+
+    public Void setHeader(String name, String value) {
+        this.requestHeaders.set(name, value);
+    }
+
+    public Void setBody(String body) {
+        this.bodyText = body;
+    }
+}

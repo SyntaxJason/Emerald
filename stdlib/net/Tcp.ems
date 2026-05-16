@@ -1,0 +1,6 @@
+namespace Std::Net;
+
+public class Tcp {
+    public Tcp() {
+    }
+}

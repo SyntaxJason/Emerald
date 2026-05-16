@@ -1,0 +1,18 @@
+namespace Std::Random;
+
+public class Random implements IRandom {
+    public Random() {
+    }
+
+    public Int nextInt(Int max) {
+        return Random.nextInt(max);
+    }
+
+    public Int nextIntBetween(Int min, Int max) {
+        return Random.nextIntBetween(min, max);
+    }
+
+    public Bool nextBool() {
+        return Random.nextBool();
+    }
+}

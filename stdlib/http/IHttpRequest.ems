@@ -1,0 +1,29 @@
+namespace Std::Http;
+
+public interface IHttpRequest {
+    public String method();
+
+    public String url();
+
+    public String body();
+
+    public IHttpHeaders headers();
+
+    public Bool isMethod(String method);
+
+    public Bool isGet();
+
+    public Bool isPost();
+
+    public Bool isPut();
+
+    public Bool isDelete();
+
+    public Bool hasBody();
+
+    public String headerOr(String name, String fallback);
+
+    public Void setHeader(String name, String value);
+
+    public Void setBody(String body);
+}

@@ -1,6 +1,50 @@
 namespace Std::Io;
 
-public class Console {
+public class Console implements IConsole {
     public Console() {
+    }
+
+    public Void write(String text) {
+        Console.write(text);
+    }
+
+    public Void writeLine(String text) {
+        Console.writeLine(text);
+    }
+
+    public Void errorLine(String text) {
+        Console.errorLine(text);
+    }
+
+    public Void blankLine() {
+        Console.blankLine();
+    }
+
+    public String readLine() {
+        return Console.readLine();
+    }
+
+    public String readLineOr(String fallback) {
+        return Console.readLineOr(fallback);
+    }
+
+    public Std::Result::IResult<String, String> tryReadLine() {
+        return Console.tryReadLine();
+    }
+
+    public String prompt(String message) {
+        return Console.prompt(message);
+    }
+
+    public String promptOr(String message, String fallback) {
+        return Console.promptOr(message, fallback);
+    }
+
+    public Bool confirm(String question) {
+        return Console.confirm(question);
+    }
+
+    public Bool confirmOr(String question, Bool fallback) {
+        return Console.confirmOr(question, fallback);
     }
 }

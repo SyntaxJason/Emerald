@@ -1,0 +1,17 @@
+namespace Std::Net;
+
+public interface IEndpoint {
+    public String host();
+
+    public Int port();
+
+    public Bool isValidPort();
+
+    public Bool isLoopback();
+
+    public Bool isWildcard();
+
+    public IEndpoint withPort(Int port);
+
+    public String toString();
+}

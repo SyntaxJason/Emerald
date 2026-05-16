@@ -118,13 +118,7 @@ module Emerald
     end
 
     private def static_stdlib_receiver?(name : String) : Bool
-      name == "Console" ||
-        name == "Math" ||
-        name == "Duration" ||
-        name == "OffsetDateTime" ||
-        name == "Path" ||
-        name == "File" ||
-        name == "Directory"
+      RuntimeStaticIntrinsics.receiver?(name)
     end
 
     private def bind_pattern(pat : AST::Pattern, scope : Scope)

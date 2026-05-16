@@ -1,0 +1,9 @@
+namespace Std::Random;
+
+public interface IRandom {
+    public Int nextInt(Int max);
+
+    public Int nextIntBetween(Int min, Int max);
+
+    public Bool nextBool();
+}

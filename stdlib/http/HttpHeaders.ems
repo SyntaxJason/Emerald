@@ -1,0 +1,65 @@
+namespace Std::Http;
+
+public class HttpHeaders implements IHttpHeaders {
+    private Std::Collections::IMap<String, String> values;
+
+    public HttpHeaders() {
+        this.values = Std::Collections::HashMap();
+    }
+
+    public Int size() {
+        return this.values.size();
+    }
+
+    public Bool isEmpty() {
+        return this.values.isEmpty();
+    }
+
+    public Bool contains(String name) {
+        return this.values.containsKey(this.normalize(name));
+    }
+
+    public Bool isMissing(String name) {
+        return !this.contains(name);
+    }
+
+    public String getOr(String name, String fallback) {
+        return this.values.getOr(this.normalize(name), fallback);
+    }
+
+    public Void set(String name, String value) {
+        this.values.put(this.normalize(name), value);
+    }
+
+    public Bool setIfMissing(String name, String value) {
+        if (this.contains(name)) {
+            return false;
+        }
+
+        this.set(name, value);
+        return true;
+    }
+
+    public Bool remove(String name) {
+        String key = this.normalize(name);
+
+        if (!this.values.containsKey(key)) {
+            return false;
+        }
+
+        this.values.remove(key);
+        return true;
+    }
+
+    public Void clear() {
+        this.values.clear();
+    }
+
+    public Void forEach(Std::Functional::IBiConsumer<String, String> consumer) {
+        this.values.forEach(consumer);
+    }
+
+    private String normalize(String name) {
+        return name.trim().toLowerCase();
+    }
+}

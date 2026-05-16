@@ -1,0 +1,18 @@
+namespace Std::Process;
+
+public class Process implements IProcess {
+    public Process() {
+    }
+
+    public List<String> args() {
+        return Process.args();
+    }
+
+    public String command() {
+        return Process.command();
+    }
+
+    public Void exit(Int code) {
+        Process.exit(code);
+    }
+}

@@ -1,0 +1,79 @@
+namespace Std::Net;
+
+public class TcpConnection implements ITcpConnection {
+    private Int socketHandle;
+    private Endpoint remoteEndpoint;
+
+    public TcpConnection(Int handle, IEndpoint endpoint) {
+        this.socketHandle = handle;
+        this.remoteEndpoint = Endpoint(endpoint.host(), endpoint.port());
+    }
+
+    public IEndpoint endpoint() {
+        return this.remoteEndpoint;
+    }
+
+    public Int handle() {
+        return this.socketHandle;
+    }
+
+    public Bool isOpen() {
+        return Tcp.isOpen(this.socketHandle);
+    }
+
+    public String readText() {
+        return Tcp.readText(this.socketHandle);
+    }
+
+    public String readLine() {
+        return Tcp.readLine(this.socketHandle);
+    }
+
+    public String readOr(String fallback) {
+        return this.tryReadText().unwrapOr(fallback);
+    }
+
+    public String readLineOr(String fallback) {
+        return this.tryReadLine().unwrapOr(fallback);
+    }
+
+    public Std::Result::IResult<String, String> tryReadText() {
+        return Tcp.tryReadText(this.socketHandle);
+    }
+
+    public Std::Result::IResult<String, String> tryReadLine() {
+        return Tcp.tryReadLine(this.socketHandle);
+    }
+
+    public Bool writeText(String text) {
+        return Tcp.writeText(this.socketHandle, text);
+    }
+
+    public Bool writeLine(String text) {
+        return this.writeText(text + "\n");
+    }
+
+    public Std::Result::IResult<Bool, String> tryWriteText(String text) {
+        return Tcp.tryWriteText(this.socketHandle, text);
+    }
+
+    public Std::Result::IResult<Bool, String> tryWriteLine(String text) {
+        return this.tryWriteText(text + "\n");
+    }
+
+    public Bool close() {
+        return Tcp.close(this.socketHandle);
+    }
+
+    public Bool closeIfOpen() {
+        if (!this.isOpen()) {
+            return true;
+        }
+
+        return this.close();
+    }
+
+    public Std::Result::IResult<Bool, String> tryClose() {
+        return Tcp.tryClose(this.socketHandle);
+    }
+}

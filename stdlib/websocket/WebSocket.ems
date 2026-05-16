@@ -1,0 +1,34 @@
+namespace Std::WebSocket;
+
+public class WebSocket {
+    public WebSocket() {
+    }
+
+    public IWebSocketMessage textMessage(String text) {
+        return WebSocketMessage(text);
+    }
+
+    public IWebSocketMessage closeMessage(String reason) {
+        return WebSocketMessage("close", reason);
+    }
+
+    public IWebSocketMessage pingMessage(String text) {
+        return WebSocketMessage("ping", text);
+    }
+
+    public IWebSocketMessage pongMessage(String text) {
+        return WebSocketMessage("pong", text);
+    }
+
+    public IWebSocketCloseStatus normalClose(String reason) {
+        return WebSocketCloseStatus(1000, reason);
+    }
+
+    public IWebSocketCloseStatus goingAway(String reason) {
+        return WebSocketCloseStatus(1001, reason);
+    }
+
+    public IWebSocketCloseStatus protocolError(String reason) {
+        return WebSocketCloseStatus(1002, reason);
+    }
+}

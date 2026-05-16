@@ -96,6 +96,11 @@ module Emerald
     end
 
     private def check_static_stdlib_call(expr : AST::MethodCall, type_name : String, scope : Scope) : String?
+      if intrinsic = RuntimeStaticIntrinsics.find(type_name, expr.name)
+        check_static_intrinsic_args(expr, intrinsic, scope)
+        return intrinsic.return_type
+      end
+
       case {type_name, expr.name}
       when {"Duration", "millis"}
         check_static_int_args(expr, type_name, 1, scope)
@@ -130,6 +135,39 @@ module Emerald
       when {"Console", "error"}
         check_static_any_args(expr, type_name, 1, scope)
         return "Void"
+      when {"Console", "write"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "Void"
+      when {"Console", "writeLine"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "Void"
+      when {"Console", "errorLine"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "Void"
+      when {"Console", "blankLine"}
+        check_static_string_args(expr, type_name, 0, scope)
+        return "Void"
+      when {"Console", "readLine"}
+        check_static_string_args(expr, type_name, 0, scope)
+        return "String"
+      when {"Console", "readLineOr"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "String"
+      when {"Console", "tryReadLine"}
+        check_static_string_args(expr, type_name, 0, scope)
+        return "Std::Result::IResult<String,String>"
+      when {"Console", "prompt"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "String"
+      when {"Console", "promptOr"}
+        check_static_string_args(expr, type_name, 2, scope)
+        return "String"
+      when {"Console", "confirm"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "Bool"
+      when {"Console", "confirmOr"}
+        check_static_arg_types(expr, type_name, ["String", "Bool"], scope)
+        return "Bool"
       when {"Math", "abs"}
         check_static_int_args(expr, type_name, 1, scope)
         return "Int"
@@ -205,9 +243,80 @@ module Emerald
       when {"Directory", "list"}
         check_static_string_args(expr, type_name, 1, scope)
         return "List<String>"
+      when {"Http", "get"}
+        check_static_string_args(expr, type_name, 1, scope)
+        return "Std::Result::IResult<Std::Http::IHttpResponse,String>"
+      when {"Http", "postText"}
+        check_static_string_args(expr, type_name, 2, scope)
+        return "Std::Result::IResult<Std::Http::IHttpResponse,String>"
+      when {"Tcp", "connect"}
+        check_static_arg_types(expr, type_name, ["String", "Int"], scope)
+        return "Std::Result::IResult<Std::Net::ITcpConnection,String>"
+      when {"Tcp", "listen"}
+        check_static_arg_types(expr, type_name, ["String", "Int"], scope)
+        return "Std::Result::IResult<Std::Net::ITcpListener,String>"
+      when {"Tcp", "isOpen"}
+        check_static_arg_types(expr, type_name, ["Int"], scope)
+        return "Bool"
+      when {"Tcp", "listenerIsOpen"}
+        check_static_arg_types(expr, type_name, ["Int"], scope)
+        return "Bool"
+      when {"Tcp", "readText"}
+        check_static_arg_types(expr, type_name, ["Int"], scope)
+        return "String"
+      when {"Tcp", "readLine"}
+        check_static_arg_types(expr, type_name, ["Int"], scope)
+        return "String"
+      when {"Tcp", "tryReadText"}
+        check_static_arg_types(expr, type_name, ["Int"], scope)
+        return "Std::Result::IResult<String,String>"
+      when {"Tcp", "tryReadLine"}
+        check_static_arg_types(expr, type_name, ["Int"], scope)
+        return "Std::Result::IResult<String,String>"
+      when {"Tcp", "writeText"}
+        check_static_arg_types(expr, type_name, ["Int", "String"], scope)
+        return "Bool"
+      when {"Tcp", "tryWriteText"}
+        check_static_arg_types(expr, type_name, ["Int", "String"], scope)
+        return "Std::Result::IResult<Bool,String>"
+      when {"Tcp", "close"}
+        check_static_arg_types(expr, type_name, ["Int"], scope)
+        return "Bool"
+      when {"Tcp", "tryClose"}
+        check_static_arg_types(expr, type_name, ["Int"], scope)
+        return "Std::Result::IResult<Bool,String>"
+      when {"Tcp", "accept"}
+        check_static_arg_types(expr, type_name, ["Int"], scope)
+        return "Std::Result::IResult<Std::Net::ITcpConnection,String>"
+      when {"Tcp", "closeListener"}
+        check_static_arg_types(expr, type_name, ["Int"], scope)
+        return "Bool"
+      when {"Tcp", "tryCloseListener"}
+        check_static_arg_types(expr, type_name, ["Int"], scope)
+        return "Std::Result::IResult<Bool,String>"
       end
 
       nil
+    end
+
+    private def check_static_intrinsic_args(expr : AST::MethodCall, intrinsic : RuntimeStaticIntrinsic, scope : Scope)
+      expected_types = intrinsic.param_types
+      unless expr.args.size == expected_types.size
+        raise TypeError.new(
+          "#{intrinsic.receiver}.#{intrinsic.method_name} expects #{expected_types.size} arguments, got #{expr.args.size}",
+          expr.line, expr.col)
+      end
+
+      expr.args.each_with_index do |arg, index|
+        expected = expected_types[index]
+        actual = check_expr(arg, scope)
+
+        unless types_compatible?(expected, actual)
+          raise TypeError.new(
+            "Argument #{index + 1} of '#{intrinsic.receiver}.#{intrinsic.method_name}': expected #{expected}, got #{actual}",
+            arg.line, arg.col)
+        end
+      end
     end
 
     private def check_static_any_args(expr : AST::MethodCall, type_name : String, count : Int32, scope : Scope)
@@ -219,6 +328,25 @@ module Emerald
 
       expr.args.each do |arg|
         check_expr(arg, scope)
+      end
+    end
+
+    private def check_static_arg_types(expr : AST::MethodCall, type_name : String, expected_types : Array(String), scope : Scope)
+      unless expr.args.size == expected_types.size
+        raise TypeError.new(
+          "#{type_name}.#{expr.name} expects #{expected_types.size} arguments, got #{expr.args.size}",
+          expr.line, expr.col)
+      end
+
+      expr.args.each_with_index do |arg, index|
+        expected = expected_types[index]
+        actual = check_expr(arg, scope)
+
+        unless types_compatible?(expected, actual)
+          raise TypeError.new(
+            "Argument #{index + 1} of '#{type_name}.#{expr.name}': expected #{expected}, got #{actual}",
+            arg.line, arg.col)
+        end
       end
     end
 

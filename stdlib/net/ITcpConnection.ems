@@ -1,0 +1,35 @@
+namespace Std::Net;
+
+public interface ITcpConnection {
+    public IEndpoint endpoint();
+
+    public Int handle();
+
+    public Bool isOpen();
+
+    public String readText();
+
+    public String readLine();
+
+    public String readOr(String fallback);
+
+    public String readLineOr(String fallback);
+
+    public Std::Result::IResult<String, String> tryReadText();
+
+    public Std::Result::IResult<String, String> tryReadLine();
+
+    public Bool writeText(String text);
+
+    public Bool writeLine(String text);
+
+    public Std::Result::IResult<Bool, String> tryWriteText(String text);
+
+    public Std::Result::IResult<Bool, String> tryWriteLine(String text);
+
+    public Bool close();
+
+    public Bool closeIfOpen();
+
+    public Std::Result::IResult<Bool, String> tryClose();
+}

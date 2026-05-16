@@ -1,0 +1,22 @@
+namespace Std::Time;
+
+public class Clock implements IClock {
+    public Clock() {
+    }
+
+    public OffsetDateTime now() {
+        return Clock.now();
+    }
+
+    public OffsetDateTime utcNow() {
+        return Clock.utcNow();
+    }
+
+    public Int millis() {
+        return Clock.millis();
+    }
+
+    public Void sleep(Duration duration) {
+        Clock.sleep(duration);
+    }
+}

@@ -2,6 +2,7 @@ require "../frontend/ast"
 require "./resolver"
 require "./type_system"
 require "./builtin_methods"
+require "../runtime_intrinsics"
 
 module Emerald
   class TypeError < Exception

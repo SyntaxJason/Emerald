@@ -1,0 +1,95 @@
+namespace Std::Net;
+
+public class Uri implements IUri {
+    private String valueText;
+
+    public Uri(String value) {
+        this.valueText = value;
+    }
+
+    public String value() {
+        return this.valueText;
+    }
+
+    public Bool isEmpty() {
+        return this.valueText.isEmpty();
+    }
+
+    public Bool hasScheme() {
+        return this.scheme().length() > 0;
+    }
+
+    public String scheme() {
+        Int index = this.valueText.indexOf("://");
+
+        if (index < 0) {
+            return "";
+        }
+
+        return this.valueText.substring(0, index).toLowerCase();
+    }
+
+    public String host() {
+        String rest = this.withoutScheme();
+        Int slash = rest.indexOf("/");
+
+        if (slash < 0) {
+            return rest;
+        }
+
+        return rest.substring(0, slash);
+    }
+
+    public String path() {
+        String rest = this.withoutScheme();
+        Int slash = rest.indexOf("/");
+
+        if (slash < 0) {
+            return "/";
+        }
+
+        return rest.substring(slash, rest.length());
+    }
+
+    public Bool isSecure() {
+        if (this.scheme().equals("https")) {
+            return true;
+        }
+
+        return this.scheme().equals("wss");
+    }
+
+    public Bool isHttp() {
+        String uriScheme = this.scheme();
+
+        if (uriScheme.equals("http")) {
+            return true;
+        }
+
+        return uriScheme.equals("https");
+    }
+
+    public Bool isWebSocket() {
+        String uriScheme = this.scheme();
+
+        if (uriScheme.equals("ws")) {
+            return true;
+        }
+
+        return uriScheme.equals("wss");
+    }
+
+    public String toString() {
+        return this.valueText;
+    }
+
+    private String withoutScheme() {
+        Int index = this.valueText.indexOf("://");
+
+        if (index < 0) {
+            return this.valueText;
+        }
+
+        return this.valueText.substring(index + 3, this.valueText.length());
+    }
+}

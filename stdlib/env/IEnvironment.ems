@@ -1,0 +1,13 @@
+namespace Std::Env;
+
+public interface IEnvironment {
+    public String get(String name);
+
+    public String getOr(String name, String fallback);
+
+    public Bool has(String name);
+
+    public List<String> args();
+
+    public String currentDirectory();
+}

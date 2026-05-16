@@ -1,0 +1,30 @@
+namespace Std::System;
+
+public class System implements ISystem {
+    public System() {
+    }
+
+    public String os() {
+        return System.os();
+    }
+
+    public Bool isWindows() {
+        return System.isWindows();
+    }
+
+    public Bool isLinux() {
+        return System.isLinux();
+    }
+
+    public String lineSeparator() {
+        return System.lineSeparator();
+    }
+
+    public String pathSeparator() {
+        return System.pathSeparator();
+    }
+
+    public String directorySeparator() {
+        return System.directorySeparator();
+    }
+}

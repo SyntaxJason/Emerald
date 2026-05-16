@@ -4,6 +4,7 @@ require "./registry"
 require "./namespace"
 require "./type_system"
 require "./builtin_functions"
+require "../runtime_intrinsics"
 
 module Emerald
   class Resolver

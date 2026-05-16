@@ -1,0 +1,26 @@
+namespace Std::Env;
+
+public class Environment implements IEnvironment {
+    public Environment() {
+    }
+
+    public String get(String name) {
+        return Env.get(name);
+    }
+
+    public String getOr(String name, String fallback) {
+        return Env.getOr(name, fallback);
+    }
+
+    public Bool has(String name) {
+        return Env.has(name);
+    }
+
+    public List<String> args() {
+        return Env.args();
+    }
+
+    public String currentDirectory() {
+        return Env.currentDirectory();
+    }
+}

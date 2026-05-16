@@ -1,6 +1,7 @@
 require "../frontend/ast"
 require "../semantic/resolver"
 require "./runtime_prelude"
+require "../runtime_intrinsics"
 
 module Emerald
   class Codegen

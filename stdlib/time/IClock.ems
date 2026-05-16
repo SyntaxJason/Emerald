@@ -1,0 +1,11 @@
+namespace Std::Time;
+
+public interface IClock {
+    public OffsetDateTime now();
+
+    public OffsetDateTime utcNow();
+
+    public Int millis();
+
+    public Void sleep(Duration duration);
+}

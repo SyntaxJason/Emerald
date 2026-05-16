@@ -1,0 +1,15 @@
+namespace Std::System;
+
+public interface ISystem {
+    public String os();
+
+    public Bool isWindows();
+
+    public Bool isLinux();
+
+    public String lineSeparator();
+
+    public String pathSeparator();
+
+    public String directorySeparator();
+}

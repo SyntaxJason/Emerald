@@ -1,0 +1,35 @@
+namespace Std::WebSocket;
+
+public class WebSocketCloseStatus implements IWebSocketCloseStatus {
+    private Int statusCode;
+    private String statusReason;
+
+    public WebSocketCloseStatus(Int code, String reason) {
+        this.statusCode = code;
+        this.statusReason = reason;
+    }
+
+    public Int code() {
+        return this.statusCode;
+    }
+
+    public String reason() {
+        return this.statusReason;
+    }
+
+    public Bool isNormal() {
+        return this.statusCode == 1000;
+    }
+
+    public Bool isGoingAway() {
+        return this.statusCode == 1001;
+    }
+
+    public Bool isError() {
+        return this.statusCode >= 4000;
+    }
+
+    public String toString() {
+        return this.statusCode.toString() + " " + this.statusReason;
+    }
+}

@@ -1,0 +1,25 @@
+namespace Std::Io;
+
+public interface IConsole {
+    public Void write(String text);
+
+    public Void writeLine(String text);
+
+    public Void errorLine(String text);
+
+    public Void blankLine();
+
+    public String readLine();
+
+    public String readLineOr(String fallback);
+
+    public Std::Result::IResult<String, String> tryReadLine();
+
+    public String prompt(String message);
+
+    public String promptOr(String message, String fallback);
+
+    public Bool confirm(String question);
+
+    public Bool confirmOr(String question, Bool fallback);
+}

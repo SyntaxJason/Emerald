@@ -1,0 +1,9 @@
+namespace Std::Process;
+
+public interface IProcess {
+    public List<String> args();
+
+    public String command();
+
+    public Void exit(Int code);
+}

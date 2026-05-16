@@ -1,0 +1,17 @@
+namespace Std::Net;
+
+public interface ITcpListener {
+    public IEndpoint endpoint();
+
+    public Int handle();
+
+    public Bool isOpen();
+
+    public Std::Result::IResult<ITcpConnection, String> accept();
+
+    public Bool close();
+
+    public Bool closeIfOpen();
+
+    public Std::Result::IResult<Bool, String> tryClose();
+}
