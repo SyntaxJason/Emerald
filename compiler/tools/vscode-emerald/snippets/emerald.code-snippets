@@ -1,0 +1,146 @@
+{
+  "namespace": {
+    "prefix": "namespace",
+    "body": [
+      "namespace ${1:App};"
+    ],
+    "description": "Declare an Emerald namespace"
+  },
+  "use": {
+    "prefix": "use",
+    "body": [
+      "use ${1:Std::Io::Console};"
+    ],
+    "description": "Import an Emerald type"
+  },
+  "use alias": {
+    "prefix": "useas",
+    "body": [
+      "use ${1:Std::Result::Success} as ${2:Ok};"
+    ],
+    "description": "Import an Emerald type with an alias"
+  },
+  "class": {
+    "prefix": "class",
+    "body": [
+      "public class ${1:Name} {",
+      "    public ${1:Name}() {",
+      "    }",
+      "}"
+    ],
+    "description": "Create a public class"
+  },
+  "interface": {
+    "prefix": "interface",
+    "body": [
+      "public interface ${1:IName} {",
+      "    public ${2:Void} ${3:method}();",
+      "}"
+    ],
+    "description": "Create a public interface"
+  },
+  "method": {
+    "prefix": "method",
+    "body": [
+      "public ${1:Void} ${2:name}(${3}) {",
+      "    ${4}",
+      "}"
+    ],
+    "description": "Create a public method"
+  },
+  "constructor": {
+    "prefix": "ctor",
+    "body": [
+      "public ${1:ClassName}(${2}) {",
+      "    ${3}",
+      "}"
+    ],
+    "description": "Create a constructor"
+  },
+  "result success": {
+    "prefix": "success",
+    "body": [
+      "IResult<${1:Int}, ${2:String}> ${3:result} = Success(${4:value});"
+    ],
+    "description": "Create a Success result"
+  },
+  "result failure": {
+    "prefix": "failure",
+    "body": [
+      "IResult<${1:Int}, ${2:String}> ${3:result} = Failure(${4:error});"
+    ],
+    "description": "Create a Failure result"
+  },
+  "option some": {
+    "prefix": "some",
+    "body": [
+      "IOption<${1:String}> ${2:option} = Some(${3:value});"
+    ],
+    "description": "Create a Some option"
+  },
+  "option none": {
+    "prefix": "none",
+    "body": [
+      "IOption<${1:String}> ${2:option} = None();"
+    ],
+    "description": "Create a None option"
+  },
+  "consumer lambda": {
+    "prefix": "consumer",
+    "body": [
+      "IConsumer<${1:String}> ${2:consumer} = (${3:value}) -> ${4:Console.writeLine(${3:value})};"
+    ],
+    "description": "Create an IConsumer lambda"
+  },
+  "predicate lambda": {
+    "prefix": "predicate",
+    "body": [
+      "IPredicate<${1:String}> ${2:predicate} = (${3:value}) -> ${4:true};"
+    ],
+    "description": "Create an IPredicate lambda"
+  },
+  "array list": {
+    "prefix": "arraylist",
+    "body": [
+      "IList<${1:String}> ${2:items} = ArrayList();",
+      "${2:items}.add(${3:value});"
+    ],
+    "description": "Create an ArrayList"
+  },
+  "hash map": {
+    "prefix": "hashmap",
+    "body": [
+      "IMap<${1:String}, ${2:String}> ${3:items} = HashMap();",
+      "${3:items}.put(${4:key}, ${5:value});"
+    ],
+    "description": "Create a HashMap"
+  },
+  "file read text": {
+    "prefix": "fileread",
+    "body": [
+      "IResult<String, String> ${1:content} = File.tryReadText(${2:path});"
+    ],
+    "description": "Read text with Result"
+  },
+  "console prompt": {
+    "prefix": "prompt",
+    "body": [
+      "String ${1:value} = Console.promptOr(${2:message}, ${3:fallback});"
+    ],
+    "description": "Prompt for terminal input with fallback"
+  },
+  "http get": {
+    "prefix": "httpget",
+    "body": [
+      "IResult<IHttpResponse, String> ${1:response} = Http.get(${2:url});"
+    ],
+    "description": "Perform an HTTP GET"
+  },
+  "tcp connect": {
+    "prefix": "tcpconnect",
+    "body": [
+      "IResult<ITcpConnection, String> ${1:connection} = Tcp.connect(${2:host}, ${3:port});"
+    ],
+    "description": "Open a TCP connection"
+  }
+}

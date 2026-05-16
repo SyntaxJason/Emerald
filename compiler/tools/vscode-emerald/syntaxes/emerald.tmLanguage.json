@@ -1,0 +1,340 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Emerald",
+  "scopeName": "source.emerald",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#annotations"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#namespace"
+    },
+    {
+      "include": "#macroAst"
+    },
+    {
+      "include": "#declarations"
+    },
+    {
+      "include": "#control"
+    },
+    {
+      "include": "#macros"
+    },
+    {
+      "include": "#concurrency"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#stdlib"
+    },
+    {
+      "include": "#builtins"
+    },
+    {
+      "include": "#memberAccess"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#functions"
+    },
+    {
+      "include": "#variables"
+    },
+    {
+      "include": "#types"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.emerald",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.emerald",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.emerald",
+          "begin": "\"",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.emerald"
+            }
+          },
+          "end": "\"",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.emerald"
+            }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.emerald",
+              "match": "\\\\(?:[\\\\\"nrtbf]|u\\{[0-9A-Fa-f]+\\})"
+            }
+          ]
+        }
+      ]
+    },
+    "annotations": {
+      "patterns": [
+        {
+          "name": "meta.annotation.emerald",
+          "match": "(@)([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.annotation.emerald"
+            },
+            "2": {
+              "name": "entity.name.function.annotation.emerald"
+            }
+          }
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.emerald",
+          "match": "\\b(?:0x[0-9A-Fa-f_]+|0b[01_]+|\\d[\\d_]*(?:\\.\\d[\\d_]*)?)\\b"
+        }
+      ]
+    },
+    "namespace": {
+      "patterns": [
+        {
+          "name": "keyword.control.import.emerald",
+          "match": "\\b(?:namespace|use|as)\\b"
+        },
+        {
+          "name": "punctuation.accessor.namespace.emerald",
+          "match": "::"
+        },
+        {
+          "name": "support.namespace.segment.emerald",
+          "match": "\\b[A-Z][A-Za-z0-9_]*(?=::)"
+        }
+      ]
+    },
+    "macroAst": {
+      "patterns": [
+        {
+          "name": "meta.macro.ast-call.emerald",
+          "match": "\\b(Stmt|Expr|Block|Method|Field)(::)([a-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "support.class.macro-ast.emerald"
+            },
+            "2": {
+              "name": "punctuation.accessor.namespace.emerald"
+            },
+            "3": {
+              "name": "support.function.macro-ast.emerald"
+            }
+          }
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "name": "meta.class.declaration.emerald",
+          "match": "\\b(class|interface|macro)\\s+([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.emerald"
+            },
+            "2": {
+              "name": "entity.name.type.emerald"
+            }
+          }
+        },
+        {
+          "name": "meta.interface-relationship.emerald",
+          "match": "\\b(implements|extends|on)\\s+([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.relationship.emerald"
+            },
+            "2": {
+              "name": "entity.other.inherited-class.emerald"
+            }
+          }
+        },
+        {
+          "name": "storage.modifier.emerald",
+          "match": "\\b(?:public|private|protected|internal|abstract|static|final|override|deprecated)\\b"
+        },
+        {
+          "name": "meta.method.declaration.emerald",
+          "match": "\\b([A-Z][A-Za-z0-9_]*(?:\\s*<[^>(){};]+>)?)\\s+([a-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": {
+              "name": "support.type.emerald"
+            },
+            "2": {
+              "name": "entity.name.function.method.emerald"
+            }
+          }
+        }
+      ]
+    },
+    "control": {
+      "patterns": [
+        {
+          "name": "keyword.control.emerald",
+          "match": "\\b(?:if|else|while|for|in|return|break|continue|throw|try|catch|finally)\\b"
+        }
+      ]
+    },
+    "macros": {
+      "patterns": [
+        {
+          "name": "keyword.other.macro.emerald",
+          "match": "\\b(?:macro|quote|unquote)\\b"
+        },
+        {
+          "name": "keyword.other.quote-kind.emerald",
+          "match": "\\b(?:expr|stmt|block|method|field)\\b"
+        },
+        {
+          "name": "punctuation.section.unquote.emerald",
+          "match": "\\$\\("
+        }
+      ]
+    },
+    "concurrency": {
+      "patterns": [
+        {
+          "name": "keyword.other.concurrent.emerald",
+          "match": "\\b(?:async|await|fiber|thread|virtualThread|synchronized)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "variable.language.this.emerald",
+          "match": "\\bthis\\b"
+        },
+        {
+          "name": "constant.language.emerald",
+          "match": "\\b(?:true|false|null)\\b"
+        }
+      ]
+    },
+    "stdlib": {
+      "patterns": [
+        {
+          "name": "support.namespace.stdlib.emerald",
+          "match": "\\bStd::(?:Collections|Compare|Data|Env|Functional|Http|Io|Math|Net|Option|Process|Random|Result|System|Time|WebSocket)\\b"
+        },
+        {
+          "name": "support.class.stdlib.emerald",
+          "match": "\\b(?:IOption|Some|None|IResult|Success|Failure|IList|ArrayList|IMap|HashMap|ISet|HashSet|IConsumer|IPredicate|IFunction|IAction|Console|File|Directory|Path|TextReader|TextWriter|Http|HttpClient|HttpRequest|HttpResponse|HttpHeaders|Tcp|TcpConnection|TcpListener|WebSocket|WebSocketMessage|Env|Environment|Process|System|Random|Clock|Duration|OffsetDateTime|Pair|Triple|Box|MutableBox|IntRange)\\b"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.type.builtin.emerald",
+          "match": "\\b(?:Any|Void|Bool|Int|Int32|Int64|Float|Double|String|List|Map|Set|Channel|Mutex|Fiber|Thread|VirtualThread)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.assignment.emerald",
+          "match": "=>|->|==|!=|<=|>=|&&|\\|\\||\\+\\+|--|[+\\-*/%<>=!]"
+        }
+      ]
+    },
+    "memberAccess": {
+      "patterns": [
+        {
+          "name": "meta.function-call.member.emerald",
+          "match": "(\\.)([a-z_][A-Za-z0-9_]*)(?=\\s*\\()",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.dot.emerald"
+            },
+            "2": {
+              "name": "entity.name.function.member.emerald support.function.member.emerald variable.function.member.emerald"
+            }
+          }
+        },
+        {
+          "name": "meta.property.access.emerald",
+          "match": "(\\.)([a-z_][A-Za-z0-9_]*)(?!\\s*\\()",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.dot.emerald"
+            },
+            "2": {
+              "name": "variable.other.property.emerald"
+            }
+          }
+        },
+        {
+          "name": "punctuation.accessor.dot.emerald",
+          "match": "\\."
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.emerald",
+          "match": "\\b[a-z_][A-Za-z0-9_]*(?=\\s*\\()"
+        },
+        {
+          "name": "support.class.constructor.emerald",
+          "match": "\\b[A-Z][A-Za-z0-9_]*(?=\\s*\\()"
+        }
+      ]
+    },
+    "variables": {
+      "patterns": [
+        {
+          "name": "variable.other.field.emerald",
+          "match": "\\b[a-z_][A-Za-z0-9_]*(?=\\s*(?:=|;|,|\\+\\+|--))"
+        },
+        {
+          "name": "variable.parameter.emerald",
+          "match": "(?<=\\()\\s*[a-z_][A-Za-z0-9_]*(?=\\s*(?:,|\\)))"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "entity.name.type.emerald",
+          "match": "\\b[A-Z][A-Za-z0-9_]*(?=\\s*(?:<|\\{|\\b))"
+        }
+      ]
+    }
+  }
+}

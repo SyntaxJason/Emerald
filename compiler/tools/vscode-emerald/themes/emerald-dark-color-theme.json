@@ -1,0 +1,182 @@
+{
+  "$schema": "vscode://schemas/color-theme",
+  "name": "Emerald Dark",
+  "type": "dark",
+  "semanticHighlighting": false,
+  "colors": {
+    "editor.background": "#161616",
+    "editor.foreground": "#F0F0F0",
+    "editorLineNumber.foreground": "#4B4B4B",
+    "editorLineNumber.activeForeground": "#7D8B9B",
+    "editorCursor.foreground": "#F0F0F0",
+    "editor.selectionBackground": "#2F3B52",
+    "editor.inactiveSelectionBackground": "#232A38",
+    "editorIndentGuide.background1": "#272E2D",
+    "editorIndentGuide.activeBackground1": "#3C4949",
+    "editorBracketMatch.background": "#273937",
+    "editorBracketMatch.border": "#3D8D76",
+    "activityBar.background": "#141414",
+    "sideBar.background": "#151515",
+    "statusBar.background": "#141414",
+    "titleBar.activeBackground": "#141414"
+  },
+  "tokenColors": [
+    {
+      "name": "Comments",
+      "scope": [
+        "comment",
+        "punctuation.definition.comment"
+      ],
+      "settings": {
+        "foreground": "#666A6D",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "name": "Strings",
+      "scope": [
+        "string",
+        "punctuation.definition.string"
+      ],
+      "settings": {
+        "foreground": "#FAD35E"
+      }
+    },
+    {
+      "name": "Escapes",
+      "scope": "constant.character.escape",
+      "settings": {
+        "foreground": "#6CE6B5"
+      }
+    },
+    {
+      "name": "Numbers",
+      "scope": "constant.numeric",
+      "settings": {
+        "foreground": "#D2B25C"
+      }
+    },
+    {
+      "name": "Keywords and modifiers",
+      "scope": [
+        "keyword",
+        "storage.modifier",
+        "storage.type",
+        "keyword.operator.word",
+        "keyword.other.quote-kind"
+      ],
+      "settings": {
+        "foreground": "#B77FF4"
+      }
+    },
+    {
+      "name": "Annotations",
+      "scope": [
+        "meta.annotation.emerald",
+        "entity.name.function.annotation.emerald",
+        "punctuation.definition.annotation.emerald"
+      ],
+      "settings": {
+        "foreground": "#14AE79",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "name": "Types and classes",
+      "scope": [
+        "entity.name.type",
+        "support.type",
+        "support.class",
+        "support.namespace",
+        "entity.other.inherited-class",
+        "support.class.constructor"
+      ],
+      "settings": {
+        "foreground": "#6CE6B5"
+      }
+    },
+    {
+      "name": "Macro AST factory calls",
+      "scope": [
+        "support.function.macro-ast.emerald"
+      ],
+      "settings": {
+        "foreground": "#90C0F9"
+      }
+    },
+    {
+      "name": "Member and method calls",
+      "scope": [
+        "meta.function-call.member.emerald",
+        "entity.name.function.member.emerald",
+        "support.function.member.emerald",
+        "variable.function.member.emerald",
+        "entity.name.function.method.emerald",
+        "entity.name.function.emerald",
+        "support.function",
+        "variable.function"
+      ],
+      "settings": {
+        "foreground": "#90C0F9"
+      }
+    },
+    {
+      "name": "Properties and fields",
+      "scope": [
+        "meta.property.access.emerald",
+        "variable.other.property",
+        "variable.other.field"
+      ],
+      "settings": {
+        "foreground": "#7EB5D6"
+      }
+    },
+    {
+      "name": "Variables and parameters",
+      "scope": [
+        "variable.parameter",
+        "variable.other.local"
+      ],
+      "settings": {
+        "foreground": "#F0F0F0"
+      }
+    },
+    {
+      "name": "Constants",
+      "scope": [
+        "constant.language",
+        "constant.other"
+      ],
+      "settings": {
+        "foreground": "#D2B25C"
+      }
+    },
+    {
+      "name": "This",
+      "scope": "variable.language.this.emerald",
+      "settings": {
+        "foreground": "#B77FF4"
+      }
+    },
+    {
+      "name": "Operators and punctuation",
+      "scope": [
+        "keyword.operator",
+        "punctuation.accessor",
+        "punctuation.separator",
+        "punctuation.section"
+      ],
+      "settings": {
+        "foreground": "#767B80"
+      }
+    },
+    {
+      "name": "Unquote",
+      "scope": "punctuation.section.unquote.emerald",
+      "settings": {
+        "foreground": "#F0F0F0",
+        "fontStyle": "bold"
+      }
+    }
+  ]
+}

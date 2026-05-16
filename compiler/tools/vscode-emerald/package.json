@@ -1,0 +1,63 @@
+{
+  "name": "emerald-language-support",
+  "displayName": "Emerald",
+  "description": "Syntax highlighting, Emerald Dark theme, snippets, and language configuration for Emerald.",
+  "version": "0.2.3",
+  "publisher": "emerald",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "emerald",
+        "aliases": [
+          "Emerald",
+          "emerald"
+        ],
+        "extensions": [
+          ".ems"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "emerald",
+        "scopeName": "source.emerald",
+        "path": "./syntaxes/emerald.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "emerald",
+        "path": "./snippets/emerald.code-snippets"
+      }
+    ],
+    "configurationDefaults": {
+      "[emerald]": {
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true,
+        "editor.formatOnType": false,
+        "editor.fontFamily": "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
+        "editor.fontLigatures": true
+      }
+    },
+    "themes": [
+      {
+        "label": "Emerald Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/emerald-dark-color-theme.json"
+      }
+    ]
+  },
+  "author": {
+    "name": "DragonRex & Emerald"
+  },
+  "icon": "Icon.png"
+}
