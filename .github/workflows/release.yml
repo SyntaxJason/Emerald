@@ -1,0 +1,54 @@
+# .github/workflows/release.yml
+name: Emerald Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crystal-lang/install-crystal@v1
+      - run: |
+          cd compiler
+          shards build emeraldc --release
+          cd tools/installer
+          shards build emerald-installer --release
+      - run: |
+          mkdir -p dist/linux
+          cp compiler/bin/emeraldc dist/linux/emeraldc
+          cp -R stdlib dist/linux/stdlib
+          tar -czf Emerald-Latest-Linux.tar.gz -C dist/linux emeraldc stdlib
+          cp compiler/tools/installer/bin/emerald-installer emerald-installer-linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: emerald-linux
+          path: |
+            Emerald-Latest-Linux.tar.gz
+            emerald-installer-linux
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crystal-lang/install-crystal@v1
+      - shell: pwsh
+        run: |
+          cd compiler
+          shards build emeraldc --release
+          cd tools/installer
+          shards build emerald-installer --release
+      - shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist\windows | Out-Null
+          Copy-Item compiler\bin\emeraldc.exe dist\windows\emeraldc.exe
+          Copy-Item stdlib dist\windows\stdlib -Recurse
+          Compress-Archive -Path dist\windows\emeraldc.exe, dist\windows\stdlib -DestinationPath Emerald-Latest-Windows.zip -Force
+          Copy-Item compiler\tools\installer\bin\emerald-installer.exe emerald-installer-windows.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: emerald-windows
+          path: |
+            Emerald-Latest-Windows.zip
+            emerald-installer-windows.exe

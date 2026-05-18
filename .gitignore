@@ -6,6 +6,7 @@
 !compiler/**
 !stdlib/
 !stdlib/**
+!.github
 
 compiler/bin/
 compiler/lib/
