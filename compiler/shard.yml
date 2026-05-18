@@ -8,6 +8,10 @@ authors:
 targets:
   emeraldc:
     main: src/emeraldc.cr
+  emeraldc-linux:
+    main: src/emeraldc.cr
+  emeraldc-windows:
+    main: src/emeraldc.cr
 
 crystal: ">= 1.0.0"
 

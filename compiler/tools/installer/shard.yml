@@ -1,0 +1,14 @@
+name: emerald-installer
+version: 0.3.0
+
+targets:
+  emerald-installer:
+    main: src/emerald_installer.cr
+  emerald-installer-linux:
+    main: src/emerald_installer.cr
+  emerald-installer-windows:
+    main: src/emerald_installer.cr
+
+crystal: ">= 1.10.0"
+
+license: MIT
