@@ -17,15 +17,24 @@ module EmeraldInstaller
     getter prefix : String?
     getter payload : String?
     getter url : String?
+    getter platform : String?
     getter force : Bool
     getter yes : Bool
     getter configure_env : Bool
 
-    def initialize(@command : String, @prefix : String?, @payload : String?, @url : String?, @force : Bool, @yes : Bool, @configure_env : Bool)
+    def initialize(@command : String, @prefix : String?, @payload : String?, @url : String?, @platform : String?, @force : Bool, @yes : Bool, @configure_env : Bool)
+    end
+
+    def effective_platform : String
+      ReleasePlatform.normalize(@platform)
     end
 
     def download_url : String
-      @url || ReleaseDownloader::DEFAULT_URL
+      ReleaseDownloader.release_url(@url || ReleaseDownloader::DEFAULT_URL, effective_platform)
+    end
+
+    def download_filename : String
+      ReleaseDownloader.archive_filename(effective_platform)
     end
 
     def self.parse(args : Array(String)) : CommandLine
@@ -34,6 +43,7 @@ module EmeraldInstaller
       prefix = nil
       payload = nil
       url = nil
+      platform = nil
       force = false
       yes = false
       configure_env = true
@@ -56,6 +66,12 @@ module EmeraldInstaller
 
         if arg == "--url"
           url = read_value(args, index, arg)
+          index += 2
+          next
+        end
+
+        if arg == "--platform"
+          platform = ReleasePlatform.normalize(read_value(args, index, arg))
           index += 2
           next
         end
@@ -93,7 +109,7 @@ module EmeraldInstaller
         raise InstallError.new("Unknown option: #{arg}")
       end
 
-      CommandLine.new(command, prefix, payload, url, force, yes, configure_env)
+      CommandLine.new(command, prefix, payload, url, platform, force, yes, configure_env)
     end
 
     private def self.read_value(args : Array(String), index : Int32, name : String) : String
@@ -177,22 +193,61 @@ module EmeraldInstaller
     getter archive_path : String
     getter extract_dir : String
 
-    def initialize(@root : String)
-      @archive_path = File.join(@root, "Emerald-Latest.zip")
+    def initialize(@root : String, archive_filename : String)
+      @archive_path = File.join(@root, archive_filename)
       @extract_dir = File.join(@root, "extracted")
     end
 
-    def self.create : TempWorkspace
+    def self.create(archive_filename : String) : TempWorkspace
       id = "#{Time.utc.to_unix_ms}-#{Random.rand(1_000_000)}"
       root = File.join(Platform.temp_dir, "emerald-installer-#{id}")
       FileUtils.mkdir_p(root)
-      TempWorkspace.new(root)
+      TempWorkspace.new(root, archive_filename)
+    end
+  end
+
+  class ReleasePlatform
+    WINDOWS = "windows"
+    LINUX = "linux"
+
+    def self.current : String
+      Platform.windows? ? WINDOWS : LINUX
+    end
+
+    def self.normalize(value : String?) : String
+      return current unless value
+
+      normalized = value.downcase.strip
+      return WINDOWS if normalized == "windows" || normalized == "win"
+      return LINUX if normalized == "linux"
+
+      raise InstallError.new("Unsupported platform: #{value}. Use linux or windows.")
+    end
+
+    def self.windows?(value : String) : Bool
+      normalize(value) == WINDOWS
+    end
+
+    def self.linux?(value : String) : Bool
+      normalize(value) == LINUX
     end
   end
 
   class ReleaseDownloader
     DEFAULT_URL = "https://emerald-lang.eu/install/latest"
     MAX_REDIRECTS = 5
+
+    def self.archive_filename(platform : String) : String
+      return "Emerald-Latest-Windows.zip" if ReleasePlatform.windows?(platform)
+      "Emerald-Latest-Linux.tar.gz"
+    end
+
+    def self.release_url(url : String, platform : String) : String
+      return url if direct_archive_url?(url)
+
+      separator = url.includes?("?") ? "&" : "?"
+      "#{url}#{separator}platform=#{platform}"
+    end
 
     def self.download(url : String, target : String)
       download(url, target, 0)
@@ -218,6 +273,11 @@ module EmeraldInstaller
           IO.copy(response.body_io, file)
         end
       end
+    end
+
+    private def self.direct_archive_url?(url : String) : Bool
+      lower = url.downcase
+      lower.ends_with?(".zip") || lower.ends_with?(".tar.gz") || lower.ends_with?(".tgz")
     end
 
     private def self.success?(status : Int32) : Bool
@@ -308,6 +368,38 @@ module EmeraldInstaller
     end
   end
 
+  class TarGzipExtractor
+    def self.extract(archive_path : String, target_dir : String)
+      FileUtils.rm_rf(target_dir) if File.exists?(target_dir)
+      FileUtils.mkdir_p(target_dir)
+
+      status = Process.run("tar", ["-xzf", archive_path, "-C", target_dir])
+      return if status.success?
+
+      raise InstallError.new("Failed to extract #{archive_path}. Make sure tar is available.")
+    rescue error
+      raise InstallError.new("Failed to extract #{archive_path}: #{error.message}")
+    end
+  end
+
+  class ArchiveExtractor
+    def self.extract(archive_path : String, target_dir : String)
+      lower = archive_path.downcase
+
+      if lower.ends_with?(".zip")
+        ZipExtractor.extract(archive_path, target_dir)
+        return
+      end
+
+      if lower.ends_with?(".tar.gz") || lower.ends_with?(".tgz")
+        TarGzipExtractor.extract(archive_path, target_dir)
+        return
+      end
+
+      raise InstallError.new("Unsupported archive format: #{File.basename(archive_path)}")
+    end
+  end
+
   class Payload
     getter root : String
     getter compiler_path : String
@@ -322,15 +414,15 @@ module EmeraldInstaller
       FileUtils.rm_rf(cleanup) if cleanup && Dir.exists?(cleanup)
     end
 
-    def self.download(url : String) : Payload
-      workspace = TempWorkspace.create
+    def self.download(url : String, archive_filename : String) : Payload
+      workspace = TempWorkspace.create(archive_filename)
 
       begin
         puts "Downloading Emerald from #{url}"
         ReleaseDownloader.download(url, workspace.archive_path)
 
         puts "Extracting Emerald payload"
-        ZipExtractor.extract(workspace.archive_path, workspace.extract_dir)
+        ArchiveExtractor.extract(workspace.archive_path, workspace.extract_dir)
 
         payload = try_from_any(workspace.extract_dir)
         raise InstallError.new("Downloaded archive does not contain emeraldc and stdlib") unless payload
@@ -687,6 +779,8 @@ module EmeraldInstaller
         json.field "stdlibDir", layout.stdlib_dir
         json.field "compilerPath", layout.compiler_path
         json.field "downloadUrl", @command_line.download_url
+        json.field "downloadPlatform", @command_line.effective_platform
+        json.field "downloadArchive", @command_line.download_filename
         json.field "version", VERSION
       end
     end
@@ -702,6 +796,8 @@ module EmeraldInstaller
         json.field "stdlibDir", layout.stdlib_dir
         json.field "installed", File.exists?(layout.compiler_path) && Dir.exists?(layout.stdlib_dir)
         json.field "environment", EnvironmentConfigurator.summary(layout)
+        json.field "downloadPlatform", @command_line.effective_platform
+        json.field "downloadArchive", @command_line.download_filename
       end
     end
 
@@ -714,7 +810,7 @@ module EmeraldInstaller
       configure_env = params["configureEnv"]? != "false"
 
       layout = InstallLayout.new(prefix)
-      payload = payload_path ? Payload.discover(payload_path) : Payload.download(url)
+      payload = payload_path ? Payload.discover(payload_path) : Payload.download(url, @command_line.download_filename)
 
       begin
         Installer.new(layout, payload).install(force, configure_env)
@@ -1022,6 +1118,8 @@ module EmeraldInstaller
         <div><strong>Compiler</strong><span id="compilerPath"></span></div>
         <div><strong>STDLib</strong><span id="stdlibPath"></span></div>
         <div><strong>Version</strong><span id="version"></span></div>
+        <div><strong>Platform</strong><span id="downloadPlatform"></span></div>
+        <div><strong>Archive</strong><span id="downloadArchive"></span></div>
       </div>
       <h2 style="margin-top: 22px;">Status</h2>
       <div id="status" class="status">Ready.</div>
@@ -1053,6 +1151,8 @@ module EmeraldInstaller
       document.getElementById("compilerPath").textContent = data.compilerPath;
       document.getElementById("stdlibPath").textContent = data.stdlibDir;
       document.getElementById("version").textContent = data.version;
+      document.getElementById("downloadPlatform").textContent = data.downloadPlatform;
+      document.getElementById("downloadArchive").textContent = data.downloadArchive;
     }
 
     async function installEmerald() {
@@ -1093,10 +1193,11 @@ module EmeraldInstaller
       puts "Removed #{layout.prefix}"
     end
 
-    def self.doctor(layout : InstallLayout, payload : Payload?, download_url : String)
+    def self.doctor(layout : InstallLayout, payload : Payload?, download_url : String, archive_filename : String)
       puts "Emerald installer #{VERSION}"
       puts "Install prefix:   #{layout.prefix}"
       puts "Download URL:     #{download_url}"
+      puts "Download archive: #{archive_filename}"
 
       if payload
         puts "Payload root:     #{payload.root}"
@@ -1200,7 +1301,7 @@ module EmeraldInstaller
 
       if command_line.command == "doctor"
         payload = Payload.try_discover(command_line.payload)
-        Installer.doctor(layout, payload, command_line.download_url)
+        Installer.doctor(layout, payload, command_line.download_url, command_line.download_filename)
         return 0
       end
 
@@ -1228,7 +1329,7 @@ module EmeraldInstaller
       explicit = command_line.payload
       return Payload.discover(explicit) if explicit
 
-      Payload.download(command_line.download_url)
+      Payload.download(command_line.download_url, command_line.download_filename)
     end
 
     private def self.print_help
@@ -1236,11 +1337,11 @@ module EmeraldInstaller
       Emerald Installer #{VERSION}
 
       Usage:
-        emerald-installer ui [--url <url>]
-        emerald-installer install [--url <url>] [--prefix <path>] [--force] [--no-env]
+        emerald-installer ui [--url <url>] [--platform linux|windows]
+        emerald-installer install [--url <url>] [--platform linux|windows] [--prefix <path>] [--force] [--no-env]
         emerald-installer install --payload <path> [--prefix <path>] [--force] [--no-env]
         emerald-installer uninstall [--prefix <path>] --yes
-        emerald-installer doctor [--payload <path>] [--prefix <path>] [--url <url>]
+        emerald-installer doctor [--payload <path>] [--prefix <path>] [--url <url>] [--platform linux|windows]
         emerald-installer print-path [--prefix <path>]
         emerald-installer version
         emerald-installer help
@@ -1255,7 +1356,9 @@ module EmeraldInstaller
         https://emerald-lang.eu/install/latest
 
       Downloaded archive layout:
-        Emerald-Latest.zip must contain emeraldc and stdlib.
+        Windows downloads Emerald-Latest-Windows.zip.
+        Linux downloads Emerald-Latest-Linux.tar.gz.
+        The archive must contain emeraldc and stdlib.
         It may also contain a top-level directory containing emeraldc and stdlib.
 
       Environment setup:
