@@ -42,9 +42,33 @@ jobs:
       - shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist\windows | Out-Null
+          New-Item -ItemType Directory -Force dist\installer-windows | Out-Null
+
+          $crystalPath = (Get-Command crystal).Source
+          $crystalDir = Split-Path $crystalPath
+          $crystalRoot = Split-Path $crystalDir
+          $runtimeRoots = @(
+            $crystalDir,
+            (Join-Path $crystalRoot "bin"),
+            (Join-Path $crystalRoot "lib")
+          ) | Where-Object { Test-Path $_ } | Select-Object -Unique
+
           Copy-Item compiler\bin\emeraldc.exe dist\windows\emeraldc.exe
           Copy-Item stdlib dist\windows\stdlib -Recurse
-          Compress-Archive -Path dist\windows\emeraldc.exe, dist\windows\stdlib -DestinationPath Emerald-Latest-Windows.zip -Force
+
+          Get-ChildItem $runtimeRoots -Filter *.dll -File -Recurse | ForEach-Object {
+            Copy-Item $_.FullName dist\windows -Force
+          }
+
+          Compress-Archive -Path dist\windows\* -DestinationPath Emerald-Latest-Windows.zip -Force
+
+          Copy-Item compiler\tools\installer\bin\emerald-installer.exe dist\installer-windows\emerald-installer.exe
+
+          Get-ChildItem $runtimeRoots -Filter *.dll -File -Recurse | ForEach-Object {
+            Copy-Item $_.FullName dist\installer-windows -Force
+          }
+
+          Compress-Archive -Path dist\installer-windows\* -DestinationPath emerald-installer-windows.zip -Force
           Copy-Item compiler\tools\installer\bin\emerald-installer.exe emerald-installer-windows.exe
       - uses: actions/upload-artifact@v4
         with:
@@ -52,3 +76,4 @@ jobs:
           path: |
             Emerald-Latest-Windows.zip
             emerald-installer-windows.exe
+            emerald-installer-windows.zip
