@@ -1,0 +1,34 @@
+namespace Std::Json;
+
+public class Json {
+    public Json() {
+    }
+
+    public JsonObject object() {
+        return JsonObject();
+    }
+
+    public JsonArray array() {
+        return JsonArray();
+    }
+
+    public JsonString string(String value) {
+        return JsonString(value);
+    }
+
+    public JsonNumber number(Int value) {
+        return JsonNumber(value);
+    }
+
+    public JsonBool bool(Bool value) {
+        return JsonBool(value);
+    }
+
+    public JsonNull nullValue() {
+        return JsonNull();
+    }
+
+    public String stringify(IJsonValue value) {
+        return value.toJson();
+    }
+}

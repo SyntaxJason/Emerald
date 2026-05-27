@@ -1,0 +1,126 @@
+namespace Std::Json;
+
+use Std::Collections::IList;
+use Std::Collections::IMap;
+use Std::Collections::HashMap;
+
+public class JsonObject implements IJsonValue {
+    private IMap<String, IJsonValue> values;
+
+    public JsonObject() {
+        this.values = HashMap();
+    }
+
+    public Bool isObject() {
+        return true;
+    }
+
+    public Bool isArray() {
+        return false;
+    }
+
+    public Bool isString() {
+        return false;
+    }
+
+    public Bool isNumber() {
+        return false;
+    }
+
+    public Bool isBool() {
+        return false;
+    }
+
+    public Bool isNull() {
+        return false;
+    }
+
+    public JsonObject set(String key, IJsonValue value) {
+        this.values.put(key, value);
+        return this;
+    }
+
+    public JsonObject setString(String key, String value) {
+        this.values.put(key, JsonString(value));
+        return this;
+    }
+
+    public JsonObject setInt(String key, Int value) {
+        this.values.put(key, JsonNumber(value));
+        return this;
+    }
+
+    public JsonObject setBool(String key, Bool value) {
+        this.values.put(key, JsonBool(value));
+        return this;
+    }
+
+    public JsonObject setNull(String key) {
+        this.values.put(key, JsonNull());
+        return this;
+    }
+
+    public Bool contains(String key) {
+        return this.values.containsKey(key);
+    }
+
+    public IJsonValue get(String key) {
+        return this.values.get(key);
+    }
+
+    public IJsonValue getOr(String key, IJsonValue fallback) {
+        if (this.values.containsKey(key)) {
+            return this.values.get(key);
+        }
+
+        return fallback;
+    }
+
+    public String getStringOr(String key, String fallback) {
+        return this.getOr(key, JsonNull()).asStringOr(fallback);
+    }
+
+    public Int getIntOr(String key, Int fallback) {
+        return this.getOr(key, JsonNull()).asIntOr(fallback);
+    }
+
+    public Bool getBoolOr(String key, Bool fallback) {
+        return this.getOr(key, JsonNull()).asBoolOr(fallback);
+    }
+
+    public IList<String> keys() {
+        return this.values.keys();
+    }
+
+    public Int size() {
+        return this.values.size();
+    }
+
+    public String toJson() {
+        String output = "{";
+        Int index = 0;
+
+        for (key in this.values.keys()) {
+            if (index > 0) {
+                output = output + ",";
+            }
+
+            output = output + "\"" + key + "\":" + this.values.get(key).toJson();
+            index = index + 1;
+        }
+
+        return output + "}";
+    }
+
+    public String asStringOr(String fallback) {
+        return fallback;
+    }
+
+    public Int asIntOr(Int fallback) {
+        return fallback;
+    }
+
+    public Bool asBoolOr(Bool fallback) {
+        return fallback;
+    }
+}

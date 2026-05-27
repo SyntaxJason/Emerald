@@ -1,0 +1,57 @@
+namespace Std::Json;
+
+public class JsonBool implements IJsonValue {
+    private Bool value;
+
+    public JsonBool(Bool value) {
+        this.value = value;
+    }
+
+    public Bool isObject() {
+        return false;
+    }
+
+    public Bool isArray() {
+        return false;
+    }
+
+    public Bool isString() {
+        return false;
+    }
+
+    public Bool isNumber() {
+        return false;
+    }
+
+    public Bool isBool() {
+        return true;
+    }
+
+    public Bool isNull() {
+        return false;
+    }
+
+    public Bool value() {
+        return this.value;
+    }
+
+    public String toJson() {
+        if (this.value) {
+            return "true";
+        }
+
+        return "false";
+    }
+
+    public String asStringOr(String fallback) {
+        return fallback;
+    }
+
+    public Int asIntOr(Int fallback) {
+        return fallback;
+    }
+
+    public Bool asBoolOr(Bool fallback) {
+        return this.value;
+    }
+}

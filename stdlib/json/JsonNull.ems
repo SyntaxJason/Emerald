@@ -1,0 +1,46 @@
+namespace Std::Json;
+
+public class JsonNull implements IJsonValue {
+    public JsonNull() {
+    }
+
+    public Bool isObject() {
+        return false;
+    }
+
+    public Bool isArray() {
+        return false;
+    }
+
+    public Bool isString() {
+        return false;
+    }
+
+    public Bool isNumber() {
+        return false;
+    }
+
+    public Bool isBool() {
+        return false;
+    }
+
+    public Bool isNull() {
+        return true;
+    }
+
+    public String toJson() {
+        return "null";
+    }
+
+    public String asStringOr(String fallback) {
+        return fallback;
+    }
+
+    public Int asIntOr(Int fallback) {
+        return fallback;
+    }
+
+    public Bool asBoolOr(Bool fallback) {
+        return fallback;
+    }
+}

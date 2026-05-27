@@ -1,0 +1,113 @@
+namespace Std::Json;
+
+use Std::Collections::IList;
+use Std::Collections::ArrayList;
+
+public class JsonArray implements IJsonValue {
+    private IList<IJsonValue> values;
+
+    public JsonArray() {
+        this.values = ArrayList();
+    }
+
+    public Bool isObject() {
+        return false;
+    }
+
+    public Bool isArray() {
+        return true;
+    }
+
+    public Bool isString() {
+        return false;
+    }
+
+    public Bool isNumber() {
+        return false;
+    }
+
+    public Bool isBool() {
+        return false;
+    }
+
+    public Bool isNull() {
+        return false;
+    }
+
+    public JsonArray add(IJsonValue value) {
+        this.values.add(value);
+        return this;
+    }
+
+    public JsonArray addString(String value) {
+        this.values.add(JsonString(value));
+        return this;
+    }
+
+    public JsonArray addInt(Int value) {
+        this.values.add(JsonNumber(value));
+        return this;
+    }
+
+    public JsonArray addBool(Bool value) {
+        this.values.add(JsonBool(value));
+        return this;
+    }
+
+    public JsonArray addNull() {
+        this.values.add(JsonNull());
+        return this;
+    }
+
+    public IJsonValue get(Int index) {
+        return this.values.get(index);
+    }
+
+    public IJsonValue getOr(Int index, IJsonValue fallback) {
+        return this.values.getOr(index, fallback);
+    }
+
+    public String getStringOr(Int index, String fallback) {
+        return this.values.getOr(index, JsonNull()).asStringOr(fallback);
+    }
+
+    public Int getIntOr(Int index, Int fallback) {
+        return this.values.getOr(index, JsonNull()).asIntOr(fallback);
+    }
+
+    public Bool getBoolOr(Int index, Bool fallback) {
+        return this.values.getOr(index, JsonNull()).asBoolOr(fallback);
+    }
+
+    public Int size() {
+        return this.values.size();
+    }
+
+    public String toJson() {
+        String output = "[";
+        Int index = 0;
+
+        for (value in this.values) {
+            if (index > 0) {
+                output = output + ",";
+            }
+
+            output = output + value.toJson();
+            index = index + 1;
+        }
+
+        return output + "]";
+    }
+
+    public String asStringOr(String fallback) {
+        return fallback;
+    }
+
+    public Int asIntOr(Int fallback) {
+        return fallback;
+    }
+
+    public Bool asBoolOr(Bool fallback) {
+        return fallback;
+    }
+}

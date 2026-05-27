@@ -1,0 +1,23 @@
+namespace Std::Json;
+
+public interface IJsonValue {
+    public Bool isObject();
+
+    public Bool isArray();
+
+    public Bool isString();
+
+    public Bool isNumber();
+
+    public Bool isBool();
+
+    public Bool isNull();
+
+    public String toJson();
+
+    public String asStringOr(String fallback);
+
+    public Int asIntOr(Int fallback);
+
+    public Bool asBoolOr(Bool fallback);
+}

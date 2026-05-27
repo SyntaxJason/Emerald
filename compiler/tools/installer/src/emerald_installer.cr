@@ -405,8 +405,9 @@ module EmeraldInstaller
     getter compiler_path : String
     getter stdlib_path : String
     getter cleanup_root : String?
+    getter runtime_files : Array(String)
 
-    def initialize(@root : String, @compiler_path : String, @stdlib_path : String, @cleanup_root : String? = nil)
+    def initialize(@root : String, @compiler_path : String, @stdlib_path : String, @cleanup_root : String? = nil, @runtime_files : Array(String) = [] of String)
     end
 
     def cleanup
@@ -427,7 +428,7 @@ module EmeraldInstaller
         payload = try_from_any(workspace.extract_dir)
         raise InstallError.new("Downloaded archive does not contain emeraldc and stdlib") unless payload
 
-        Payload.new(payload.root, payload.compiler_path, payload.stdlib_path, workspace.root)
+        Payload.new(payload.root, payload.compiler_path, payload.stdlib_path, workspace.root, payload.runtime_files)
       rescue error
         FileUtils.rm_rf(workspace.root) if Dir.exists?(workspace.root)
         raise error
@@ -509,7 +510,9 @@ module EmeraldInstaller
       compiler ||= find_compiler(root)
       return nil unless compiler
 
-      Payload.new(root, compiler, stdlib_dir)
+      runtime_files = find_runtime_files(root, compiler)
+
+      Payload.new(root, compiler, stdlib_dir, nil, runtime_files)
     end
 
     private def self.try_from_repo_root(root : String) : Payload?
@@ -521,7 +524,34 @@ module EmeraldInstaller
       compiler = find_compiler(bin_dir)
       return nil unless compiler
 
-      Payload.new(root, compiler, stdlib_dir)
+      runtime_files = find_runtime_files(root, compiler)
+
+      Payload.new(root, compiler, stdlib_dir, nil, runtime_files)
+    end
+
+    private def self.find_runtime_files(root : String, compiler : String) : Array(String)
+      files = [] of String
+      directories = [
+        root,
+        File.dirname(compiler),
+        File.join(root, "bin"),
+        File.join(root, "lib"),
+        File.join(root, "runtime"),
+      ].uniq
+
+      directories.each do |directory|
+        next unless Dir.exists?(directory)
+
+        Dir.each_child(directory) do |entry|
+          path = File.join(directory, entry)
+          next unless File.file?(path)
+          next unless File.basename(path).downcase.ends_with?(".dll")
+
+          files << File.expand_path(path)
+        end
+      end
+
+      files.uniq
     end
 
     private def self.find_compiler(bin_dir : String) : String?
@@ -1203,6 +1233,10 @@ module EmeraldInstaller
         puts "Payload root:     #{payload.root}"
         puts "Payload compiler: #{payload.compiler_path}"
         puts "Payload STDLib:   #{payload.stdlib_path}"
+        puts "Payload DLLs:     #{payload.runtime_files.size}"
+        payload.runtime_files.each do |runtime_file|
+          puts "                 - #{File.basename(runtime_file)}"
+        end
         puts "Payload OK:       #{File.exists?(payload.compiler_path) && Dir.exists?(payload.stdlib_path)}"
       else
         puts "Payload root:     not checked"
@@ -1225,6 +1259,7 @@ module EmeraldInstaller
       FileUtils.mkdir_p(@layout.prefix)
 
       FileTree.copy_file(@payload.compiler_path, @layout.compiler_path)
+      copy_runtime_files
       make_executable(@layout.compiler_path)
       FileTree.copy_directory(@payload.stdlib_path, @layout.stdlib_dir)
       write_manifest
@@ -1251,6 +1286,17 @@ module EmeraldInstaller
       end
     end
 
+    private def copy_runtime_files
+      return unless Platform.windows?
+
+      @payload.runtime_files.each do |source|
+        target = File.join(@layout.bin_dir, File.basename(source))
+        next if File.expand_path(source) == File.expand_path(target)
+
+        FileTree.copy_file(source, target)
+      end
+    end
+
     private def make_executable(path : String)
       return if Platform.windows?
 
@@ -1264,6 +1310,10 @@ module EmeraldInstaller
         file.puts "compiler=#{@layout.compiler_path}"
         file.puts "stdlib=#{@layout.stdlib_dir}"
         file.puts "payload=#{@payload.root}"
+
+        @payload.runtime_files.each do |runtime_file|
+          file.puts "runtime=#{File.basename(runtime_file)}"
+        end
       end
     end
   end

@@ -10,31 +10,37 @@ module Emerald
 
       merged = AST::Program.new
 
-      entry_source = File.read(entry_path)
-      entry_tokens = Lexer.new(entry_source).tokenize
-      entry_parser = Parser.new(entry_tokens)
-      entry_ast = entry_parser.parse
-      entry_ast.source_path = entry_path
-      entry_ns = derive_namespace(entry_path, project_root, entry_ast)
-      merged.namespace_decl = entry_ast.namespace_decl
-      apply_namespace_to_decls(entry_ast, entry_ns)
-      entry_ast.declarations.each { |d| merged.declarations << d }
+      source_files = files_for(entry_path, project_root)
+      source_files.each do |file|
+        ast = parse_file(file)
+        ns = derive_namespace(file, project_root, ast)
 
-      if project_root && in_project?(entry_path, project_root)
-        Dir.glob(File.join(project_root, "**", "*.ems")).each do |file|
-          next if File.expand_path(file) == entry_path
-          source = File.read(file)
-          tokens = Lexer.new(source).tokenize
-          parser = Parser.new(tokens)
-          sub_ast = parser.parse
-          sub_ast.source_path = file
-          sub_ns = derive_namespace(file, project_root, sub_ast)
-          apply_namespace_to_decls(sub_ast, sub_ns)
-          sub_ast.declarations.each { |d| merged.declarations << d }
-        end
+        merged.namespace_decl = ast.namespace_decl if file == entry_path
+        apply_namespace_to_decls(ast, ns)
+        ast.declarations.each { |d| merged.declarations << d }
       end
 
       merged
+    end
+
+    private def self.files_for(entry_path : String, project_root : String?) : Array(String)
+      return [entry_path] unless project_root && in_project?(entry_path, project_root)
+
+      files = Dir.glob(File.join(project_root, "**", "*.ems")).map { |file| File.expand_path(file) }.sort
+      files = files.reject { |file| file == entry_path }
+      files << entry_path
+
+      files
+    end
+
+    private def self.parse_file(file : String) : AST::Program
+      source = File.read(file)
+      tokens = Lexer.new(source).tokenize
+      parser = Parser.new(tokens)
+      ast = parser.parse
+      ast.source_path = file
+
+      ast
     end
 
     private def self.in_project?(entry_path : String, project_root : String) : Bool
@@ -42,16 +48,28 @@ module Emerald
     end
 
     private def self.find_project_root(entry_path : String) : String?
+      if env_root = ENV["EMERALD_PROJECT_ROOT"]?
+        expanded = File.expand_path(env_root)
+        return expanded if Dir.exists?(expanded)
+      end
+
       dir = File.dirname(entry_path)
       while dir.size > 1
         src_dir = File.join(dir, "src")
         if Dir.exists?(src_dir) && File.expand_path(entry_path).starts_with?(File.expand_path(src_dir))
           return src_dir
         end
+
+        [".emerald-studio", ".emerald", "emerald.json"].each do |marker|
+          marker_path = File.join(dir, marker)
+          return dir if Dir.exists?(marker_path) || File.exists?(marker_path)
+        end
+
         parent = File.dirname(dir)
         break if parent == dir
         dir = parent
       end
+
       nil
     end
 

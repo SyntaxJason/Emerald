@@ -1,0 +1,53 @@
+namespace Std::Json;
+
+public class JsonNumber implements IJsonValue {
+    private Int value;
+
+    public JsonNumber(Int value) {
+        this.value = value;
+    }
+
+    public Bool isObject() {
+        return false;
+    }
+
+    public Bool isArray() {
+        return false;
+    }
+
+    public Bool isString() {
+        return false;
+    }
+
+    public Bool isNumber() {
+        return true;
+    }
+
+    public Bool isBool() {
+        return false;
+    }
+
+    public Bool isNull() {
+        return false;
+    }
+
+    public Int value() {
+        return this.value;
+    }
+
+    public String toJson() {
+        return "" + this.value;
+    }
+
+    public String asStringOr(String fallback) {
+        return fallback;
+    }
+
+    public Int asIntOr(Int fallback) {
+        return this.value;
+    }
+
+    public Bool asBoolOr(Bool fallback) {
+        return fallback;
+    }
+}
