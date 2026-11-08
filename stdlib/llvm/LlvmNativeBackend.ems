@@ -1,0 +1,1292 @@
+namespace Std::Llvm;
+
+use Std::Collections::ArrayList;
+use Std::Collections::IList;
+use Std::Native::NativeDirectory;
+use Std::Native::NativeFile;
+use Std::Native::NativePath;
+use Std::Env::Env;
+
+public class LlvmNativeBackend {
+    private String moduleName;
+    private String outputName;
+    private String lastBackendMessage;
+    private LlvmContext contextValue;
+    private LlvmModule llvmModule;
+    private LlvmBuilder builderValue;
+    private LlvmRuntime runtimeValue;
+    private LlvmRuntimeDeclarations runtimeDeclarationsValue;
+    private LlvmNativeLinker linkerValue;
+    private LlvmFunction mainFunctionValue;
+    private String targetNameValue;
+    private String targetTripleValue;
+    private String executableExtensionValue;
+    private String objectExtensionValue;
+    private String emitModeValue;
+    private Bool keepTempsValue;
+    private String tempBaseValue;
+    private String ccValue;
+    private String sysrootValue;
+    private Bool llvmBridgeValue;
+    private Bool mathLibraryRequiredValue;
+    private Int listStructHandle;
+    private Int stringStructHandle;
+    private ArrayList<LlvmValue> staticLiteralItems;
+    private Bool staticLiteralsFinalized;
+
+    public LlvmNativeBackend(String name, String output) {
+        this.moduleName = name;
+        this.outputName = output;
+        this.lastBackendMessage = "";
+        this.contextValue = Llvm.createContext();
+        this.llvmModule = this.contextValue.createModule(name);
+        this.builderValue = this.contextValue.createBuilder();
+        this.runtimeValue = LlvmRuntime();
+        this.runtimeDeclarationsValue = LlvmRuntimeDeclarations(this.contextValue, this.llvmModule);
+        this.linkerValue = LlvmNativeLinker();
+        this.mainFunctionValue = LlvmFunction(0, 0);
+        this.targetNameValue = "native";
+        this.targetTripleValue = Llvm.defaultTargetTriple();
+        this.executableExtensionValue = Llvm.nativeExecutableExtension();
+        this.objectExtensionValue = Llvm.nativeObjectExtension();
+        this.emitModeValue = "exe";
+        this.keepTempsValue = false;
+        this.tempBaseValue = output + ".emerald-build";
+        this.ccValue = "";
+        this.sysrootValue = "";
+        this.llvmBridgeValue = false;
+        this.mathLibraryRequiredValue = false;
+        this.listStructHandle = 0;
+        this.stringStructHandle = 0;
+        this.staticLiteralItems = ArrayList();
+        this.staticLiteralsFinalized = false;
+    }
+
+    public Void configureTarget(String target, String triple, String executableExtension, String objectExtension) {
+        this.targetNameValue = target;
+        this.targetTripleValue = triple;
+        this.executableExtensionValue = executableExtension;
+        this.objectExtensionValue = objectExtension;
+    }
+
+    public Void configureBuild(String emitMode, Bool keepTemps, String tempBase) {
+        this.emitModeValue = emitMode;
+        this.keepTempsValue = keepTemps;
+        this.tempBaseValue = tempBase;
+    }
+
+    public Void configureToolchain(String cc, String sysroot) {
+        this.ccValue = cc;
+        this.sysrootValue = sysroot;
+    }
+
+    public Void configureRuntime(Bool llvmBridge) {
+        this.llvmBridgeValue = llvmBridge;
+    }
+
+    private Void prepareParentDirectory(String path) {
+        String parent = NativePath.parent(path);
+
+        if (parent.isEmpty()) {
+            return;
+        }
+
+        NativeDirectory.create(parent);
+    }
+
+    public Bool initialize() {
+        if (!Llvm.initializeTarget(this.targetTripleValue)) {
+            this.lastBackendMessage = Llvm.lastError();
+            return false;
+        }
+
+        this.llvmModule.setTarget(this.targetTripleValue);
+        this.applyTargetDataLayout();
+        return true;
+    }
+
+    // IR is built and optimized against the real target layout (i64 alignment,
+    // struct sizes) instead of LLVM's default layout; emission later applies
+    // the same layout again for the same triple.
+    private Void applyTargetDataLayout() {
+        LlvmTarget target = Llvm.lookupTarget(this.targetTripleValue);
+
+        if (target.isNull()) {
+            return;
+        }
+
+        LlvmTargetMachine machine = target.createMachine(this.targetTripleValue);
+
+        if (machine.isNull()) {
+            return;
+        }
+
+        machine.applyDataLayout(this.llvmModule);
+        machine.dispose();
+    }
+
+    // Generated definitions are module-private for executables, so LLVM may
+    // inline, specialize and drop them. Object output keeps them external
+    // because foreign code may link against the emitted symbols.
+    public Int definitionLinkage() {
+        if (this.emitModeValue == "obj") {
+            return Llvm.externalLinkage();
+        }
+
+        return Llvm.internalLinkage();
+    }
+
+    public LlvmContext context() {
+        return LlvmContext(this.contextValue.handle());
+    }
+
+    public LlvmModule llvmModule() {
+        return LlvmModule(this.llvmModule.handle(), this.llvmModule.context());
+    }
+
+    public LlvmBuilder builder() {
+        return LlvmBuilder(this.builderValue.handle());
+    }
+
+    public LlvmRuntime runtime() {
+        return LlvmRuntime();
+    }
+
+    public LlvmRuntimeDeclarations runtimeDeclarations() {
+        return LlvmRuntimeDeclarations(this.context(), this.llvmModule());
+    }
+
+    public LlvmNativeLinker linker() {
+        return LlvmNativeLinker();
+    }
+
+    public LlvmFunction mainFunction() {
+        return LlvmFunction(this.mainFunctionValue.handle(), this.mainFunctionValue.context());
+    }
+
+    public String lastMessage() {
+        return this.lastBackendMessage;
+    }
+
+    public String objectPath() {
+        if (this.emitModeValue == "obj") {
+            return this.outputName + this.objectExtensionValue;
+        }
+
+        if (this.keepTempsValue) {
+            return this.outputName + this.objectExtensionValue;
+        }
+
+        return this.tempBaseValue + "/module" + this.objectExtensionValue;
+    }
+
+    public String runtimeObjectPath() {
+        if (this.keepTempsValue) {
+            return this.outputName + "-runtime" + this.objectExtensionValue;
+        }
+
+        return this.tempBaseValue + "/runtime" + this.objectExtensionValue;
+    }
+
+    public String assemblyPath() {
+        return this.outputName + ".s";
+    }
+
+    public String executablePath() {
+        return this.outputName + this.executableExtensionValue;
+    }
+
+    public LlvmFunction beginMain() {
+        LlvmType int32 = this.contextValue.int32Type();
+        ArrayList<LlvmType> parameters = ArrayList();
+        parameters.add(LlvmType(int32.handle()));
+        parameters.add(this.contextValue.opaquePointerType());
+        LlvmType mainType = this.contextValue.functionTypeWithParams(int32, parameters);
+        this.mainFunctionValue = this.llvmModule.addFunction("main", mainType);
+
+        LlvmBasicBlock entry = this.mainFunctionValue.appendBlock("entry");
+        this.builderValue.positionAtEnd(entry);
+
+        this.callRuntime(this.runtimeDeclarationsValue.hyperAllocFlowInit(), this.emptyValues(), "");
+        LlvmType literalInitType = this.contextValue.functionType(this.contextValue.voidType());
+        LlvmFunction literalInit = this.llvmModule.addFunction("__emerald_static_literals_init", literalInitType);
+        literalInit.setLinkage(Llvm.internalLinkage());
+        this.builderValue.callFunction(literalInitType, literalInit, this.emptyValues(), "");
+        ArrayList<LlvmValue> processArguments = ArrayList();
+        processArguments.add(this.mainFunctionValue.parameter(0));
+        processArguments.add(this.mainFunctionValue.parameter(1));
+        this.callRuntime(this.runtimeDeclarationsValue.processSetArgs(), processArguments, "");
+
+        return LlvmFunction(this.mainFunctionValue.handle(), this.mainFunctionValue.context());
+    }
+
+    public Void hyperAllocFlowShutdown() {
+        this.callRuntime(this.runtimeDeclarationsValue.hyperAllocFlowShutdown(), this.emptyValues(), "");
+    }
+
+    public Void returnCode(Int code) {
+        this.hyperAllocFlowShutdown();
+        this.builderValue.returnValue(this.int32(code));
+    }
+
+    public Void returnMainValue(LlvmValue value) {
+        this.hyperAllocFlowShutdown();
+        this.builderValue.returnValue(this.builderValue.truncate(value, this.contextValue.int32Type(), "main_status"));
+    }
+
+    public Void returnMainVoid() {
+        this.hyperAllocFlowShutdown();
+        this.builderValue.returnVoid();
+    }
+
+    public LlvmValue int32(Int value) {
+        return Llvm.constInt(this.contextValue.int32Type(), value);
+    }
+
+    public LlvmValue int64(Int value) {
+        return LlvmValue(LlvmNative.constIntegerText(this.contextValue.int64Type().handle(), value.toString()));
+    }
+
+    public LlvmValue boolValue(Bool value) {
+        return Llvm.constBool(this.contextValue.boolType(), value);
+    }
+
+    public LlvmNativeVariable local(String name, LlvmType type) {
+        return LlvmNativeVariable(name, type, this.builderValue.entryAlloca(type, name));
+    }
+
+    public LlvmNativeVariable localInt32(String name) {
+        return this.local(name, this.contextValue.int32Type());
+    }
+
+    public LlvmNativeVariable localInt64(String name) {
+        return this.local(name, this.contextValue.int64Type());
+    }
+
+    public LlvmValue runtimeString(String value, String name) {
+        return this.runtimeStaticString(value, name);
+    }
+
+    public LlvmValue runtimeStaticString(String value, String name) {
+        return this.staticStringGlobal(value, name);
+    }
+
+    private LlvmValue staticStringGlobal(String text, String name) {
+        LlvmValue byteValue = LlvmValue(LlvmNative.constString(this.contextValue.handle(), text, true));
+        LlvmValue bytes = this.llvmModule.addGlobal(name + "_bytes", byteValue.type());
+        bytes.setInitializer(byteValue);
+        bytes.setGlobalConstant(true);
+        LlvmNative.valueSetLinkage(bytes.handle(), Llvm.privateLinkage());
+        ArrayList<LlvmValue> fields = ArrayList();
+        fields.add(this.int64(text.length()));
+        fields.add(LlvmValue(bytes.handle()));
+        LlvmValue constant = LlvmValue(LlvmNative.constStruct(this.contextValue.handle(), fields, false));
+        LlvmValue object = this.llvmModule.addGlobal(name, constant.type());
+        object.setInitializer(constant);
+        object.setGlobalConstant(true);
+        LlvmNative.valueSetLinkage(object.handle(), Llvm.privateLinkage());
+        this.staticLiteralItems.add(LlvmValue(object.handle()));
+        return LlvmValue(object.handle());
+    }
+
+    private Void finalizeStaticLiterals() {
+        if (this.staticLiteralsFinalized) { return; }
+        this.staticLiteralsFinalized = true;
+        LlvmFunction function = this.llvmModule.getFunction("__emerald_static_literals_init");
+        if (function.isNull()) { return; }
+        LlvmBuilder builder = this.contextValue.createBuilder();
+        builder.positionAtEnd(function.appendBlock("entry"));
+        if (this.staticLiteralItems.size() > 0) {
+            LlvmValue values = LlvmValue(LlvmNative.constArray(this.contextValue.opaquePointerType().handle(), this.staticLiteralItems));
+            LlvmValue table = this.llvmModule.addGlobal("__emerald_static_literals", values.type());
+            table.setInitializer(values);
+            table.setGlobalConstant(true);
+            LlvmNative.valueSetLinkage(table.handle(), Llvm.privateLinkage());
+            ArrayList<LlvmType> params = ArrayList();
+            params.add(this.contextValue.opaquePointerType());
+            params.add(this.contextValue.int64Type());
+            LlvmRuntimeFunction registration = this.runtimeDeclarationsValue.declare("hyperalloc_flow_register_static_strings", this.contextValue.voidType(), params);
+            ArrayList<LlvmValue> args = ArrayList();
+            args.add(LlvmValue(table.handle()));
+            args.add(this.int64(this.staticLiteralItems.size()));
+            builder.callFunction(registration.type(), registration.function(), args, "");
+        }
+        builder.returnVoid();
+        builder.dispose();
+    }
+
+    public LlvmValue listNew(String name) {
+        return this.callRuntime(this.runtimeDeclarationsValue.listNew(), this.emptyValues(), name);
+    }
+
+    public LlvmValue listNewTyped(Int mode, LlvmValue elementSize, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(this.int32(mode));
+        args.add(LlvmValue(elementSize.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.listNewTyped(), args, name);
+    }
+
+    // Returns the list length as i64; reads EmeraldList.length inline.
+    public LlvmValue listLength(LlvmValue list, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(list.handle()));
+        return this.callRuntime(this.listLengthHelper(), args, name);
+    }
+
+    public Void listAdd(LlvmValue list, LlvmValue value) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(list.handle()));
+        args.add(LlvmValue(value.handle()));
+        this.callRuntime(this.runtimeDeclarationsValue.listAdd(), args, "");
+    }
+
+    // Bounds-checked element read for primitive and reference lists. Inline
+    // (by-value) lists must use listGetInto instead.
+    public LlvmValue listGet(LlvmValue list, LlvmValue index, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(list.handle()));
+        args.add(LlvmValue(index.handle()));
+        return this.callRuntime(this.listGetHelper(), args, name);
+    }
+
+    public Void listGetInto(LlvmValue list, LlvmValue index, LlvmValue output) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(list.handle()));
+        args.add(LlvmValue(index.handle()));
+        args.add(LlvmValue(output.handle()));
+        this.callRuntime(this.runtimeDeclarationsValue.listGetInto(), args, "");
+    }
+
+    public Void listSet(LlvmValue list, LlvmValue index, LlvmValue value) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(list.handle()));
+        args.add(LlvmValue(index.handle()));
+        args.add(LlvmValue(value.handle()));
+        this.callRuntime(this.runtimeDeclarationsValue.listSet(), args, "");
+    }
+
+    // Bounds-checked store for primitive lists only: the slot holds a plain
+    // bit pattern, so no Flow ownership transfer is involved. Reference and
+    // inline lists keep using the runtime listSet.
+    public Void listSetPrimitive(LlvmValue list, LlvmValue index, LlvmValue value) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(list.handle()));
+        args.add(LlvmValue(index.handle()));
+        args.add(LlvmValue(value.handle()));
+        this.callRuntime(this.listSetPrimitiveHelper(), args, "");
+    }
+
+    public LlvmValue intToString(LlvmValue value, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+
+        return this.callRuntime(this.runtimeDeclarationsValue.intToString(), args, name);
+    }
+
+    public LlvmValue concatStrings(LlvmValue left, LlvmValue right, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(left.handle()));
+        args.add(LlvmValue(right.handle()));
+
+        return this.callRuntime(this.runtimeDeclarationsValue.stringConcat(), args, name);
+    }
+
+    public LlvmValue stringsEqual(LlvmValue left, LlvmValue right, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(left.handle()));
+        args.add(LlvmValue(right.handle()));
+
+        return this.callRuntime(this.runtimeDeclarationsValue.stringEquals(), args, name);
+    }
+
+    // Returns the string length as i64; reads EmeraldString.length inline.
+    public LlvmValue stringLength(LlvmValue value, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        return this.callRuntime(this.stringLengthHelper(), args, name);
+    }
+
+    public LlvmValue stringStartsWith(LlvmValue value, LlvmValue prefix, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        args.add(LlvmValue(prefix.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.stringStartsWith(), args, name);
+    }
+
+    public LlvmValue stringEndsWith(LlvmValue value, LlvmValue suffix, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        args.add(LlvmValue(suffix.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.stringEndsWith(), args, name);
+    }
+
+    public LlvmValue stringContains(LlvmValue value, LlvmValue needle, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        args.add(LlvmValue(needle.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.stringContains(), args, name);
+    }
+
+    public LlvmValue stringReplace(LlvmValue value, LlvmValue needle, LlvmValue replacement, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        args.add(LlvmValue(needle.handle()));
+        args.add(LlvmValue(replacement.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.stringReplace(), args, name);
+    }
+
+    public LlvmValue stringSubstring(LlvmValue value, LlvmValue start, LlvmValue end, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        args.add(LlvmValue(start.handle()));
+        args.add(LlvmValue(end.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.stringSubstring(), args, name);
+    }
+
+    public LlvmValue stringIndexOf(LlvmValue value, LlvmValue needle, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        args.add(LlvmValue(needle.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.stringIndexOf(), args, name);
+    }
+
+    public LlvmValue stringSplit(LlvmValue value, LlvmValue delimiter, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        args.add(LlvmValue(delimiter.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.stringSplit(), args, name);
+    }
+
+    public LlvmValue stringTrim(LlvmValue value, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.stringTrim(), args, name);
+    }
+
+    public LlvmValue stringToLower(LlvmValue value, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.stringToLower(), args, name);
+    }
+
+    public LlvmValue stringToUpper(LlvmValue value, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.stringToUpper(), args, name);
+    }
+
+    public LlvmValue stringToInt(LlvmValue value, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.stringToInt(), args, name);
+    }
+
+    public LlvmValue stringCharAt(LlvmValue value, LlvmValue index, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        args.add(LlvmValue(index.handle()));
+        return this.callRuntime(this.stringCharAtHelper(), args, name);
+    }
+
+    public LlvmValue charToString(LlvmValue value, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.charToString(), args, name);
+    }
+
+    public LlvmValue charIsDigit(LlvmValue value, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.charIsDigit(), args, name);
+    }
+
+    public LlvmValue charIsLetter(LlvmValue value, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.charIsLetter(), args, name);
+    }
+
+    public LlvmValue charIsWhitespace(LlvmValue value, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.charIsWhitespace(), args, name);
+    }
+
+    public Void listAddAt(LlvmValue list, LlvmValue index, LlvmValue value) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(list.handle()));
+        args.add(LlvmValue(index.handle()));
+        args.add(LlvmValue(value.handle()));
+        this.callRuntime(this.runtimeDeclarationsValue.listAddAt(), args, "");
+    }
+
+    public LlvmValue listRemove(LlvmValue list, LlvmValue value, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(list.handle()));
+        args.add(LlvmValue(value.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.listRemove(), args, name);
+    }
+
+    public LlvmValue listRemoveAt(LlvmValue list, LlvmValue index, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(list.handle()));
+        args.add(LlvmValue(index.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.listRemoveAt(), args, name);
+    }
+
+    public Void listRemoveAtInto(LlvmValue list, LlvmValue index, LlvmValue output) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(list.handle()));
+        args.add(LlvmValue(index.handle()));
+        args.add(LlvmValue(output.handle()));
+        this.callRuntime(this.runtimeDeclarationsValue.listRemoveAtInto(), args, "");
+    }
+
+    public LlvmValue listIndexOf(LlvmValue list, LlvmValue value, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(list.handle()));
+        args.add(LlvmValue(value.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.listIndexOf(), args, name);
+    }
+
+    public LlvmValue listIndexOfString(LlvmValue list, LlvmValue value, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(list.handle()));
+        args.add(LlvmValue(value.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.listIndexOfString(), args, name);
+    }
+
+    public LlvmValue listRemoveString(LlvmValue list, LlvmValue value, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(list.handle()));
+        args.add(LlvmValue(value.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.listRemoveString(), args, name);
+    }
+
+    public Void listClear(LlvmValue list) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(list.handle()));
+        this.callRuntime(this.runtimeDeclarationsValue.listClear(), args, "");
+    }
+
+    public Void print(LlvmValue text) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(text.handle()));
+        this.callRuntime(this.runtimeDeclarationsValue.print(), args, "");
+    }
+
+    public Void println(LlvmValue text) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(text.handle()));
+        this.callRuntime(this.runtimeDeclarationsValue.println(), args, "");
+    }
+
+    public Void panic(LlvmValue text) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(text.handle()));
+        this.callRuntime(this.runtimeDeclarationsValue.panic(), args, "");
+    }
+
+    public LlvmValue callRuntime(LlvmRuntimeFunction runtimeFunction, IList<LlvmValue> args, String name) {
+        ArrayList<LlvmValue> adapted = ArrayList();
+        Int index = 0;
+        while (index < args.size()) {
+            LlvmValue value = LlvmValue(args.get(index).handle());
+            adapted.add(this.adaptRuntimeValue(value, runtimeFunction.function().parameter(index).type(), name));
+            index = index + 1;
+        }
+        return this.builderValue.callFunction(runtimeFunction.type(), runtimeFunction.function(), adapted, name);
+    }
+
+    public Bool verify() {
+        this.finalizeStaticLiterals();
+        if (this.llvmModule.verify()) {
+            return true;
+        }
+
+        this.lastBackendMessage = this.llvmModule.verifyMessage();
+        return false;
+    }
+
+    public Bool writeIr(String path) {
+        this.finalizeStaticLiterals();
+        this.prepareParentDirectory(path);
+
+        if (this.llvmModule.writeIr(path)) {
+            return true;
+        }
+
+        this.lastBackendMessage = "Failed to write LLVM IR";
+        return false;
+    }
+
+    public Bool emitObject() {
+        if (!this.validateBuildOptimization()) { return false; }
+        if (this.buildLtoMode() != "off" || !this.profileGeneratePath().isEmpty() || !this.profileUsePath().isEmpty()) {
+            // Clang receives LLVM IR, not a precompiled machine-code object;
+            // this makes Runtime + Emerald Stdlib definitions visible to LTO.
+            if (this.profileGeneratePath().isEmpty() && this.profileUsePath().isEmpty()) {
+                this.runOptimizationPasses();
+            } else {
+                this.llvmModule.runPasses("verify");
+            }
+            String path = this.tempBaseValue + "/module.ll";
+            this.prepareParentDirectory(path);
+            if (!this.llvmModule.writeIr(path)) { this.lastBackendMessage = "Could not write LLVM IR for optimized build."; return false; }
+            ArrayList<String> extraArgs = this.targetExtraArgs();
+            this.addBuildOptimizationArgs(extraArgs, false);
+            if (!this.ccValue.isEmpty()) { extraArgs.add("--emerald-cc=" + this.ccValue); }
+            if (LlvmNative.compileIrObject(path, this.objectPath(), extraArgs)) { return true; }
+            this.lastBackendMessage = LlvmNative.runtimeLastCommand() + LlvmNative.runtimeLastOutput() + LlvmNative.runtimeLastError();
+            return false;
+        }
+        this.runOptimizationPasses();
+
+        if (this.llvmModule.emitObjectFileFor(this.targetTripleValue, this.objectPath())) {
+            return true;
+        }
+
+        this.lastBackendMessage = Llvm.lastError();
+        return false;
+    }
+
+    private Void runOptimizationPasses() {
+        String passes = Env.getOr("EMERALD_LLVM_PASSES", "default<O2>");
+
+        if (passes.isEmpty() || passes == "none") {
+            return;
+        }
+
+        this.llvmModule.runPasses(passes);
+    }
+
+    public Bool emitObjectOutput() {
+        if (!this.verify()) {
+            return false;
+        }
+
+        this.prepareParentDirectory(this.objectPath());
+        return this.emitObject();
+    }
+
+    public Bool emitAssemblyOutput() {
+        if (!this.verify()) {
+            return false;
+        }
+
+        this.prepareParentDirectory(this.assemblyPath());
+        this.runOptimizationPasses();
+
+        if (this.llvmModule.emitAssemblyFileFor(this.targetTripleValue, this.assemblyPath())) {
+            return true;
+        }
+
+        this.lastBackendMessage = Llvm.lastError();
+        return false;
+    }
+
+    public Bool prepareTempDirectory() {
+        this.prepareParentDirectory(this.tempBaseValue);
+
+        if (this.keepTempsValue) {
+            return true;
+        }
+
+        NativeDirectory.create(this.tempBaseValue);
+        return true;
+    }
+
+    public Bool cleanupTempDirectory() {
+        if (this.keepTempsValue) {
+            return true;
+        }
+
+        NativeFile.delete(this.objectPath());
+        NativeFile.delete(this.runtimeObjectPath());
+        NativeFile.delete(this.tempBaseValue + "/module.ll");
+        NativeDirectory.delete(this.tempBaseValue);
+        return true;
+    }
+
+    public Bool compileRuntime() {
+        ArrayList<String> extraArgs = this.targetExtraArgs();
+        this.addLlvmRuntimeCompileArgs(extraArgs);
+        this.addBuildOptimizationArgs(extraArgs, false);
+
+        if (!this.ccValue.isEmpty()) {
+            extraArgs.add("--emerald-cc=" + this.ccValue);
+        }
+
+        if (this.runtimeValue.compileObjectWith(this.runtimeObjectPath(), extraArgs)) {
+            return true;
+        }
+
+        this.lastBackendMessage = this.runtimeValue.lastCommand() + this.runtimeValue.lastOutput() + this.runtimeValue.lastError();
+        return false;
+    }
+
+    public Bool linkExecutable() {
+        this.prepareParentDirectory(this.executablePath());
+
+        ArrayList<String> objects = ArrayList();
+        objects.add(this.objectPath());
+        objects.add(this.runtimeObjectPath());
+
+        IList<String> libraryPaths = this.runtimeValue.libraryPaths();
+        IList<String> libraries = this.runtimeLibrariesForTarget();
+        ArrayList<String> extraArgs = this.targetExtraArgs();
+
+        if (!this.ccValue.isEmpty()) {
+            extraArgs.add("--emerald-cc=" + this.ccValue);
+        }
+
+        if (this.targetNameValue == "windows-x64") {
+            extraArgs.add("-lws2_32");
+            extraArgs.add("-luser32");
+            extraArgs.add("-lgdi32");
+            extraArgs.add("-lshell32");
+            extraArgs.add("-lole32");
+        }
+
+        if (this.targetNameValue == "native" || this.targetNameValue == "linux-x64" || this.targetNameValue == "linux-arm64") {
+            extraArgs.add("-ldl");
+            if (this.mathLibraryRequiredValue) { extraArgs.add("-lm"); }
+        }
+
+        this.addLlvmRuntimeLinkArgs(extraArgs);
+        this.addBuildOptimizationArgs(extraArgs, true);
+
+        if (this.linkerValue.linkExecutableWith(this.executablePath(), objects, libraryPaths, libraries, extraArgs)) {
+            return true;
+        }
+
+        this.lastBackendMessage = this.linkerValue.lastCommand() + this.linkerValue.lastOutput() + this.linkerValue.lastError();
+        return false;
+    }
+
+    public Bool buildExecutable() {
+        if (!this.verify()) {
+            return false;
+        }
+
+        if (!this.prepareTempDirectory()) {
+            return false;
+        }
+
+        if (!this.emitObject()) {
+            this.cleanupTempDirectory();
+            return false;
+        }
+
+        if (!this.compileRuntime()) {
+            this.cleanupTempDirectory();
+            return false;
+        }
+
+        if (!this.linkExecutable()) {
+            this.cleanupTempDirectory();
+            return false;
+        }
+
+        this.cleanupTempDirectory();
+        return true;
+    }
+
+
+    private String profileGeneratePath() { return Env.getOr("EMERALD_PGO_GENERATE", ""); }
+    private String profileUsePath() { return Env.getOr("EMERALD_PGO_USE", ""); }
+
+    private String buildCc() {
+        if (!this.ccValue.isEmpty()) { return this.ccValue; }
+        return Env.getOr("EMERALD_CC", Env.getOr("CC", "clang"));
+    }
+
+    private String buildLtoMode() {
+        String mode = Env.getOr("EMERALD_LTO", "auto");
+        if (mode == "auto") {
+            if (this.targetNameValue == "native" && this.targetTripleValue.contains("linux") && this.buildCc().contains("clang")) { return "thin"; }
+            return "off";
+        }
+        if (mode == "0" || mode.isEmpty()) { return "off"; }
+        if (mode == "1") { return "thin"; }
+        return mode;
+    }
+
+    private Bool validateBuildOptimization() {
+        String mode = this.buildLtoMode();
+        if (mode != "off" && mode != "thin" && mode != "full") {
+            this.lastBackendMessage = "EMERALD_LTO must be auto, off, thin or full";
+            return false;
+        }
+        if (!this.profileGeneratePath().isEmpty() && !this.profileUsePath().isEmpty()) {
+            this.lastBackendMessage = "Choose either EMERALD_PGO_GENERATE or EMERALD_PGO_USE";
+            return false;
+        }
+        if ((mode != "off" || !this.profileGeneratePath().isEmpty() || !this.profileUsePath().isEmpty()) && !this.buildCc().contains("clang")) {
+            this.lastBackendMessage = "Emerald LTO/PGO requires Clang; EMERALD_LTO=off preserves other C compilers";
+            return false;
+        }
+        return true;
+    }
+
+    private Void addBuildOptimizationArgs(ArrayList<String> args, Bool linking) {
+        String mode = this.buildLtoMode();
+        if (mode != "off") {
+            args.add("-flto=" + mode);
+            String linker = Env.getOr("EMERALD_LTO_LINKER", "");
+            if (linking && !linker.isEmpty()) { args.add("-fuse-ld=" + linker); }
+        }
+        String generate = this.profileGeneratePath();
+        String profile = this.profileUsePath();
+        if (!generate.isEmpty()) { args.add("-fprofile-generate=" + generate); }
+        if (!profile.isEmpty()) { args.add("-fprofile-use=" + profile); }
+    }
+
+    private Void addLlvmRuntimeCompileArgs(ArrayList<String> extraArgs) {
+        if (!this.llvmBridgeValue) {
+            return;
+        }
+
+        extraArgs.add("-DEMERALD_RUNTIME_ENABLE_LLVM=1");
+    }
+
+    private Void addLlvmRuntimeLinkArgs(ArrayList<String> extraArgs) {
+        if (!this.llvmBridgeValue) {
+            return;
+        }
+
+        String libraryPath = Env.getOr("EMERALD_LLVM_LIB_DIR", "");
+
+        if (!libraryPath.isEmpty()) {
+            extraArgs.add("-L" + libraryPath);
+        }
+
+        String library = Env.getOr("EMERALD_LLVM_LIBRARY", "LLVM");
+        extraArgs.add("-l" + library);
+    }
+
+    private ArrayList<String> targetExtraArgs() {
+        ArrayList<String> args = ArrayList();
+        args.add("--emerald-target=" + this.targetNameValue);
+
+        if (this.shouldPassTargetToCc()) {
+            args.add("--target=" + this.targetTripleValue);
+        }
+
+        if (!this.sysrootValue.isEmpty()) {
+            args.add("--sysroot=" + this.sysrootValue);
+        }
+
+        return args;
+    }
+
+    private Bool shouldPassTargetToCc() {
+        if (this.targetNameValue == "native") {
+            return false;
+        }
+
+        if (this.ccValue.isEmpty()) {
+            return true;
+        }
+
+        if (this.ccValue.contains("clang")) {
+            return true;
+        }
+
+        if (this.ccValue.contains("gcc")) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private IList<String> runtimeLibrariesForTarget() {
+        if (this.targetNameValue == "windows-x64") {
+            ArrayList<String> result = ArrayList();
+            return result;
+        }
+
+        return this.runtimeValue.libraries();
+    }
+
+    public Void dispose() {
+        this.builderValue.dispose();
+        this.llvmModule.dispose();
+        this.contextValue.dispose();
+    }
+
+    private ArrayList<LlvmValue> emptyValues() {
+        return ArrayList();
+    }
+    public LlvmValue floatLiteral(String text) {
+        return LlvmValue(LlvmNative.constFloatText(this.contextValue.doubleType().handle(), text));
+    }
+
+    public LlvmValue floatToString(LlvmValue value, String name) {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.contextValue.doubleType());
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        return this.callRuntime(this.runtimeDeclarationsValue.declare("emerald_float64_to_string", this.contextValue.opaquePointerType(), params), args, name);
+    }
+
+    public LlvmValue checkedInteger(String operation, LlvmValue left, LlvmValue right, String name) {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.contextValue.int64Type());
+        if (operation != "neg") { params.add(this.contextValue.int64Type()); }
+        LlvmType type = this.contextValue.functionTypeWithParams(this.contextValue.int64Type(), params);
+        String helperName = "__emerald_checked_" + operation;
+        LlvmFunction helper = this.llvmModule.getFunction(helperName);
+        if (helper.isNull()) {
+            LlvmFunction created = this.llvmModule.addFunction(helperName, type);
+            created.setLinkage(Llvm.internalLinkage());
+            this.defineCheckedInteger(created, operation, params);
+        }
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(left.handle()));
+        if (operation != "neg") { args.add(LlvmValue(right.handle())); }
+        return this.builderValue.callFunction(type, this.llvmModule.getFunction(helperName), args, name);
+    }
+
+    // Small internal helpers let LLVM inline and prove arithmetic checks while
+    // keeping exact Int semantics and the existing diagnostic on the cold path.
+    private Void defineCheckedInteger(LlvmFunction function, String operation, ArrayList<LlvmType> params) {
+        LlvmBuilder builder = this.contextValue.createBuilder();
+        LlvmBasicBlock entry = function.appendBlock("entry");
+        LlvmBasicBlock failed = function.appendBlock("failed");
+        LlvmBasicBlock success = function.appendBlock("success");
+        builder.positionAtEnd(entry);
+        LlvmValue left = function.parameter(0);
+        Int rightHandle = this.int64(0).handle();
+        if (operation != "neg") { rightHandle = function.parameter(1).handle(); }
+        LlvmValue right = LlvmValue(rightHandle);
+        Int resultHandle = this.int64(0).handle();
+        if (operation == "add" || operation == "sub" || operation == "mul" || operation == "neg") {
+            ArrayList<LlvmType> pair = ArrayList();
+            pair.add(this.contextValue.int64Type());
+            pair.add(this.contextValue.boolType());
+            LlvmType returnType = this.contextValue.structType(pair, false);
+            ArrayList<LlvmType> inputTypes = ArrayList();
+            inputTypes.add(this.contextValue.int64Type());
+            inputTypes.add(this.contextValue.int64Type());
+            String intrinsicName = "llvm.s" + operation + ".with.overflow.i64";
+            if (operation == "neg") { intrinsicName = "llvm.ssub.with.overflow.i64"; }
+            LlvmRuntimeFunction intrinsic = this.runtimeDeclarationsValue.declare(intrinsicName, returnType, inputTypes);
+            ArrayList<LlvmValue> inputs = ArrayList();
+            if (operation == "neg") {
+                inputs.add(this.int64(0));
+                inputs.add(LlvmValue(left.handle()));
+            } else {
+                inputs.add(LlvmValue(left.handle()));
+                inputs.add(LlvmValue(right.handle()));
+            }
+            LlvmValue checked = builder.callFunction(intrinsic.type(), intrinsic.function(), inputs, "checked");
+            resultHandle = builder.extractValue(checked, 0, "value").handle();
+            LlvmValue overflow = builder.extractValue(checked, 1, "overflow");
+            builder.conditionalBranch(overflow, failed, success);
+        } else {
+            LlvmValue zero = builder.intEqual(right, this.int64(0), "zero");
+            LlvmValue minimum = builder.intEqual(left, LlvmValue(LlvmNative.constIntegerText(this.contextValue.int64Type().handle(), "-9223372036854775808")), "minimum");
+            LlvmValue minusOne = builder.intEqual(right, this.int64(-1), "minus_one");
+            LlvmValue exceptional = builder.bitAnd(minimum, minusOne, "exceptional");
+            if (operation == "div") {
+                builder.conditionalBranch(builder.bitOr(zero, exceptional, "invalid"), failed, success);
+            } else {
+                // MIN % -1 is defined as zero; never emit LLVM srem on that
+                // pair, because LLVM treats it as poison just like sdiv.
+                LlvmBasicBlock nonZero = function.appendBlock("non_zero");
+                LlvmBasicBlock remainderZero = function.appendBlock("remainder_zero");
+                builder.conditionalBranch(zero, failed, nonZero);
+                builder.positionAtEnd(nonZero);
+                builder.conditionalBranch(exceptional, remainderZero, success);
+                builder.positionAtEnd(remainderZero);
+                builder.returnValue(this.int64(0));
+            }
+        }
+        builder.positionAtEnd(failed);
+        LlvmRuntimeFunction fallback = this.runtimeDeclarationsValue.declare("emerald_int64_" + operation, this.contextValue.int64Type(), params);
+        ArrayList<LlvmValue> failedArgs = ArrayList();
+        failedArgs.add(LlvmValue(left.handle()));
+        if (operation != "neg") { failedArgs.add(LlvmValue(right.handle())); }
+        builder.callFunction(fallback.type(), fallback.function(), failedArgs, "diagnostic");
+        builder.unreachable();
+        builder.positionAtEnd(success);
+        if (operation == "div") { resultHandle = builder.signedDiv(left, right, "value").handle(); }
+        if (operation == "rem") { resultHandle = builder.signedRem(left, right, "value").handle(); }
+        builder.returnValue(LlvmValue(resultHandle));
+        builder.dispose();
+    }
+
+    // Payload layouts shared with runtime/emerald_runtime.h. Only payload
+    // fields are read here; the Flow block header is never touched.
+    private LlvmType listStructType() {
+        if (this.listStructHandle == 0) {
+            LlvmType type = this.contextValue.namedStructType("EmeraldList");
+            ArrayList<LlvmType> fields = ArrayList();
+            fields.add(this.contextValue.int64Type());
+            fields.add(this.contextValue.int64Type());
+            fields.add(this.contextValue.opaquePointerType());
+            fields.add(this.contextValue.opaquePointerType());
+            fields.add(this.contextValue.int64Type());
+            fields.add(this.contextValue.int32Type());
+            type.setStructBody(fields, false);
+            this.listStructHandle = type.handle();
+        }
+
+        return LlvmType(this.listStructHandle);
+    }
+
+    private LlvmType stringStructType() {
+        if (this.stringStructHandle == 0) {
+            LlvmType type = this.contextValue.namedStructType("EmeraldString");
+            ArrayList<LlvmType> fields = ArrayList();
+            fields.add(this.contextValue.int64Type());
+            fields.add(this.contextValue.opaquePointerType());
+            type.setStructBody(fields, false);
+            this.stringStructHandle = type.handle();
+        }
+
+        return LlvmType(this.stringStructHandle);
+    }
+
+    private LlvmValue structFieldPointer(LlvmBuilder builder, LlvmType structType, LlvmValue pointer, Int field, String name) {
+        ArrayList<LlvmValue> indices = ArrayList();
+        indices.add(this.int32(0));
+        indices.add(this.int32(field));
+        return builder.inboundsGep(structType, pointer, indices, name);
+    }
+
+    private LlvmRuntimeFunction helperFunction(String name, LlvmType returnType, ArrayList<LlvmType> params) {
+        LlvmType type = this.contextValue.functionTypeWithParams(returnType, params);
+        return LlvmRuntimeFunction(type, this.llvmModule.getFunction(name));
+    }
+
+    private LlvmFunction createHelper(String name, LlvmType returnType, ArrayList<LlvmType> params) {
+        LlvmType type = this.contextValue.functionTypeWithParams(returnType, params);
+        LlvmFunction created = this.llvmModule.addFunction(name, type);
+        created.setLinkage(Llvm.internalLinkage());
+        return created;
+    }
+
+    private ArrayList<LlvmType> pointerParams(Int extraInt64, Bool trailingPointer) {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.contextValue.opaquePointerType());
+        Int index = 0;
+        while (index < extraInt64) {
+            params.add(this.contextValue.int64Type());
+            index = index + 1;
+        }
+        if (trailingPointer) { params.add(this.contextValue.opaquePointerType()); }
+        return params;
+    }
+
+    // Shared by lists and strings: both payloads start with a u64 length, and
+    // a null receiver behaves as empty exactly like the runtime functions.
+    private LlvmRuntimeFunction lengthHelper(String helperName, LlvmType structType) {
+        ArrayList<LlvmType> params = this.pointerParams(0, false);
+        if (this.llvmModule.getFunction(helperName).isNull()) {
+            LlvmFunction function = this.createHelper(helperName, this.contextValue.int64Type(), params);
+            LlvmBuilder builder = this.contextValue.createBuilder();
+            LlvmBasicBlock entry = function.appendBlock("entry");
+            LlvmBasicBlock empty = function.appendBlock("empty");
+            LlvmBasicBlock present = function.appendBlock("present");
+            builder.positionAtEnd(entry);
+            LlvmValue isNull = builder.intEqual(function.parameter(0), Llvm.constPointerNull(this.contextValue.opaquePointerType()), "is_null");
+            builder.conditionalBranch(isNull, empty, present);
+            builder.positionAtEnd(empty);
+            builder.returnValue(this.int64(0));
+            builder.positionAtEnd(present);
+            LlvmValue lengthPointer = this.structFieldPointer(builder, structType, function.parameter(0), 0, "length_ptr");
+            builder.returnValue(builder.load(this.contextValue.int64Type(), lengthPointer, "length"));
+            builder.dispose();
+        }
+        return this.helperFunction(helperName, this.contextValue.int64Type(), params);
+    }
+
+    private LlvmRuntimeFunction listLengthHelper() {
+        return this.lengthHelper("__emerald_list_length", this.listStructType());
+    }
+
+    private LlvmRuntimeFunction stringLengthHelper() {
+        return this.lengthHelper("__emerald_string_length", this.stringStructType());
+    }
+
+    // Out-of-range list indexes panic with the index and length; this is the
+    // only (cold) path that reaches the runtime from the inline accessors.
+    private LlvmRuntimeFunction listIndexFailHelper() {
+        String helperName = "__emerald_list_index_fail";
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.contextValue.int64Type());
+        params.add(this.contextValue.int64Type());
+        if (this.llvmModule.getFunction(helperName).isNull()) {
+            LlvmFunction function = this.createHelper(helperName, this.contextValue.voidType(), params);
+            LlvmBuilder builder = this.contextValue.createBuilder();
+            builder.positionAtEnd(function.appendBlock("entry"));
+            LlvmValue prefix = this.helperStaticString(builder, "List index ", "index_prefix");
+            LlvmValue middle = this.helperStaticString(builder, " is out of bounds for length ", "index_middle");
+            LlvmValue indexText = this.helperCall(builder, this.runtimeDeclarationsValue.intToString(), function.parameter(0), "index_text");
+            LlvmValue lengthText = this.helperCall(builder, this.runtimeDeclarationsValue.intToString(), function.parameter(1), "length_text");
+            LlvmValue message = this.helperConcat(builder, this.helperConcat(builder, this.helperConcat(builder, prefix, indexText, "message_a"), middle, "message_b"), lengthText, "message");
+            this.helperCall(builder, this.runtimeDeclarationsValue.panic(), message, "");
+            builder.unreachable();
+            builder.dispose();
+        }
+        return this.helperFunction(helperName, this.contextValue.voidType(), params);
+    }
+
+    private LlvmValue helperStaticString(LlvmBuilder builder, String text, String name) {
+        return this.staticStringGlobal(text, name);
+    }
+
+    private LlvmValue helperCall(LlvmBuilder builder, LlvmRuntimeFunction target, LlvmValue argument, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(argument.handle()));
+        return builder.callFunction(target.type(), target.function(), args, name);
+    }
+
+    private LlvmValue helperConcat(LlvmBuilder builder, LlvmValue left, LlvmValue right, String name) {
+        LlvmRuntimeFunction concat = this.runtimeDeclarationsValue.stringConcat();
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(left.handle()));
+        args.add(LlvmValue(right.handle()));
+        return builder.callFunction(concat.type(), concat.function(), args, name);
+    }
+
+    // Emits the shared prologue of the indexed list helpers: computes the
+    // length, panics through the cold helper when the index is outside
+    // [0, length) and leaves the builder in the in-bounds block with the slot
+    // address of the requested element.
+    private LlvmValue checkedListSlot(LlvmBuilder builder, LlvmFunction function, LlvmValue list, LlvmValue index) {
+        LlvmBasicBlock inBounds = function.appendBlock("in_bounds");
+        LlvmBasicBlock outside = function.appendBlock("out_of_bounds");
+        LlvmRuntimeFunction length = this.listLengthHelper();
+        LlvmValue size = this.helperCall(builder, length, list, "length");
+        LlvmValue valid = builder.intUnsignedLessThan(index, size, "valid");
+        builder.conditionalBranch(valid, inBounds, outside);
+        builder.positionAtEnd(outside);
+        LlvmRuntimeFunction fail = this.listIndexFailHelper();
+        ArrayList<LlvmValue> failArgs = ArrayList();
+        failArgs.add(LlvmValue(index.handle()));
+        failArgs.add(LlvmValue(size.handle()));
+        builder.callFunction(fail.type(), fail.function(), failArgs, "");
+        builder.unreachable();
+        builder.positionAtEnd(inBounds);
+        LlvmValue itemsPointer = this.structFieldPointer(builder, this.listStructType(), list, 2, "items_ptr");
+        LlvmValue items = builder.load(this.contextValue.opaquePointerType(), itemsPointer, "items");
+        ArrayList<LlvmValue> slotIndex = ArrayList();
+        slotIndex.add(LlvmValue(index.handle()));
+        return builder.inboundsGep(this.contextValue.opaquePointerType(), items, slotIndex, "slot");
+    }
+
+    private LlvmRuntimeFunction listGetHelper() {
+        String helperName = "__emerald_list_get";
+        ArrayList<LlvmType> params = this.pointerParams(1, false);
+        if (this.llvmModule.getFunction(helperName).isNull()) {
+            LlvmFunction function = this.createHelper(helperName, this.contextValue.opaquePointerType(), params);
+            LlvmBuilder builder = this.contextValue.createBuilder();
+            builder.positionAtEnd(function.appendBlock("entry"));
+            LlvmValue slot = this.checkedListSlot(builder, function, function.parameter(0), function.parameter(1));
+            builder.returnValue(builder.load(this.contextValue.opaquePointerType(), slot, "value"));
+            builder.dispose();
+        }
+        return this.helperFunction(helperName, this.contextValue.opaquePointerType(), params);
+    }
+
+    private LlvmRuntimeFunction listSetPrimitiveHelper() {
+        String helperName = "__emerald_list_set_primitive";
+        ArrayList<LlvmType> params = this.pointerParams(1, true);
+        if (this.llvmModule.getFunction(helperName).isNull()) {
+            LlvmFunction function = this.createHelper(helperName, this.contextValue.voidType(), params);
+            LlvmBuilder builder = this.contextValue.createBuilder();
+            builder.positionAtEnd(function.appendBlock("entry"));
+            LlvmValue slot = this.checkedListSlot(builder, function, function.parameter(0), function.parameter(1));
+            builder.store(function.parameter(2), slot);
+            builder.returnVoid();
+            builder.dispose();
+        }
+        return this.helperFunction(helperName, this.contextValue.voidType(), params);
+    }
+
+    // Same contract as emerald_string_char_at: an index outside the string
+    // (or a null string) yields the NUL character.
+    private LlvmRuntimeFunction stringCharAtHelper() {
+        String helperName = "__emerald_string_char_at";
+        ArrayList<LlvmType> params = this.pointerParams(1, false);
+        if (this.llvmModule.getFunction(helperName).isNull()) {
+            LlvmFunction function = this.createHelper(helperName, this.contextValue.int32Type(), params);
+            LlvmBuilder builder = this.contextValue.createBuilder();
+            LlvmBasicBlock entry = function.appendBlock("entry");
+            LlvmBasicBlock inBounds = function.appendBlock("in_bounds");
+            LlvmBasicBlock outside = function.appendBlock("out_of_bounds");
+            builder.positionAtEnd(entry);
+            LlvmValue size = this.helperCall(builder, this.stringLengthHelper(), function.parameter(0), "length");
+            builder.conditionalBranch(builder.intUnsignedLessThan(function.parameter(1), size, "valid"), inBounds, outside);
+            builder.positionAtEnd(outside);
+            builder.returnValue(this.int32(0));
+            builder.positionAtEnd(inBounds);
+            LlvmValue bytesPointer = this.structFieldPointer(builder, this.stringStructType(), function.parameter(0), 1, "bytes_ptr");
+            LlvmValue bytes = builder.load(this.contextValue.opaquePointerType(), bytesPointer, "bytes");
+            ArrayList<LlvmValue> byteIndex = ArrayList();
+            byteIndex.add(function.parameter(1));
+            LlvmValue bytePointer = builder.inboundsGep(this.contextValue.int8Type(), bytes, byteIndex, "byte_ptr");
+            LlvmValue byte = builder.load(this.contextValue.int8Type(), bytePointer, "byte");
+            builder.returnValue(builder.zeroExtend(byte, this.contextValue.int32Type(), "char"));
+            builder.dispose();
+        }
+        return this.helperFunction(helperName, this.contextValue.int32Type(), params);
+    }
+
+    // Int -> native 32-bit argument narrowing; only out-of-range values reach
+    // the runtime, which reports the existing numeric error.
+    private LlvmRuntimeFunction narrowHelper() {
+        String helperName = "__emerald_int64_to_int32";
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.contextValue.int64Type());
+        if (this.llvmModule.getFunction(helperName).isNull()) {
+            LlvmFunction function = this.createHelper(helperName, this.contextValue.int32Type(), params);
+            LlvmBuilder builder = this.contextValue.createBuilder();
+            LlvmBasicBlock entry = function.appendBlock("entry");
+            LlvmBasicBlock fits = function.appendBlock("fits");
+            LlvmBasicBlock failed = function.appendBlock("failed");
+            builder.positionAtEnd(entry);
+            LlvmValue narrow = builder.truncate(function.parameter(0), this.contextValue.int32Type(), "narrow");
+            LlvmValue wide = builder.signExtend(narrow, this.contextValue.int64Type(), "wide");
+            builder.conditionalBranch(builder.intEqual(wide, function.parameter(0), "exact"), fits, failed);
+            builder.positionAtEnd(fits);
+            builder.returnValue(narrow);
+            builder.positionAtEnd(failed);
+            LlvmRuntimeFunction checked = this.runtimeDeclarationsValue.declare("emerald_int64_to_int32_checked", this.contextValue.int32Type(), params);
+            builder.returnValue(this.helperCall(builder, checked, function.parameter(0), "diagnostic"));
+            builder.dispose();
+        }
+        return this.helperFunction(helperName, this.contextValue.int32Type(), params);
+    }
+
+    public Void requireMathLibrary() { this.mathLibraryRequiredValue = true; }
+
+    public LlvmValue floatOperation(Int operation, LlvmValue left, LlvmValue right, String name) {
+        if (operation == 4) { this.requireMathLibrary(); }
+        return LlvmValue(LlvmNative.buildFloatOperation(this.builderValue.handle(), left.handle(), right.handle(), operation, name));
+    }
+
+    public LlvmValue asFloat(LlvmValue value, String name) {
+        if (value.type().toIr() == "double") { return value; }
+        return this.floatOperation(11, value, LlvmValue(this.contextValue.doubleType().handle()), name);
+    }
+
+    private LlvmValue adaptRuntimeValue(LlvmValue value, LlvmType expectedType, String name) {
+        String actual = value.type().toIr();
+        String expected = expectedType.toIr();
+        if (actual == "i64" && expected == "i32") {
+            LlvmRuntimeFunction cast = this.narrowHelper();
+            ArrayList<LlvmValue> castArgs = ArrayList();
+            castArgs.add(LlvmValue(value.handle()));
+            return this.builderValue.callFunction(cast.type(), cast.function(), castArgs, name + "_narrow");
+        }
+        if (actual == "i32" && expected == "i64") {
+            return this.builderValue.signExtend(value, this.contextValue.int64Type(), name + "_wide");
+        }
+        return LlvmValue(value.handle());
+    }
+
+}

@@ -1,0 +1,21 @@
+public class HyperAllocFlowV1PoolListOwner {
+    public List<String> values;
+
+    public HyperAllocFlowV1PoolListOwner(Int value) {
+        this.values = List();
+        this.values.add(value.toString());
+    }
+}
+
+main() {
+    Int index = 0;
+
+    while (index < 2) {
+        HyperAllocFlowV1PoolListOwner owner = HyperAllocFlowV1PoolListOwner(index + 41);
+        index = index + 1;
+
+        if (index == 2) {
+            println(owner.values.get(0));
+        }
+    }
+}

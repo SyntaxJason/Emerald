@@ -1,0 +1,325 @@
+namespace emerald::compiler::hyperallocflow::analysis::inline;
+
+use emerald::compiler::debug::DebugLog;
+use emerald::compiler::hyperallocflow::analysis::fold::HyperAllocFlowFoldAnalyzer;
+use emerald::compiler::hyperallocflow::analysis::support::HyperAllocFlowProgramCatalog;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class HyperAllocFlowInlineAnalyzer {
+    private HyperAllocFlowProgramCatalog catalog;
+    private HyperAllocFlowFoldAnalyzer folds;
+    private HyperAllocFlowInlineBoundaryAnalyzer boundaries;
+    private String activeType;
+    private Int civCounter;
+    private Int saivCounter;
+
+    public HyperAllocFlowInlineAnalyzer(HyperAllocFlowProgramCatalog programCatalog, HyperAllocFlowFoldAnalyzer foldAnalyzer) {
+        this.catalog = programCatalog;
+        this.folds = foldAnalyzer;
+        this.boundaries = HyperAllocFlowInlineBoundaryAnalyzer(programCatalog);
+        this.activeType = "";
+        this.civCounter = 0;
+        this.saivCounter = 0;
+    }
+
+    public Bool canInlineContainerResultVariable(Statement statement, Int startIndex, List<Statement> statements, Expression expression, SyntaxProgram program) {
+        if (expression.kind() != "methodcall" || (expression.text() != "get" && expression.text() != "removeAt") || !this.isInlineType(statement.typeName(), program)) {
+            return false;
+        }
+
+        List<String> aliases = List();
+        aliases.add(statement.name());
+        this.activeType = statement.typeName();
+        Bool allowed = this.statementsAllowInlineValue(startIndex, statements, aliases, statement.typeName(), program, true);
+        this.activeType = "";
+        return allowed;
+    }
+
+    public Bool canInlineReturnedVariable(Statement statement, Int startIndex, List<Statement> statements, Expression expression, SyntaxProgram program) {
+        if (!this.boundaries.canInlineReturnCall(expression, statement.typeName(), program)) {
+            return false;
+        }
+
+        List<String> aliases = List();
+        aliases.add(statement.name());
+        this.activeType = statement.typeName();
+        Bool allowed = this.statementsAllowInlineValue(startIndex, statements, aliases, statement.typeName(), program, true);
+        this.activeType = "";
+        return allowed;
+    }
+
+    public Bool isInlineType(String typeName, SyntaxProgram program) {
+        return this.boundaries.isInlineType(typeName, program);
+    }
+
+    public Bool isInlineReturnMethod(MethodDeclaration method, SyntaxProgram program) {
+        return this.boundaries.isInlineReturnMethod(method, program);
+    }
+
+    public Bool isInlineReturnCall(Expression expression, String expectedType, SyntaxProgram program) {
+        return this.boundaries.canInlineReturnCall(expression, expectedType, program);
+    }
+
+    public String inlineReturnType(Expression expression, SyntaxProgram program) {
+        MethodDeclaration method = this.boundaries.staticMethod(expression, program);
+
+        if (!this.boundaries.isInlineReturnMethod(method, program)) {
+            return "";
+        }
+
+        return method.returnTypeName();
+    }
+
+    public Bool canInlineVariable(Statement statement, Int startIndex, List<Statement> statements, Expression expression, SyntaxProgram program) {
+        this.civCounter = this.civCounter + 1;
+
+        if (this.civCounter % 2000000 == 0) {
+            DebugLog.flow("canInlineVariable calls=" + this.civCounter.toString());
+        }
+
+        ClassDeclaration declaration = this.catalog.findClass(expression.text(), program);
+
+        if (!this.isInlineDataClass(declaration, expression, program)) {
+            return false;
+        }
+
+        List<String> aliases = List();
+        aliases.add(statement.name());
+        this.activeType = statement.typeName();
+        Bool allowed = this.statementsAllowInlineValue(startIndex, statements, aliases, statement.typeName(), program, true);
+        this.activeType = "";
+        return allowed;
+    }
+
+    private Bool isInlineDataClass(ClassDeclaration declaration, Expression expression, SyntaxProgram program) {
+        if (!this.boundaries.isInlineDeclaration(declaration, program) || declaration.fields().length() != expression.argumentIndexes().length()) {
+            return false;
+        }
+
+        MethodDeclaration constructor = this.catalog.findConstructor(expression, program);
+        return this.folds.constructorIsFoldable(constructor, declaration, program);
+    }
+
+    private Bool statementsAllowInlineValue(Int startIndex, List<Statement> statements, List<String> aliases, String typeName, SyntaxProgram program, Bool copiesAllowed) {
+        this.saivCounter = this.saivCounter + 1;
+
+        if (this.saivCounter % 2000000 == 0) {
+            DebugLog.flow("statementsAllowInlineValue calls=" + this.saivCounter.toString());
+        }
+
+        Int index = startIndex;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isVariable()) {
+                if (aliases.contains(statement.name())) {
+                    return false;
+                }
+
+                Expression initializer = program.expression(statement.expressionIndex());
+
+                if (copiesAllowed && initializer.kind() == "name" && aliases.contains(initializer.text())) {
+                    if (statement.typeName() != typeName) {
+                        return false;
+                    }
+
+                    aliases.add(statement.name());
+                } else if (!this.expressionAllowsInlineReads(statement.expressionIndex(), aliases, program)) {
+                    return false;
+                }
+            } else if (statement.isAssign()) {
+                if (aliases.contains(statement.name()) || !this.expressionAllowsInlineReads(statement.expressionIndex(), aliases, program)) {
+                    return false;
+                }
+            } else if (statement.isFieldAssign()) {
+                if (this.expressionContainsAlias(statement.targetIndex(), aliases, program)) {
+                    return false;
+                }
+
+                if (!this.expressionAllowsInlineReads(statement.expressionIndex(), aliases, program)) {
+                    return false;
+                }
+            } else if (!this.expressionAllowsInlineReads(statement.expressionIndex(), aliases, program)) {
+                return false;
+            }
+
+            List<String> bodyAliases = List();
+            List<String> elseAliases = List();
+            this.copyAliasesInto(aliases, bodyAliases);
+            this.copyAliasesInto(aliases, elseAliases);
+
+            if (!this.statementsAllowInlineValue(0, statement.bodyStatements(), bodyAliases, typeName, program, false)) {
+                return false;
+            }
+
+            if (!this.statementsAllowInlineValue(0, statement.elseStatements(), elseAliases, typeName, program, false)) {
+                return false;
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+
+    private Bool expressionAllowsInlineReads(Int expressionIndex, List<String> aliases, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return true;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "name") {
+            return !aliases.contains(expression.text());
+        }
+
+        if (expression.kind() == "field") {
+            Expression receiver = program.expression(expression.leftIndex());
+
+            if (receiver.kind() == "name" && aliases.contains(receiver.text())) {
+                return true;
+            }
+        }
+
+        if (expression.kind() == "methodcall" && this.containerCallAllowsInlineAlias(expression, aliases, program)) {
+            return true;
+        }
+
+        if (expression.kind() == "methodcall" && this.receiverIsInlineObject(expression.leftIndex(), aliases, program)) {
+            Expression receiver = program.expression(expression.leftIndex());
+
+            if (!this.boundaries.canInlineReceiverCall(this.activeType, expression.text(), expression.argumentIndexes().length(), program)) {
+                return false;
+            }
+
+            Int argumentIndex = 0;
+
+            while (argumentIndex < expression.argumentIndexes().length()) {
+                if (!this.expressionAllowsInlineReads(expression.argumentIndexes().get(argumentIndex), aliases, program)) {
+                    return false;
+                }
+
+                argumentIndex = argumentIndex + 1;
+            }
+
+            return true;
+        }
+
+        if (expression.kind() == "methodcall" && this.boundaries.staticCallAcceptsInlineAlias(expression, aliases, this.activeType, program)) {
+            Int argumentIndex = 0;
+
+            while (argumentIndex < expression.argumentIndexes().length()) {
+                Expression argument = program.expression(expression.argumentIndexes().get(argumentIndex));
+
+                if (!(argument.kind() == "name" && aliases.contains(argument.text())) && !this.expressionAllowsInlineReads(expression.argumentIndexes().get(argumentIndex), aliases, program)) {
+                    return false;
+                }
+
+                argumentIndex = argumentIndex + 1;
+            }
+
+            return true;
+        }
+
+        if (!this.expressionAllowsInlineReads(expression.leftIndex(), aliases, program)) {
+            return false;
+        }
+
+        if (!this.expressionAllowsInlineReads(expression.rightIndex(), aliases, program)) {
+            return false;
+        }
+
+        Int index = 0;
+
+        while (index < expression.argumentIndexes().length()) {
+            if (!this.expressionAllowsInlineReads(expression.argumentIndexes().get(index), aliases, program)) {
+                return false;
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+
+    private Bool containerCallAllowsInlineAlias(Expression expression, List<String> aliases, SyntaxProgram program) {
+        Int valueIndex = -1;
+
+        if (expression.text() == "add" || expression.text() == "contains" || expression.text() == "indexOf" || expression.text() == "remove") {
+            valueIndex = 0;
+        } else if (expression.text() == "addAt" || expression.text() == "set") {
+            valueIndex = 1;
+        }
+
+        if (valueIndex < 0 || valueIndex >= expression.argumentIndexes().length()) {
+            return false;
+        }
+
+        Expression value = program.expression(expression.argumentIndexes().get(valueIndex));
+        if (value.kind() != "name" || !aliases.contains(value.text())) {
+            return false;
+        }
+
+        Int index = 0;
+        while (index < expression.argumentIndexes().length()) {
+            if (index != valueIndex && !this.expressionAllowsInlineReads(expression.argumentIndexes().get(index), aliases, program)) {
+                return false;
+            }
+            index = index + 1;
+        }
+
+        return this.expressionAllowsInlineReads(expression.leftIndex(), aliases, program);
+    }
+
+    private Bool receiverIsInlineObject(Int expressionIndex, List<String> aliases, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression receiver = program.expression(expressionIndex);
+        return receiver.kind() == "name" && aliases.contains(receiver.text());
+    }
+
+    private Bool expressionContainsAlias(Int expressionIndex, List<String> aliases, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "name" && aliases.contains(expression.text())) {
+            return true;
+        }
+
+        if (this.expressionContainsAlias(expression.leftIndex(), aliases, program) || this.expressionContainsAlias(expression.rightIndex(), aliases, program)) {
+            return true;
+        }
+
+        Int index = 0;
+
+        while (index < expression.argumentIndexes().length()) {
+            if (this.expressionContainsAlias(expression.argumentIndexes().get(index), aliases, program)) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    private Void copyAliasesInto(List<String> aliases, List<String> copy) {
+        Int index = 0;
+
+        while (index < aliases.length()) {
+            copy.add(aliases.get(index));
+            index = index + 1;
+        }
+    }
+}

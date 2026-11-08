@@ -1,0 +1,77 @@
+namespace emerald::compiler::binding;
+
+use emerald::compiler::diagnostic::DiagnosticBag;
+use emerald::compiler::syntax::SyntaxProgram;
+use emerald::compiler::syntax::Statement;
+
+public class BindingContext {
+    private SyntaxProgram programValue;
+    private DiagnosticBag diagnosticBag;
+    private List<VariableSymbol> symbolItems;
+    private List<Statement> activeBodyItems;
+    private List<String> typeParameterItems;
+
+    public BindingContext(SyntaxProgram program, DiagnosticBag diagnostics) {
+        this.programValue = program;
+        this.diagnosticBag = diagnostics;
+        this.symbolItems = List();
+        this.activeBodyItems = List();
+        this.typeParameterItems = List();
+    }
+
+    public Void setTypeParameters(List<String> parameters) { this.typeParameterItems = parameters; }
+    public List<String> typeParameters() { return this.typeParameterItems; }
+
+    public Void setActiveBody(List<Statement> body) { this.activeBodyItems = body; }
+    public List<Statement> activeBody() { return this.activeBodyItems; }
+
+    public SyntaxProgram program() {
+        return this.programValue;
+    }
+
+    public DiagnosticBag diagnostics() {
+        return this.diagnosticBag;
+    }
+
+    public List<VariableSymbol> symbols() {
+        return this.symbolItems;
+    }
+
+    public Void clearSymbols() {
+        this.symbolItems = List();
+    }
+
+    public Void addSymbol(String name, String typeName) {
+        this.symbolItems.add(VariableSymbol(name + "", typeName + ""));
+    }
+
+    public Int beginScope() {
+        return this.symbolItems.length();
+    }
+
+    public Void leaveScope(Int startIndex) {
+        while (this.symbolItems.length() > startIndex) {
+            this.symbolItems.removeAt(this.symbolItems.length() - 1);
+        }
+    }
+
+    public Bool hasSymbol(String name) {
+        return !this.findSymbol(name).name().isEmpty();
+    }
+
+    public VariableSymbol findSymbol(String name) {
+        Int index = 0;
+
+        while (index < this.symbolItems.length()) {
+            VariableSymbol symbol = this.symbolItems.get(index);
+
+            if (symbol.name() == name) {
+                return VariableSymbol(symbol.name(), symbol.typeName());
+            }
+
+            index = index + 1;
+        }
+
+        return VariableSymbol("", "");
+    }
+}

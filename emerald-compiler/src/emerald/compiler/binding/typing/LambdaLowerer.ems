@@ -1,0 +1,215 @@
+namespace emerald::compiler::binding;
+
+use emerald::compiler::syntax::Annotation;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+
+// Lower target-typed lambdas to ordinary classes before Flow analyzes ownership.
+public class LambdaLowerer {
+    private BindingContext context;
+    private BindingTypeCatalog catalog;
+    private List<String> captures;
+    private List<String> parameters;
+
+    public LambdaLowerer(BindingContext context, BindingTypeCatalog catalog) {
+        this.context = context;
+        this.catalog = catalog;
+        this.captures = List();
+        this.parameters = List();
+    }
+
+    public Bool lower(Int expressionIndex, String expected) {
+        Expression expression = this.context.program().expression(expressionIndex);
+        ClassDeclaration contract = this.catalog.findClass(expected);
+        if (expected.isEmpty() || contract.isMissing() || !contract.isInterface()) {
+            this.error(expression, "Lambda requires a functional interface as its target type");
+            return false;
+        }
+        List<MethodDeclaration> contracts = List();
+        List<String> visited = List();
+        this.collectContracts(contract, contracts, visited);
+        if (contracts.length() != 1) {
+            this.error(expression, "Lambda target must have exactly one instance method");
+            return false;
+        }
+        MethodDeclaration method = contracts.get(0);
+        if (expression.argumentCount() != method.parameterCount()) {
+            this.error(expression, "Invalid lambda parameter count for " + expected);
+            return false;
+        }
+        String name = "__EmeraldLambda_" + expressionIndex.toString();
+        List<Parameter> arguments = List();
+        Int index = 0;
+        while (index < method.parameterCount()) {
+            String parameterName = this.context.program().expression(expression.argumentIndexAt(index)).text();
+            if (this.parameters.contains(parameterName)) { this.error(expression, "Duplicate lambda parameter: " + parameterName); return false; }
+            this.parameters.add(parameterName);
+            arguments.add(Parameter(parameterName, method.parameterAt(index).typeName(), expression.line(), expression.column()));
+            index = index + 1;
+        }
+        List<Statement> body = this.lambdaBody(expression, method);
+        if (method.returnTypeName() != "Void" && !this.returnsOnAllPaths(body)) { this.error(expression, "Lambda must return a value on every path"); return false; }
+        List<String> locals = this.copyNames(this.parameters);
+        this.collectBody(body, locals);
+        List<FieldDeclaration> fields = List();
+        List<Parameter> constructorParameters = List();
+        List<Statement> constructorBody = List();
+        List<Int> capturedArguments = List();
+        index = 0;
+        while (index < this.captures.length()) {
+            String captured = this.captures.get(index) + "";
+            if (this.assigned(this.context.activeBody(), captured) || this.assigned(body, captured)) {
+                this.error(expression, "Lambda capture must not be reassigned: " + captured);
+                return false;
+            }
+            String typeName = this.context.findSymbol(captured).typeName();
+            String fieldName = "__capture_" + captured;
+            String parameterName = "__outer_" + captured;
+            fields.add(FieldDeclaration(fieldName, typeName, 0, expression.line(), expression.column()));
+            constructorParameters.add(Parameter(parameterName, typeName, expression.line(), expression.column()));
+            Int selfIndex = this.nameExpression("this", expression);
+            Int target = this.context.program().addExpression(Expression("field", fieldName, 0, false, selfIndex, 0, this.emptyArguments(), expression.line(), expression.column()));
+            constructorBody.add(this.statement("fieldassign", "", this.nameExpression(parameterName, expression), target, expression));
+            capturedArguments.add(this.nameExpression(captured, expression));
+            index = index + 1;
+        }
+        List<String> rewriteLocals = this.copyNames(this.parameters);
+        this.rewriteBody(body, rewriteLocals);
+        List<Annotation> annotations = List();
+        List<MethodDeclaration> methods = List();
+        methods.add(MethodDeclaration(name, name, "Void", annotations, constructorParameters, constructorBody, true, false, true, expression.line(), expression.column()));
+        methods.add(MethodDeclaration(name, method.name(), method.returnTypeName(), annotations, arguments, body, false, false, true, expression.line(), expression.column()));
+        List<String> interfaces = List();
+        interfaces.add(expected);
+        this.context.program().addClass(ClassDeclaration("", name, false, false, "", interfaces, annotations, fields, methods, expression.line(), expression.column()));
+        expression.becomeCall(name, capturedArguments);
+        return true;
+    }
+
+    private Bool returnsOnAllPaths(List<Statement> body) {
+        Int index = 0;
+        while (index < body.length()) {
+            Statement statement = body.get(index);
+            if (statement.isReturn() || statement.isPanic()) { return true; }
+            if (statement.isIf() && this.returnsOnAllPaths(statement.bodyStatements()) && this.returnsOnAllPaths(statement.elseStatements())) { return true; }
+            index = index + 1;
+        }
+        return false;
+    }
+
+    private List<Statement> lambdaBody(Expression expression, MethodDeclaration method) {
+        if (expression.leftIndex() == 0) { return expression.quoteStatements(); }
+        List<Statement> body = List();
+        Expression value = this.context.program().expression(expression.leftIndex());
+        if (value.kindIs("call") && value.textIs("println") && value.argumentCount() == 1) {
+            if (method.returnTypeName() != "Void") { this.error(expression, "println lambda must return Void"); }
+            body.add(this.statement("println", "", value.argumentIndexAt(0), 0, expression));
+        } else if (method.returnTypeName() == "Void") {
+            body.add(this.statement("expression", "", expression.leftIndex(), 0, expression));
+        } else { body.add(this.statement("return", "", expression.leftIndex(), 0, expression)); }
+        return body;
+    }
+
+    private Void collectContracts(ClassDeclaration declaration, List<MethodDeclaration> methods, List<String> visited) {
+        if (declaration.isMissing() || visited.contains(declaration.fullName())) { return; }
+        visited.add(declaration.fullName());
+        Int index = 0;
+        while (index < declaration.methodCount()) {
+            MethodDeclaration method = declaration.methodAt(index);
+            if (!method.isConstructor() && !method.isStatic()) {
+                Bool exists = false;
+                Int previous = 0;
+                while (previous < methods.length()) {
+                    if (methods.get(previous).name() == method.name() && methods.get(previous).parameterCount() == method.parameterCount()) { exists = true; }
+                    previous = previous + 1;
+                }
+                if (!exists) { methods.add(method.signatureCopy()); }
+            }
+            index = index + 1;
+        }
+        if (!declaration.parentName().isEmpty()) { this.collectContracts(this.catalog.findClass(declaration.parentName()), methods, visited); }
+        index = 0;
+        while (index < declaration.implementedInterfaces().length()) {
+            this.collectContracts(this.catalog.findClass(declaration.implementedInterfaces().get(index)), methods, visited);
+            index = index + 1;
+        }
+    }
+
+    private Void collectBody(List<Statement> body, List<String> locals) {
+        Int index = 0;
+        while (index < body.length()) {
+            Statement statement = body.get(index);
+            this.collectExpression(statement.expressionIndex(), locals);
+            this.collectExpression(statement.targetIndex(), locals);
+            if (statement.isVariable()) { locals.add(statement.name()); }
+            this.collectBody(statement.bodyStatements(), this.copyNames(locals));
+            this.collectBody(statement.elseStatements(), this.copyNames(locals));
+            index = index + 1;
+        }
+    }
+
+    private Void collectExpression(Int index, List<String> locals) {
+        if (index == 0) { return; }
+        Expression expression = this.context.program().expression(index);
+        if (expression.kindIs("name") && !locals.contains(expression.text()) && this.context.hasSymbol(expression.text()) && !this.captures.contains(expression.text())) { this.captures.add(expression.text()); }
+        this.collectExpression(expression.leftIndex(), locals);
+        this.collectExpression(expression.rightIndex(), locals);
+        Int argument = 0;
+        while (argument < expression.argumentCount()) { this.collectExpression(expression.argumentIndexAt(argument), locals); argument = argument + 1; }
+        this.collectBody(expression.quoteStatements(), this.copyNames(locals));
+    }
+
+    private Void rewriteBody(List<Statement> body, List<String> locals) {
+        Int index = 0;
+        while (index < body.length()) {
+            Statement statement = body.get(index);
+            this.rewriteExpression(statement.expressionIndex(), locals);
+            this.rewriteExpression(statement.targetIndex(), locals);
+            if (statement.isVariable()) { locals.add(statement.name()); }
+            this.rewriteBody(statement.bodyStatements(), this.copyNames(locals));
+            this.rewriteBody(statement.elseStatements(), this.copyNames(locals));
+            index = index + 1;
+        }
+    }
+
+    private Void rewriteExpression(Int index, List<String> locals) {
+        if (index == 0) { return; }
+        Expression expression = this.context.program().expression(index);
+        if (expression.kindIs("name") && !locals.contains(expression.text()) && this.captures.contains(expression.text())) {
+            expression.becomeCapture("__capture_" + expression.text(), this.nameExpression("this", expression));
+            return;
+        }
+        this.rewriteExpression(expression.leftIndex(), locals);
+        this.rewriteExpression(expression.rightIndex(), locals);
+        Int argument = 0;
+        while (argument < expression.argumentCount()) { this.rewriteExpression(expression.argumentIndexAt(argument), locals); argument = argument + 1; }
+        this.rewriteBody(expression.quoteStatements(), this.copyNames(locals));
+    }
+
+    private Bool assigned(List<Statement> statements, String name) {
+        Int index = 0;
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+            if (statement.isAssign() && statement.name() == name) { return true; }
+            if (this.assigned(statement.bodyStatements(), name) || this.assigned(statement.elseStatements(), name)) { return true; }
+            index = index + 1;
+        }
+        return false;
+    }
+
+    private List<String> copyNames(List<String> source) {
+        List<String> result = List();
+        Int index = 0;
+        while (index < source.length()) { result.add(source.get(index) + ""); index = index + 1; }
+        return result;
+    }
+    private Int nameExpression(String name, Expression location) { return this.context.program().addExpression(Expression("name", name, 0, false, 0, 0, this.emptyArguments(), location.line(), location.column())); }
+    private Statement statement(String kind, String name, Int value, Int target, Expression location) { return Statement(kind, name, "", value, target, this.emptyStatements(), this.emptyStatements(), location.line(), location.column()); }
+    private List<Int> emptyArguments() { List<Int> result = List(); return result; }
+    private List<Statement> emptyStatements() { List<Statement> result = List(); return result; }
+    private Void error(Expression expression, String message) { this.context.diagnostics().error(message, expression.line(), expression.column()); }
+}

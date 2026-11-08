@@ -1,0 +1,109 @@
+namespace emerald::compiler::hyperallocflow;
+
+use emerald::compiler::debug::DebugLog;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class HyperAllocFlowViewEscapeAuditor {
+    public HyperAllocFlowViewEscapeAuditor() {
+    }
+
+    public Void audit(SyntaxProgram program) {
+        if (!DebugLog.hyperAllocFlowEnabled()) {
+            return;
+        }
+
+        DebugLog.flow("view escape audit: scanning main statements");
+        this.auditStatements(program.statements(), program, "main");
+
+        Int classIndex = 0;
+
+        while (classIndex < program.classes().length()) {
+            ClassDeclaration declaration = program.classes().get(classIndex);
+            this.auditClass(declaration, program);
+            classIndex = classIndex + 1;
+        }
+    }
+
+    private Void auditClass(ClassDeclaration declaration, SyntaxProgram program) {
+        Int methodIndex = 0;
+
+        while (methodIndex < declaration.methods().length()) {
+            MethodDeclaration method = declaration.methods().get(methodIndex);
+            this.auditStatements(method.statements(), program, declaration.fullName() + "." + method.name());
+            methodIndex = methodIndex + 1;
+        }
+    }
+
+    private Void auditStatements(List<Statement> statements, SyntaxProgram program, String owner) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+            this.auditStatement(statement, statements, index, program, owner);
+            index = index + 1;
+        }
+    }
+
+    private Void auditStatement(Statement statement, List<Statement> statements, Int index, SyntaxProgram program, String owner) {
+        if (statement.isReturn()) {
+            this.auditReturn(statement, statements, index, program, owner);
+        }
+
+        if (statement.bodyStatements().length() > 0) {
+            this.auditStatements(statement.bodyStatements(), program, owner);
+        }
+
+        if (statement.elseStatements().length() > 0) {
+            this.auditStatements(statement.elseStatements(), program, owner);
+        }
+    }
+
+    private Void auditReturn(Statement statement, List<Statement> statements, Int index, SyntaxProgram program, String owner) {
+        if (statement.expressionIndex() == 0) {
+            return;
+        }
+
+        Expression expression = program.expression(statement.expressionIndex());
+
+        if (this.isContainerGetView(expression)) {
+            this.warn(owner, "return directly exposes a borrowed List.get view", expression);
+            return;
+        }
+
+        if (expression.kind() == "name" && this.nameWasContainerGetView(expression.text(), statements, index, program)) {
+            this.warn(owner, "return exposes local alias created from a borrowed List.get view: " + expression.text(), expression);
+        }
+    }
+
+    private Bool nameWasContainerGetView(String name, List<Statement> statements, Int beforeIndex, SyntaxProgram program) {
+        Int index = 0;
+
+        while (index < beforeIndex) {
+            Statement statement = statements.get(index);
+
+            if (statement.isVariable() && statement.name() == name && this.isContainerGetView(program.expression(statement.expressionIndex()))) {
+                return true;
+            }
+
+            if (statement.isAssign() && statement.name() == name) {
+                return false;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    private Bool isContainerGetView(Expression expression) {
+        return expression.kind() == "methodcall" && expression.text() == "get";
+    }
+
+    private Void warn(String owner, String message, Expression expression) {
+        DebugLog.flow("view escape audit: " + owner + " " + expression.line().toString() + ":" + expression.column().toString() + " " + message);
+    }
+}

@@ -1,0 +1,7 @@
+public class Remainder {
+    public static Float calculate(Float value, Float divisor) { return value % divisor; }
+}
+main() {
+    println(Remainder.calculate(5.5, 2.0));
+    println(Remainder.calculate(-5.5, 2.0));
+}

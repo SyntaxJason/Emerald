@@ -1,0 +1,14 @@
+public data class HyperAllocFlowV1ReturnPoint(Int x, Int y) {
+}
+
+public class HyperAllocFlowV1ReturnFactory {
+    public static HyperAllocFlowV1ReturnPoint create(Int x, Int y) {
+        return HyperAllocFlowV1ReturnPoint(x, y);
+    }
+}
+
+main() {
+    HyperAllocFlowV1ReturnPoint point = HyperAllocFlowV1ReturnFactory.create(18, 24);
+    HyperAllocFlowV1ReturnPoint copy = point;
+    println((copy.x + copy.y).toString());
+}

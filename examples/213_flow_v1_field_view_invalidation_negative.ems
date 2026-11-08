@@ -1,0 +1,27 @@
+public class HyperAllocFlowV1FieldInvalidationItem {
+    public Int value;
+
+    public HyperAllocFlowV1FieldInvalidationItem(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1FieldInvalidationShelf {
+    private List<HyperAllocFlowV1FieldInvalidationItem> items;
+
+    public HyperAllocFlowV1FieldInvalidationShelf() {
+        this.items = List();
+        this.items.add(HyperAllocFlowV1FieldInvalidationItem(42));
+    }
+
+    public HyperAllocFlowV1FieldInvalidationItem invalid() {
+        HyperAllocFlowV1FieldInvalidationItem view = this.items.get(0);
+        this.items.clear();
+        return view;
+    }
+}
+
+main() {
+    HyperAllocFlowV1FieldInvalidationShelf shelf = HyperAllocFlowV1FieldInvalidationShelf();
+    println(shelf.invalid().value.toString());
+}

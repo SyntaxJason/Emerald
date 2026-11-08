@@ -1,0 +1,28 @@
+macro AddLabel on Class {
+    BlockAST block = Block::empty();
+
+    StatementAST body = Stmt::return(
+        Expr::binary(
+            "+",
+            Expr::str("type:"),
+            Expr::str(class.name)
+        )
+    );
+
+    block.append(body);
+
+    MethodAST method = MethodAST::create("label", "String", [], block);
+
+    class.addMethod(method);
+}
+
+@AddLabel
+public class LabelProbe {
+    public LabelProbe() {
+    }
+}
+
+main() {
+    LabelProbe probe = LabelProbe();
+    println(probe.label());
+}

@@ -1,0 +1,11 @@
+main() {
+    String target = "windows";
+    Bool ok = target == "windows";
+
+    if (ok) {
+        println("Emerald Compiler Windows smoke");
+        return 0;
+    }
+
+    return 1;
+}

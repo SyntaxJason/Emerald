@@ -1,0 +1,12 @@
+use Std::Io::Console;
+use Std::Io::IConsole;
+
+main() {
+    Console.writeLine("console refinement");
+    Console.write("emer");
+    Console.writeLine("ald");
+    Console.blankLine();
+
+    IConsole console = Console();
+    console.writeLine("object console");
+}

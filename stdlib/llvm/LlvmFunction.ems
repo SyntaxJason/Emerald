@@ -1,0 +1,39 @@
+namespace Std::Llvm;
+
+public class LlvmFunction {
+    private Int functionHandle;
+    private Int contextHandle;
+
+    public LlvmFunction(Int handle, Int context) {
+        this.functionHandle = handle;
+        this.contextHandle = context;
+    }
+
+    public Int handle() {
+        return this.functionHandle;
+    }
+
+    public Int context() {
+        return this.contextHandle;
+    }
+
+    public Bool isNull() {
+        return this.functionHandle == 0;
+    }
+
+    public Int parameterCount() {
+        return LlvmNative.functionParameterCount(this.functionHandle);
+    }
+
+    public LlvmValue parameter(Int index) {
+        return LlvmValue(LlvmNative.functionParameter(this.functionHandle, index));
+    }
+
+    public Void setLinkage(Int linkage) {
+        LlvmNative.valueSetLinkage(this.functionHandle, linkage);
+    }
+
+    public LlvmBasicBlock appendBlock(String name) {
+        return LlvmBasicBlock(LlvmNative.appendBlock(this.contextHandle, this.functionHandle, name));
+    }
+}

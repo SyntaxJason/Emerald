@@ -1,0 +1,21 @@
+namespace Std::Llvm;
+
+public class LlvmBasicBlock {
+    private Int blockHandle;
+
+    public LlvmBasicBlock(Int handle) {
+        this.blockHandle = handle;
+    }
+
+    public Int handle() {
+        return this.blockHandle;
+    }
+
+    public Bool isNull() {
+        return this.blockHandle == 0;
+    }
+
+    public String name() {
+        return LlvmNative.blockName(this.blockHandle);
+    }
+}

@@ -1,0 +1,77 @@
+namespace emerald::compiler::source;
+
+use emerald::compiler::debug::DebugLog;
+use emerald::compiler::diagnostic::DiagnosticBag;
+use Std::Io::File;
+
+public class ProjectLoader {
+    private SourceReader reader;
+    private SourceUseScanner scanner;
+    private ProjectPathResolver resolver;
+    private ProjectLoadState state;
+    private ProjectNamespaceValidator namespaceValidator;
+
+    public ProjectLoader(String entryPath) {
+        this.reader = SourceReader();
+        this.scanner = SourceUseScanner();
+        this.resolver = ProjectPathResolver(entryPath);
+        this.state = ProjectLoadState();
+        this.namespaceValidator = ProjectNamespaceValidator(this.resolver);
+    }
+
+    public List<ProjectSource> load(String path, DiagnosticBag diagnostics) {
+        this.loadFile(path, true, "", 1, 1, diagnostics);
+        return this.state.sources();
+    }
+
+    private Void loadFile(String path, Bool entry, String requestedName, Int requestLine, Int requestColumn, DiagnosticBag diagnostics) {
+        String normalized = this.resolver.normalize(path);
+
+        if (this.state.isLoading(normalized)) {
+            diagnostics.errorIn(path, "Cyclic import detected: " + this.state.chainTo(normalized), requestLine, requestColumn);
+            return;
+        }
+
+        if (this.state.isLoaded(normalized)) {
+            return;
+        }
+
+        if (!File(path).exists()) {
+            this.reportMissing(path, requestedName, requestLine, requestColumn, entry, diagnostics);
+            return;
+        }
+
+        this.state.begin(normalized);
+
+        if (DebugLog.enabled()) {
+            DebugLog.log("load source " + normalized);
+        }
+
+        SourceFile source = this.reader.read(path, diagnostics);
+        ProjectSource projectSource = ProjectSource(source, entry, requestedName, this.resolver.expectedNamespace(path), requestLine, requestColumn);
+        this.namespaceValidator.validate(projectSource, diagnostics);
+        this.loadUses(source, diagnostics);
+        this.state.complete(normalized, projectSource);
+    }
+
+    private Void loadUses(SourceFile source, DiagnosticBag diagnostics) {
+        List<SourceUse> uses = this.scanner.scan(source.text());
+        Int index = 0;
+
+        while (index < uses.length()) {
+            SourceUse useItem = uses.get(index);
+            String path = this.resolver.resolve(source.path(), useItem.qualifiedName());
+            this.loadFile(path, false, useItem.qualifiedName(), useItem.line(), useItem.column(), diagnostics);
+            index = index + 1;
+        }
+    }
+
+    private Void reportMissing(String path, String requestedName, Int line, Int column, Bool entry, DiagnosticBag diagnostics) {
+        if (entry) {
+            diagnostics.errorIn(path, "Source file does not exist: " + path, line, column);
+            return;
+        }
+
+        diagnostics.errorIn(path, "Cannot resolve use " + requestedName + " to file " + path, line, column);
+    }
+}

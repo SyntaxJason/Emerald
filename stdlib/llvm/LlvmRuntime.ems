@@ -1,0 +1,70 @@
+namespace Std::Llvm;
+
+use Std::Collections::ArrayList;
+use Std::Collections::IList;
+
+public class LlvmRuntime {
+    public LlvmRuntime() {
+    }
+
+    public String sourcePath() {
+        return LlvmNative.runtimeSourcePath();
+    }
+
+    public String headerPath() {
+        return LlvmNative.runtimeHeaderPath();
+    }
+
+    public String objectPath() {
+        return "emerald-runtime" + Llvm.nativeObjectExtension();
+    }
+
+    public Bool compileObject(String output) {
+        ArrayList<String> extraArgs = ArrayList();
+        return this.compileObjectWith(output, extraArgs);
+    }
+
+    public Bool compileObjectWith(String output, IList<String> extraArgs) {
+        String source = this.sourcePath();
+
+        if (source.isEmpty()) {
+            return false;
+        }
+
+        return LlvmNative.compileRuntimeObject(source, output, extraArgs);
+    }
+
+    public IList<String> libraries() {
+        ArrayList<String> result = ArrayList();
+        String library = LlvmNative.runtimeFlowLibraryName();
+
+        if (!library.isEmpty()) {
+            result.add(library);
+        }
+
+        return result;
+    }
+
+    public IList<String> libraryPaths() {
+        ArrayList<String> result = ArrayList();
+        String path = LlvmNative.runtimeFlowLibraryPath();
+
+        if (!path.isEmpty()) {
+            result.add(path);
+        }
+
+        return result;
+    }
+
+    public String lastCommand() {
+        return LlvmNative.runtimeLastCommand();
+    }
+
+    public String lastOutput() {
+        return LlvmNative.runtimeLastOutput();
+    }
+
+    public String lastError() {
+        return LlvmNative.runtimeLastError();
+    }
+}

@@ -1,0 +1,15 @@
+public class HyperAllocFlowV1DuplicateBox {
+    public Int value;
+
+    public HyperAllocFlowV1DuplicateBox(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1DuplicateBox> values = List();
+    HyperAllocFlowV1DuplicateBox shared = HyperAllocFlowV1DuplicateBox(21);
+    values.add(shared);
+    values.add(shared);
+    println((values.get(0).value + values.get(1).value).toString());
+}

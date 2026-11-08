@@ -1,0 +1,1610 @@
+namespace emerald::compiler::hyperallocflow::analysis::summary;
+
+use emerald::compiler::debug::DebugLog;
+use emerald::compiler::hyperallocflow::FunctionSummary;
+use emerald::compiler::hyperallocflow::ParameterHyperAllocFlowEffect;
+use emerald::compiler::hyperallocflow::analysis::escape::HyperAllocFlowEscapeAnalyzer;
+use emerald::compiler::hyperallocflow::analysis::inline::HyperAllocFlowInlineBoundaryAnalyzer;
+use emerald::compiler::hyperallocflow::analysis::support::HyperAllocFlowProgramCatalog;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class HyperAllocFlowSummaryBuilder {
+    private List<FunctionSummary> summaryItems;
+    private HyperAllocFlowProgramCatalog catalog;
+    private HyperAllocFlowEscapeAnalyzer escapes;
+    private HyperAllocFlowInlineBoundaryAnalyzer inlineBoundaries;
+    private List<Int> summaryClassIndexItems;
+    private List<Int> summaryMethodIndexItems;
+    private List<Int> reverseDependencyHeadItems;
+    private List<Int> reverseDependencyCallerItems;
+    private List<Int> reverseDependencyNextItems;
+    private List<Int> reverseDependencyLastCallerItems;
+    private List<Int> classSummaryStartItems;
+    private List<Int> dispatchHeadItems;
+    private List<Int> dispatchTargetItems;
+    private List<Int> dispatchNextItems;
+
+    public HyperAllocFlowSummaryBuilder(HyperAllocFlowProgramCatalog programCatalog, HyperAllocFlowEscapeAnalyzer escapeAnalyzer) {
+        this.summaryItems = List();
+        this.catalog = programCatalog;
+        this.escapes = escapeAnalyzer;
+        this.inlineBoundaries = HyperAllocFlowInlineBoundaryAnalyzer(programCatalog);
+        this.summaryClassIndexItems = List();
+        this.summaryMethodIndexItems = List();
+        this.reverseDependencyHeadItems = List();
+        this.reverseDependencyCallerItems = List();
+        this.reverseDependencyNextItems = List();
+        this.reverseDependencyLastCallerItems = List();
+        this.classSummaryStartItems = List();
+        this.dispatchHeadItems = List();
+        this.dispatchTargetItems = List();
+        this.dispatchNextItems = List();
+    }
+
+    public List<FunctionSummary> buildFunctionSummaries(SyntaxProgram program) {
+        List<FunctionSummary> summaries = List();
+        this.summaryItems = summaries;
+        this.summaryClassIndexItems = List();
+        this.summaryMethodIndexItems = List();
+        this.classSummaryStartItems = List();
+        Int classIndex = 0;
+
+        while (classIndex < program.classCount()) {
+            ClassDeclaration declaration = program.classAt(classIndex);
+            Int methodIndex = 0;
+            this.classSummaryStartItems.add(summaries.length());
+
+            while (methodIndex < declaration.methodCount()) {
+                MethodDeclaration method = declaration.methodAt(methodIndex);
+                FunctionSummary summary = this.provisionalSummary(method);
+                summary.setQualifiedOwnerName(declaration.fullName() + "");
+
+                if (this.isOwnedNativeResult(declaration, method)) {
+                    summary.markReturnsOwned("native runtime function returns a freshly allocated result");
+                }
+
+                summaries.add(summary);
+                this.summaryClassIndexItems.add(classIndex);
+                this.summaryMethodIndexItems.add(methodIndex);
+                methodIndex = methodIndex + 1;
+            }
+
+            classIndex = classIndex + 1;
+        }
+
+        this.escapes.setFunctionSummaries(summaries);
+        this.buildVirtualSummaries(program);
+        this.buildDispatchTargets(program);
+        this.buildSummaryDependencies(program);
+        DebugLog.log("flow: escape effect worklist");
+        this.runEscapeWorklist(program);
+        DebugLog.log("flow: owned return worklist");
+        this.runOwnedReturnWorklist(program);
+        DebugLog.log("flow: borrowed return worklist");
+        this.runBorrowedReturnWorklist(program);
+        DebugLog.log("flow: escape effect refinement worklist");
+        this.runEscapeWorklist(program);
+        this.escapes.freezeVirtualSummaries();
+        return summaries;
+    }
+
+    // Groups every overridden instance method with the overrides declared in
+    // its subclasses (same name, parameter and return types); calls resolved
+    // to the overridden method read the merged summary of the whole group.
+    private Void buildVirtualSummaries(SyntaxProgram program) {
+        this.escapes.clearVirtualSummaries(this.summaryItems.length());
+        List<Int> classStartItems = List();
+        List<Int> parentItems = List();
+        Bool anyParent = false;
+        Int start = 0;
+        Int classIndex = 0;
+
+        while (classIndex < program.classCount()) {
+            ClassDeclaration declaration = program.classAt(classIndex);
+            classStartItems.add(start);
+            start = start + declaration.methodCount();
+            Int parentIndex = -1;
+
+            if (!declaration.isInterface() && !declaration.parentName().isEmpty()) {
+                parentIndex = this.catalog.classIndex(declaration.parentName(), program);
+
+                if (parentIndex >= 0 && program.classAt(parentIndex).isInterface()) {
+                    parentIndex = -1;
+                }
+            }
+
+            if (parentIndex >= 0) {
+                anyParent = true;
+            }
+
+            parentItems.add(parentIndex);
+            classIndex = classIndex + 1;
+        }
+
+        if (!anyParent) {
+            return;
+        }
+
+        List<Int> baseItems = List();
+        List<Int> overrideItems = List();
+        classIndex = 0;
+
+        while (classIndex < program.classCount()) {
+            if (parentItems.get(classIndex) >= 0) {
+                ClassDeclaration declaration = program.classAt(classIndex);
+                Int methodIndex = 0;
+
+                while (methodIndex < declaration.methodCount()) {
+                    MethodDeclaration method = declaration.methodAt(methodIndex);
+
+                    if (!method.isConstructor() && !method.isStatic()) {
+                        Int ancestorIndex = parentItems.get(classIndex);
+                        Int depth = 0;
+
+                        while (ancestorIndex >= 0 && depth < 64) {
+                            Int baseIndex = this.matchingMethodSummary(program.classAt(ancestorIndex), classStartItems.get(ancestorIndex), method);
+
+                            if (baseIndex >= 0) {
+                                baseItems.add(baseIndex);
+                                overrideItems.add(classStartItems.get(classIndex) + methodIndex);
+                            }
+
+                            ancestorIndex = parentItems.get(ancestorIndex);
+                            depth = depth + 1;
+                        }
+                    }
+
+                    methodIndex = methodIndex + 1;
+                }
+            }
+
+            classIndex = classIndex + 1;
+        }
+
+        List<Int> groupedItems = List();
+        Int pairIndex = 0;
+
+        while (pairIndex < baseItems.length()) {
+            Int baseIndex = baseItems.get(pairIndex);
+
+            if (!groupedItems.contains(baseIndex)) {
+                groupedItems.add(baseIndex);
+                List<Int> members = List();
+                members.add(baseIndex);
+                Int memberIndex = pairIndex;
+
+                while (memberIndex < baseItems.length()) {
+                    if (baseItems.get(memberIndex) == baseIndex) {
+                        members.add(overrideItems.get(memberIndex));
+                    }
+
+                    memberIndex = memberIndex + 1;
+                }
+
+                this.escapes.addVirtualSummary(members);
+            }
+
+            pairIndex = pairIndex + 1;
+        }
+
+        DebugLog.log("flow: overridden method groups=" + groupedItems.length().toString());
+    }
+
+    private Int matchingMethodSummary(ClassDeclaration ancestor, Int ancestorStart, MethodDeclaration method) {
+        Int methodIndex = 0;
+
+        while (methodIndex < ancestor.methodCount()) {
+            MethodDeclaration candidate = ancestor.methodAt(methodIndex);
+
+            if (!candidate.isConstructor() && !candidate.isStatic() && candidate.name() == method.name() && candidate.parameterCount() == method.parameterCount() && candidate.returnTypeName() == method.returnTypeName() && this.sameParameterTypes(candidate, method)) {
+                return ancestorStart + methodIndex;
+            }
+
+            methodIndex = methodIndex + 1;
+        }
+
+        return -1;
+    }
+
+    private Bool sameParameterTypes(MethodDeclaration left, MethodDeclaration right) {
+        Int index = 0;
+
+        while (index < left.parameterCount()) {
+            if (left.parameterAt(index).typeName() != right.parameterAt(index).typeName()) {
+                return false;
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+
+    public FunctionSummary summarizeMethod(MethodDeclaration method, SyntaxProgram program) {
+        List<ParameterHyperAllocFlowEffect> effects = List();
+        this.fillParameterEffects(method, program, effects);
+        Bool receiverEscapes = this.receiverEscapes(method, program);
+        Bool returnsOwned = this.methodDirectlyReturnsOwned(method, program);
+        String returnReason = "method return is borrowed or value-like";
+
+        if (returnsOwned) {
+            returnReason = "method creates or forwards a uniquely owned Root result";
+        }
+
+        FunctionSummary summary = FunctionSummary(method.ownerName() + "", method.name() + "", method.parameterCount(), method.returnTypeName() + "", method.isConstructor(), method.isStatic(), receiverEscapes, returnsOwned, method.isGenerated(), returnReason, effects);
+        List<String> parameterTypes = List();
+        this.fillParameterTypes(method, parameterTypes);
+        summary.setParameterTypes(parameterTypes);
+        return summary;
+    }
+
+    // Std::Native stubs only carry signatures; their bodies are replaced by the
+    // runtime bridge. Ownership of their results therefore comes from this
+    // table of runtime functions that always return a fresh allocation, not
+    // from the placeholder body. NativeEnv.getOr may return its fallback and
+    // stays borrowed.
+    private Bool isOwnedNativeResult(ClassDeclaration declaration, MethodDeclaration method) {
+        if (declaration.namespaceName() != "Std::Native" || !method.isStatic()) {
+            return false;
+        }
+
+        String owner = declaration.name();
+        String name = method.name();
+
+        if (owner == "NativeConsole") {
+            return name == "readLine";
+        }
+
+        if (owner == "NativeFile") {
+            return name == "readText" || name == "readLines";
+        }
+
+        if (owner == "NativeDirectory") {
+            return name == "list";
+        }
+
+        if (owner == "NativePath") {
+            return name == "current" || name == "join" || name == "parent" || name == "fileName" || name == "extension";
+        }
+
+        if (owner == "NativeEnv") {
+            return name == "get" || name == "args" || name == "currentDirectory";
+        }
+
+        if (owner == "NativeProcess") {
+            return name == "args" || name == "command";
+        }
+
+        return false;
+    }
+
+    private FunctionSummary provisionalSummary(MethodDeclaration method) {
+        List<ParameterHyperAllocFlowEffect> effects = List();
+        Int index = 0;
+
+        while (index < method.parameterCount()) {
+            Parameter parameter = method.parameterAt(index);
+            effects.add(ParameterHyperAllocFlowEffect(index, parameter.name() + "", false, false, "provisional View effect pending fixed-point analysis"));
+            index = index + 1;
+        }
+
+        FunctionSummary summary = FunctionSummary(method.ownerName() + "", method.name() + "", method.parameterCount(), method.returnTypeName() + "", method.isConstructor(), method.isStatic(), false, false, method.isGenerated(), "method return is borrowed or value-like", effects);
+        List<String> parameterTypes = List();
+        this.fillParameterTypes(method, parameterTypes);
+        summary.setParameterTypes(parameterTypes);
+        return summary;
+    }
+
+    private Void runEscapeWorklist(SyntaxProgram program) {
+        List<Int> workItems = List();
+        List<Int> queuedItems = List();
+        this.fillWorklist(workItems, queuedItems);
+        Int steps = 0;
+        Int stepLimit = this.summaryItems.length() * this.summaryItems.length() + this.summaryItems.length();
+
+        while (workItems.length() > 0 && steps < stepLimit) {
+            Int position = workItems.length() - 1;
+            Int summaryIndex = workItems.get(position);
+            workItems.removeAt(position);
+            queuedItems.set(summaryIndex, 0);
+            ClassDeclaration declaration = program.classAt(this.summaryClassIndexItems.get(summaryIndex));
+            MethodDeclaration method = declaration.methodAt(this.summaryMethodIndexItems.get(summaryIndex));
+
+            if (this.isDispatchSummary(summaryIndex)) {
+                if (this.refreshDispatchEffects(summaryIndex)) {
+                    this.enqueueCallers(summaryIndex, workItems, queuedItems);
+                }
+            } else if (this.refreshSummaryEffects(this.summaryItems.get(summaryIndex), method, program)) {
+                this.enqueueCallers(summaryIndex, workItems, queuedItems);
+            }
+
+            steps = steps + 1;
+        }
+
+        this.logWorklistResult("escape", steps, workItems.length(), stepLimit);
+    }
+
+    // Owned returns are the greatest fixed point: every candidate starts owned
+    // and is refuted when one of its return paths is not a fresh value under
+    // the current assumptions. Induction over a terminating call tree makes
+    // this sound, and recursion through interface dispatch (e.g. an iterator()
+    // that forwards to another collection's iterator()) stays owned.
+    private Void runOwnedReturnWorklist(SyntaxProgram program) {
+        List<Int> workItems = List();
+        List<Int> queuedItems = List();
+        List<Int> fixedItems = List();
+        Int candidateIndex = 0;
+
+        while (candidateIndex < this.summaryItems.length()) {
+            FunctionSummary candidate = this.summaryItems.get(candidateIndex);
+
+            if (candidate.returnsOwned()) {
+                fixedItems.add(1);
+            } else {
+                fixedItems.add(0);
+                ClassDeclaration candidateClass = program.classAt(this.summaryClassIndexItems.get(candidateIndex));
+
+                if (this.ownedReturnCandidate(candidateClass.methodAt(this.summaryMethodIndexItems.get(candidateIndex)), candidateIndex, program)) {
+                    candidate.markReturnsOwned("method creates or forwards a uniquely owned Root result");
+                }
+            }
+
+            candidateIndex = candidateIndex + 1;
+        }
+
+        this.fillWorklist(workItems, queuedItems);
+        Int steps = 0;
+        Int stepLimit = this.summaryItems.length() * this.summaryItems.length() + this.summaryItems.length();
+
+        while (workItems.length() > 0 && steps < stepLimit) {
+            Int position = workItems.length() - 1;
+            Int summaryIndex = workItems.get(position);
+            workItems.removeAt(position);
+            queuedItems.set(summaryIndex, 0);
+            FunctionSummary summary = this.summaryItems.get(summaryIndex);
+
+            if (summary.returnsOwned() && fixedItems.get(summaryIndex) == 0) {
+                Bool owned = false;
+
+                if (this.isDispatchSummary(summaryIndex)) {
+                    owned = this.dispatchReturnsOwned(summaryIndex);
+                } else {
+                    ClassDeclaration declaration = program.classAt(this.summaryClassIndexItems.get(summaryIndex));
+                    owned = this.methodDirectlyReturnsOwned(declaration.methodAt(this.summaryMethodIndexItems.get(summaryIndex)), program);
+                }
+
+                if (!owned) {
+                    summary.clearReturnsOwned("method return is borrowed or value-like");
+                    this.enqueueCallers(summaryIndex, workItems, queuedItems);
+                }
+            }
+
+            steps = steps + 1;
+        }
+
+        // A step-limit exit must not leave unverified provisional claims.
+        if (workItems.length() > 0) {
+            this.clearUnverifiedOwnedReturns(fixedItems);
+        }
+
+        this.logWorklistResult("owned-return", steps, workItems.length(), stepLimit);
+    }
+
+    private Void clearUnverifiedOwnedReturns(List<Int> fixedItems) {
+        Int index = 0;
+
+        while (index < this.summaryItems.length()) {
+            if (fixedItems.get(index) == 0) {
+                this.summaryItems.get(index).clearReturnsOwned("owned-return analysis reached its safety limit");
+            }
+
+            index = index + 1;
+        }
+    }
+
+    private Bool ownedReturnCandidate(MethodDeclaration method, Int summaryIndex, SyntaxProgram program) {
+        if (method.isConstructor() || this.inlineBoundaries.isInlineReturnMethod(method, program)) {
+            return false;
+        }
+
+        if (!this.isOwnableReturnType(method.returnTypeName(), program)) {
+            return false;
+        }
+
+        if (this.isDispatchSummary(summaryIndex)) {
+            return this.dispatchHeadItems.get(summaryIndex) >= 0;
+        }
+
+        return this.statementsContainReturn(method.statements());
+    }
+
+    private Void runBorrowedReturnWorklist(SyntaxProgram program) {
+        List<Int> workItems = List();
+        List<Int> queuedItems = List();
+        this.fillWorklist(workItems, queuedItems);
+        Int steps = 0;
+        Int stepLimit = this.summaryItems.length() * this.summaryItems.length() + this.summaryItems.length();
+
+        while (workItems.length() > 0 && steps < stepLimit) {
+            Int position = workItems.length() - 1;
+            Int summaryIndex = workItems.get(position);
+            workItems.removeAt(position);
+            queuedItems.set(summaryIndex, 0);
+            FunctionSummary summary = this.summaryItems.get(summaryIndex);
+            Bool changed = false;
+
+            if (!summary.returnsOwned() && this.isDispatchSummary(summaryIndex)) {
+                changed = this.refreshDispatchBorrows(summaryIndex);
+            } else if (!summary.returnsOwned()) {
+                ClassDeclaration declaration = program.classAt(this.summaryClassIndexItems.get(summaryIndex));
+                MethodDeclaration method = declaration.methodAt(this.summaryMethodIndexItems.get(summaryIndex));
+
+                if (!method.isStatic() && this.methodReturnsBorrowedName(method, "this", program) && summary.markReturnBorrowsReceiver()) {
+                    changed = true;
+                }
+
+                Int parameterIndex = 0;
+
+                while (parameterIndex < method.parameterCount()) {
+                    Parameter parameter = method.parameterAt(parameterIndex);
+
+                    if (this.methodReturnsBorrowedName(method, parameter.name(), program) && summary.markReturnBorrowsParameter(parameterIndex)) {
+                        changed = true;
+                    }
+
+                    parameterIndex = parameterIndex + 1;
+                }
+            }
+
+            if (changed) {
+                this.enqueueCallers(summaryIndex, workItems, queuedItems);
+            }
+
+            steps = steps + 1;
+        }
+
+        this.logWorklistResult("borrowed-return", steps, workItems.length(), stepLimit);
+    }
+
+    private Void logWorklistResult(String name, Int steps, Int remaining, Int stepLimit) {
+        DebugLog.log("flow: " + name + " worklist steps=" + steps.toString() + ", remaining=" + remaining.toString());
+
+        if (remaining > 0) {
+            DebugLog.log("flow: " + name + " worklist reached safety limit=" + stepLimit.toString());
+        }
+    }
+
+    private Void fillWorklist(List<Int> workItems, List<Int> queuedItems) {
+        Int index = 0;
+
+        while (index < this.summaryItems.length()) {
+            workItems.add(index);
+            queuedItems.add(1);
+            index = index + 1;
+        }
+    }
+
+    private Void enqueueCallers(Int summaryIndex, List<Int> workItems, List<Int> queuedItems) {
+        if (summaryIndex < 0 || summaryIndex >= this.reverseDependencyHeadItems.length()) {
+            return;
+        }
+
+        Int edgeIndex = this.reverseDependencyHeadItems.get(summaryIndex);
+
+        while (edgeIndex >= 0) {
+            Int callerIndex = this.reverseDependencyCallerItems.get(edgeIndex);
+
+            if (queuedItems.get(callerIndex) == 0) {
+                queuedItems.set(callerIndex, 1);
+                workItems.add(callerIndex);
+            }
+
+            edgeIndex = this.reverseDependencyNextItems.get(edgeIndex);
+        }
+    }
+
+    private Void buildSummaryDependencies(SyntaxProgram program) {
+        this.reverseDependencyHeadItems = List();
+        this.reverseDependencyCallerItems = List();
+        this.reverseDependencyNextItems = List();
+        this.reverseDependencyLastCallerItems = List();
+        Int index = 0;
+
+        while (index < this.summaryItems.length()) {
+            this.reverseDependencyHeadItems.add(-1);
+            this.reverseDependencyLastCallerItems.add(-1);
+            index = index + 1;
+        }
+
+        index = 0;
+
+        while (index < this.summaryItems.length()) {
+            ClassDeclaration declaration = program.classAt(this.summaryClassIndexItems.get(index));
+            MethodDeclaration method = declaration.methodAt(this.summaryMethodIndexItems.get(index));
+            this.collectStatementDependencies(method.statements(), index, program);
+            index = index + 1;
+        }
+
+        this.addDispatchDependencies();
+        DebugLog.log("flow: summary dependency edges=" + this.reverseDependencyCallerItems.length().toString());
+    }
+
+    private Void collectStatementDependencies(List<Statement> statements, Int callerIndex, SyntaxProgram program) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.expressionIndex() != 0) {
+                this.collectExpressionDependencies(statement.expressionIndex(), callerIndex, program);
+            }
+
+            this.collectStatementDependencies(statement.bodyStatements(), callerIndex, program);
+            this.collectStatementDependencies(statement.elseStatements(), callerIndex, program);
+            index = index + 1;
+        }
+    }
+
+    private Void collectExpressionDependencies(Int expressionIndex, Int callerIndex, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kindIs("methodcall") || expression.kindIs("staticcall")) {
+            Int resolvedIndex = this.escapes.resolvedSummaryIndex(expression);
+
+            if (this.escapes.isVirtualSummaryIndex(resolvedIndex)) {
+                Int memberIndex = 0;
+
+                while (memberIndex < this.escapes.virtualMemberCount(resolvedIndex)) {
+                    this.addSummaryDependency(this.escapes.virtualMemberAt(resolvedIndex, memberIndex), callerIndex);
+                    memberIndex = memberIndex + 1;
+                }
+            } else if (resolvedIndex >= 0) {
+                this.addSummaryDependency(resolvedIndex, callerIndex);
+            } else if (!expression.hasResolvedMethod()) {
+                this.addConservativeDependencies(expression, callerIndex);
+            }
+        }
+
+        this.collectExpressionDependencies(expression.leftIndex(), callerIndex, program);
+        this.collectExpressionDependencies(expression.rightIndex(), callerIndex, program);
+        Int argumentIndex = 0;
+
+        while (argumentIndex < expression.argumentCount()) {
+            this.collectExpressionDependencies(expression.argumentIndexAt(argumentIndex), callerIndex, program);
+            argumentIndex = argumentIndex + 1;
+        }
+    }
+
+    private Void addConservativeDependencies(Expression expression, Int callerIndex) {
+        String methodName = expression.text();
+        String ownerName = "";
+        Int parameterCount = expression.argumentCount();
+        Bool staticCall = expression.kindIs("staticcall");
+
+        if (staticCall) {
+            Int separator = methodName.indexOf("::");
+
+            if (separator > 0) {
+                ownerName = methodName.substring(0, separator);
+                methodName = methodName.substring(separator + 2, methodName.length());
+            }
+        }
+
+        // Both predicates require an equal method name, so only that name
+        // group can match.
+        List<Int> candidates = this.escapes.summariesWithName(methodName);
+        Int candidateIndex = 0;
+
+        while (candidateIndex < candidates.length()) {
+            Int index = candidates.get(candidateIndex);
+            FunctionSummary summary = this.summaryItems.get(index);
+            Bool matches = false;
+
+            if (staticCall && !ownerName.isEmpty()) {
+                matches = summary.matchesStatic(ownerName, methodName, parameterCount);
+            } else {
+                matches = summary.matches(methodName, parameterCount);
+            }
+
+            if (matches) {
+                this.addSummaryDependency(index, callerIndex);
+            }
+
+            candidateIndex = candidateIndex + 1;
+        }
+    }
+
+    private Void addSummaryDependency(Int calleeIndex, Int callerIndex) {
+        if (calleeIndex < 0 || calleeIndex >= this.reverseDependencyHeadItems.length()) {
+            return;
+        }
+
+        if (this.reverseDependencyLastCallerItems.get(calleeIndex) == callerIndex) {
+            return;
+        }
+
+        this.reverseDependencyLastCallerItems.set(calleeIndex, callerIndex);
+        this.reverseDependencyCallerItems.add(callerIndex);
+        this.reverseDependencyNextItems.add(this.reverseDependencyHeadItems.get(calleeIndex));
+        this.reverseDependencyHeadItems.set(calleeIndex, this.reverseDependencyCallerItems.length() - 1);
+    }
+
+    // Interface methods have no body: their summary is the join of every
+    // implementation the backend may dispatch to (NativeMethodEmitter
+    // .emitInterface). A missing body must never prove that a parameter or the
+    // receiver is a non-escaping View; without any implementation the dispatch
+    // stub can only panic, so nothing can escape through it.
+    private Void buildDispatchTargets(SyntaxProgram program) {
+        this.dispatchHeadItems = List();
+        this.dispatchTargetItems = List();
+        this.dispatchNextItems = List();
+        Int index = 0;
+
+        while (index < this.summaryItems.length()) {
+            this.dispatchHeadItems.add(-2);
+            index = index + 1;
+        }
+
+        Int interfaceIndex = 0;
+
+        while (interfaceIndex < program.classCount()) {
+            ClassDeclaration contract = program.classAt(interfaceIndex);
+
+            if (contract.isInterface()) {
+                this.collectInterfaceTargets(interfaceIndex, contract, program);
+            }
+
+            interfaceIndex = interfaceIndex + 1;
+        }
+    }
+
+    private Void collectInterfaceTargets(Int interfaceIndex, ClassDeclaration contract, SyntaxProgram program) {
+        List<Int> implementors = List();
+        String contractBase = this.catalog.baseTypeName(contract.name());
+        Int candidateIndex = 0;
+
+        while (candidateIndex < program.classCount()) {
+            if (!program.classAt(candidateIndex).isInterface() && this.classMayImplement(candidateIndex, interfaceIndex, contractBase, program)) {
+                implementors.add(candidateIndex);
+            }
+
+            candidateIndex = candidateIndex + 1;
+        }
+
+        Int methodIndex = 0;
+
+        while (methodIndex < contract.methodCount()) {
+            MethodDeclaration method = contract.methodAt(methodIndex);
+            Int summaryIndex = this.classSummaryStartItems.get(interfaceIndex) + methodIndex;
+
+            if (!method.isStatic() && !method.isConstructor()) {
+                this.dispatchHeadItems.set(summaryIndex, -1);
+                this.summaryItems.get(summaryIndex).markInterfaceContract();
+                Int implementorIndex = 0;
+
+                while (implementorIndex < implementors.length()) {
+                    this.addImplementationTargets(summaryIndex, implementors.get(implementorIndex), method, program);
+                    implementorIndex = implementorIndex + 1;
+                }
+            }
+
+            methodIndex = methodIndex + 1;
+        }
+    }
+
+    // Over-approximates the backend's interface dispatch table: generic
+    // specializations with the same base name and any parent or interface name
+    // the catalog cannot resolve are treated as possible implementations.
+    private Bool classMayImplement(Int candidateIndex, Int interfaceIndex, String contractBase, SyntaxProgram program) {
+        List<Int> pending = List();
+        List<Int> visited = List();
+        pending.add(candidateIndex);
+
+        while (pending.length() > 0) {
+            Int current = pending.get(pending.length() - 1);
+            pending.removeAt(pending.length() - 1);
+
+            if (!visited.contains(current)) {
+                visited.add(current);
+                ClassDeclaration declaration = program.classAt(current);
+                List<String> names = List();
+                Int nameIndex = 0;
+
+                while (nameIndex < declaration.implementedInterfaces().length()) {
+                    names.add(declaration.implementedInterfaces().get(nameIndex));
+                    nameIndex = nameIndex + 1;
+                }
+
+                if (!declaration.parentName().isEmpty()) {
+                    names.add(declaration.parentName());
+                }
+
+                nameIndex = 0;
+
+                while (nameIndex < names.length()) {
+                    String name = names.get(nameIndex);
+                    Int target = this.catalog.classIndex(name, program);
+
+                    if (target < 0) {
+                        return true;
+                    } else if (target == interfaceIndex || this.catalog.baseTypeName(program.classAt(target).name()) == contractBase) {
+                        return true;
+                    } else {
+                        pending.add(target);
+                    }
+
+                    nameIndex = nameIndex + 1;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private Void addImplementationTargets(Int contractSummaryIndex, Int classIndex, MethodDeclaration contractMethod, SyntaxProgram program) {
+        List<Int> visited = List();
+        Int current = classIndex;
+
+        while (current >= 0 && !visited.contains(current)) {
+            visited.add(current);
+            ClassDeclaration declaration = program.classAt(current);
+            Bool found = false;
+            Int methodIndex = 0;
+
+            while (methodIndex < declaration.methodCount()) {
+                MethodDeclaration method = declaration.methodAt(methodIndex);
+
+                if (!method.isStatic() && !method.isConstructor() && method.name() == contractMethod.name() && method.parameterCount() == contractMethod.parameterCount()) {
+                    this.addDispatchTarget(contractSummaryIndex, this.classSummaryStartItems.get(current) + methodIndex);
+                    found = true;
+                }
+
+                methodIndex = methodIndex + 1;
+            }
+
+            if (found || declaration.parentName().isEmpty()) {
+                return;
+            }
+
+            current = this.catalog.classIndex(declaration.parentName(), program);
+        }
+    }
+
+    private Void addDispatchTarget(Int contractSummaryIndex, Int targetSummaryIndex) {
+        Int edge = this.dispatchHeadItems.get(contractSummaryIndex);
+
+        while (edge >= 0) {
+            if (this.dispatchTargetItems.get(edge) == targetSummaryIndex) {
+                return;
+            }
+
+            edge = this.dispatchNextItems.get(edge);
+        }
+
+        this.dispatchTargetItems.add(targetSummaryIndex);
+        this.dispatchNextItems.add(this.dispatchHeadItems.get(contractSummaryIndex));
+        this.dispatchHeadItems.set(contractSummaryIndex, this.dispatchTargetItems.length() - 1);
+    }
+
+    private Void addDispatchDependencies() {
+        Int summaryIndex = 0;
+
+        while (summaryIndex < this.dispatchHeadItems.length()) {
+            Int edge = this.dispatchHeadItems.get(summaryIndex);
+
+            while (edge >= 0) {
+                this.addSummaryDependency(this.dispatchTargetItems.get(edge), summaryIndex);
+                edge = this.dispatchNextItems.get(edge);
+            }
+
+            summaryIndex = summaryIndex + 1;
+        }
+    }
+
+    private Bool isDispatchSummary(Int summaryIndex) {
+        return summaryIndex >= 0 && summaryIndex < this.dispatchHeadItems.length() && this.dispatchHeadItems.get(summaryIndex) != -2;
+    }
+
+    private Bool refreshDispatchEffects(Int summaryIndex) {
+        FunctionSummary summary = this.summaryItems.get(summaryIndex);
+        Int head = this.dispatchHeadItems.get(summaryIndex);
+        Bool receiverEscapes = false;
+        Int edge = head;
+
+        while (edge >= 0) {
+            if (this.summaryItems.get(this.dispatchTargetItems.get(edge)).receiverEscapes()) {
+                receiverEscapes = true;
+            }
+
+            edge = this.dispatchNextItems.get(edge);
+        }
+
+        Bool changed = summary.updateReceiverEscapes(receiverEscapes);
+        Int parameterIndex = 0;
+
+        while (parameterIndex < summary.parameterCount()) {
+            Bool escapes = false;
+            Bool mutates = false;
+            edge = head;
+
+            while (edge >= 0) {
+                FunctionSummary target = this.summaryItems.get(this.dispatchTargetItems.get(edge));
+
+                if (target.parameterEscapes(parameterIndex)) {
+                    escapes = true;
+                }
+
+                if (target.parameterMutates(parameterIndex)) {
+                    mutates = true;
+                }
+
+                edge = this.dispatchNextItems.get(edge);
+            }
+
+            if (summary.updateParameterEffect(parameterIndex, escapes, mutates)) {
+                changed = true;
+            }
+
+            parameterIndex = parameterIndex + 1;
+        }
+
+        return changed;
+    }
+
+    private Bool dispatchReturnsOwned(Int summaryIndex) {
+        Int edge = this.dispatchHeadItems.get(summaryIndex);
+
+        if (edge < 0) {
+            return false;
+        }
+
+        while (edge >= 0) {
+            if (!this.summaryItems.get(this.dispatchTargetItems.get(edge)).returnsOwned()) {
+                return false;
+            }
+
+            edge = this.dispatchNextItems.get(edge);
+        }
+
+        return true;
+    }
+
+    private Bool refreshDispatchBorrows(Int summaryIndex) {
+        FunctionSummary summary = this.summaryItems.get(summaryIndex);
+        Bool changed = false;
+        Int edge = this.dispatchHeadItems.get(summaryIndex);
+
+        while (edge >= 0) {
+            FunctionSummary target = this.summaryItems.get(this.dispatchTargetItems.get(edge));
+
+            if (target.returnBorrowsReceiver() && summary.markReturnBorrowsReceiver()) {
+                changed = true;
+            }
+
+            Int parameterIndex = 0;
+
+            while (parameterIndex < summary.parameterCount()) {
+                if (target.returnBorrowsParameter(parameterIndex) && summary.markReturnBorrowsParameter(parameterIndex)) {
+                    changed = true;
+                }
+
+                parameterIndex = parameterIndex + 1;
+            }
+
+            edge = this.dispatchNextItems.get(edge);
+        }
+
+        return changed;
+    }
+
+    private Bool refreshEscapeEffects(SyntaxProgram program, Bool reverse) {
+        if (reverse) {
+            return this.refreshEscapeEffectsReverse(program);
+        }
+
+        Bool changed = false;
+        Int classIndex = 0;
+        Int summaryIndex = 0;
+
+        while (classIndex < program.classCount()) {
+            ClassDeclaration declaration = program.classAt(classIndex);
+            Int methodIndex = 0;
+
+            while (methodIndex < declaration.methodCount()) {
+                MethodDeclaration method = declaration.methodAt(methodIndex);
+                FunctionSummary summary = this.summaryAt(summaryIndex, method);
+
+                if (this.refreshSummaryEffects(summary, method, program)) {
+                    changed = true;
+                }
+
+                summaryIndex = summaryIndex + 1;
+                methodIndex = methodIndex + 1;
+            }
+
+            classIndex = classIndex + 1;
+        }
+
+        return changed;
+    }
+
+    private Bool refreshEscapeEffectsReverse(SyntaxProgram program) {
+        Bool changed = false;
+        Int classIndex = program.classCount() - 1;
+        Int summaryIndex = this.summaryItems.length() - 1;
+
+        while (classIndex >= 0) {
+            ClassDeclaration declaration = program.classAt(classIndex);
+            Int methodIndex = declaration.methodCount() - 1;
+
+            while (methodIndex >= 0) {
+                MethodDeclaration method = declaration.methodAt(methodIndex);
+                FunctionSummary summary = this.summaryAt(summaryIndex, method);
+
+                if (this.refreshSummaryEffects(summary, method, program)) {
+                    changed = true;
+                }
+
+                summaryIndex = summaryIndex - 1;
+                methodIndex = methodIndex - 1;
+            }
+
+            classIndex = classIndex - 1;
+        }
+
+        return changed;
+    }
+
+    private Bool refreshSummaryEffects(FunctionSummary summary, MethodDeclaration method, SyntaxProgram program) {
+        Bool changed = summary.updateReceiverEscapes(this.receiverEscapes(method, program));
+        Int index = 0;
+
+        while (index < method.parameterCount()) {
+            Parameter parameter = method.parameterAt(index);
+            Bool escapes = this.escapes.parameterEscapesTypedInStatements(method.statements(), parameter.name(), parameter.typeName(), program);
+            Bool mutates = this.escapes.parameterMutatesInStatements(method.statements(), parameter.name(), program);
+
+            if (summary.updateParameterEffect(index, escapes, mutates)) {
+                changed = true;
+            }
+
+            index = index + 1;
+        }
+
+        return changed;
+    }
+
+    private FunctionSummary summaryAt(Int summaryIndex, MethodDeclaration method) {
+        if (summaryIndex >= 0 && summaryIndex < this.summaryItems.length()) {
+            return this.summaryItems.get(summaryIndex);
+        }
+
+        return this.findFunctionSummary(method);
+    }
+
+    private Void fillParameterEffects(MethodDeclaration method, SyntaxProgram program, List<ParameterHyperAllocFlowEffect> effects) {
+        Int index = 0;
+
+        while (index < method.parameterCount()) {
+            Parameter parameter = method.parameterAt(index);
+            Bool escapes = this.escapes.parameterEscapesTypedInStatements(method.statements(), parameter.name(), parameter.typeName(), program);
+            Bool mutates = this.escapes.parameterMutatesInStatements(method.statements(), parameter.name(), program);
+            String reason = "parameter remains a read-only View inside known method body";
+
+            if (escapes) {
+                reason = "parameter may escape known method body";
+            } else if (mutates) {
+                reason = "parameter remains borrowed but may mutate container contents";
+            }
+
+            effects.add(ParameterHyperAllocFlowEffect(index, parameter.name() + "", escapes, mutates, reason));
+            index = index + 1;
+        }
+
+    }
+
+    private Bool receiverEscapes(MethodDeclaration method, SyntaxProgram program) {
+        if (method.isStatic()) {
+            return false;
+        }
+
+        return this.escapes.parameterEscapesTypedInStatements(method.statements(), "this", method.ownerName(), program);
+    }
+
+    private Void fillParameterTypes(MethodDeclaration method, List<String> types) {
+        Int index = 0;
+
+        while (index < method.parameterCount()) {
+            types.add(method.parameterAt(index).typeName());
+            index = index + 1;
+        }
+
+    }
+
+    public Bool propagateOwnedReturns(SyntaxProgram program) {
+        Bool changed = false;
+        Int classIndex = 0;
+        Int summaryIndex = 0;
+
+        while (classIndex < program.classCount()) {
+            ClassDeclaration declaration = program.classAt(classIndex);
+            Int methodIndex = 0;
+
+            while (methodIndex < declaration.methodCount()) {
+                MethodDeclaration method = declaration.methodAt(methodIndex);
+                FunctionSummary summary = this.summaryAt(summaryIndex, method);
+                summaryIndex = summaryIndex + 1;
+
+                if (!summary.returnsOwned() && this.methodDirectlyReturnsOwned(method, program)) {
+                    summary.markReturnsOwned("method forwards a uniquely owned Root result across the call boundary");
+                    changed = true;
+                }
+
+                methodIndex = methodIndex + 1;
+            }
+
+            classIndex = classIndex + 1;
+        }
+
+        return changed;
+    }
+
+    public FunctionSummary findFunctionSummary(MethodDeclaration method) {
+        String ownerName = method.ownerName();
+        String methodName = method.name();
+        List<String> parameterTypes = List();
+        this.fillParameterTypes(method, parameterTypes);
+        Bool staticMethod = method.isStatic();
+        Int index = 0;
+
+        while (index < this.summaryItems.length()) {
+            FunctionSummary summary = this.summaryItems.get(index);
+
+            if (summary.matchesDeclaration(ownerName, methodName, parameterTypes, staticMethod)) {
+                return summary;
+            }
+
+            index = index + 1;
+        }
+
+        List<ParameterHyperAllocFlowEffect> effects = List();
+        return FunctionSummary("", "", 0, "Void", false, false, true, false, "missing function summary", effects);
+    }
+
+    public Bool methodDirectlyReturnsOwned(MethodDeclaration method, SyntaxProgram program) {
+        if (method.isConstructor() || this.inlineBoundaries.isInlineReturnMethod(method, program)) {
+            return false;
+        }
+
+        if (!this.isOwnableReturnType(method.returnTypeName(), program)) {
+            return false;
+        }
+
+        if (!this.statementsContainReturn(method.statements())) {
+            return false;
+        }
+
+        // A String method with at least one owned return path returns owned
+        // values on every path: the emitter copies its literal and borrowed
+        // returns (see stringReturnCopies), so callers can always release.
+        if (method.returnTypeName() == "String" && !method.isGenerated()) {
+            return this.anyReturnOwned(method.statements(), method.statements(), "String", program);
+        }
+
+        return this.allReturnsOwned(method.statements(), method.statements(), method.returnTypeName(), program);
+    }
+
+    // Reference results that can be uniquely owned: Strings, program classes
+    // and typed Lists (a locally built `List()` is returned by transfer).
+    private Bool isOwnableReturnType(String typeName, SyntaxProgram program) {
+        return typeName == "String" || (typeName.startsWith("List<") && typeName.endsWith(">")) || this.catalog.hasClass(typeName, program);
+    }
+
+    public Bool anyReturnOwned(List<Statement> statements, List<Statement> methodStatements, String expectedReturnType, SyntaxProgram program) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isReturn() && this.returnExpressionIsOwned(statement.expressionIndex(), methodStatements, expectedReturnType, program)) {
+                return true;
+            }
+
+            if ((statement.isIf() || statement.isWhile() || statement.isFor()) && (this.anyReturnOwned(statement.bodyStatements(), methodStatements, expectedReturnType, program) || this.anyReturnOwned(statement.elseStatements(), methodStatements, expectedReturnType, program))) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    // Return expressions of owned String methods that do not create an owned
+    // value themselves (literals, fields, parameters, borrowed calls). The
+    // emitter returns a fresh copy for each of them.
+    public List<Int> stringReturnCopies(SyntaxProgram program) {
+        List<Int> copies = List();
+        Int summaryIndex = 0;
+
+        while (summaryIndex < this.summaryItems.length()) {
+            FunctionSummary summary = this.summaryItems.get(summaryIndex);
+
+            if (summary.returnsOwned() && summary.returnTypeMatches("String") && !summary.isGenerated() && !this.isDispatchSummary(summaryIndex)) {
+                ClassDeclaration declaration = program.classAt(this.summaryClassIndexItems.get(summaryIndex));
+                MethodDeclaration method = declaration.methodAt(this.summaryMethodIndexItems.get(summaryIndex));
+                this.collectStringReturnCopies(method.statements(), method.statements(), program, copies);
+            }
+
+            summaryIndex = summaryIndex + 1;
+        }
+
+        return copies;
+    }
+
+    private Void collectStringReturnCopies(List<Statement> statements, List<Statement> methodStatements, SyntaxProgram program, List<Int> copies) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isReturn() && statement.expressionIndex() != 0 && !this.returnExpressionIsOwned(statement.expressionIndex(), methodStatements, "String", program)) {
+                copies.add(statement.expressionIndex());
+            }
+
+            if (statement.isIf() || statement.isWhile() || statement.isFor()) {
+                this.collectStringReturnCopies(statement.bodyStatements(), methodStatements, program, copies);
+                this.collectStringReturnCopies(statement.elseStatements(), methodStatements, program, copies);
+            }
+
+            index = index + 1;
+        }
+    }
+
+    public Bool allReturnsOwned(List<Statement> statements, List<Statement> methodStatements, String expectedReturnType, SyntaxProgram program) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isReturn() && !this.returnExpressionIsOwned(statement.expressionIndex(), methodStatements, expectedReturnType, program)) {
+                return false;
+            }
+
+            if ((statement.isIf() || statement.isWhile() || statement.isFor()) && this.statementsContainReturn(statement.bodyStatements())) {
+                if (!this.allReturnsOwned(statement.bodyStatements(), methodStatements, expectedReturnType, program)) {
+                    return false;
+                }
+            }
+
+            if ((statement.isIf() || statement.isWhile() || statement.isFor()) && this.statementsContainReturn(statement.elseStatements())) {
+                if (!this.allReturnsOwned(statement.elseStatements(), methodStatements, expectedReturnType, program)) {
+                    return false;
+                }
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+
+    public Bool returnExpressionIsOwned(Int expressionIndex, List<Statement> methodStatements, String expectedReturnType, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (this.catalog.isObjectCreation(expression, program)) {
+            return true;
+        }
+
+        if (expectedReturnType == "String") {
+            if (expression.kind() == "string" || expression.kind() == "field") {
+                return false;
+            }
+
+            if (expression.kind() == "binary" && expression.text() == "+") {
+                return true;
+            }
+
+            if (expression.kind() == "methodcall" || expression.kind() == "staticcall") {
+                return this.stringExpressionCreatesOwnedValue(expressionIndex, program);
+            }
+        }
+
+        if (expression.kind() == "name") {
+            if (expectedReturnType == "String" && this.stringLocalMayOwnValue(methodStatements, expression.text(), program)) {
+                return true;
+            }
+
+            Int initializerIndex = this.localInitializerIndex(methodStatements, expression.text());
+
+            if (initializerIndex == 0) {
+                return false;
+            }
+
+            return this.returnExpressionIsOwned(initializerIndex, methodStatements, expectedReturnType, program);
+        }
+
+        if (expression.kind() == "methodcall" || expression.kind() == "staticcall") {
+            return this.callReturnsOwned(expression, expectedReturnType, program);
+        }
+
+        return false;
+    }
+
+    private Bool stringLocalMayOwnValue(List<Statement> statements, String name, SyntaxProgram program) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isVariable() && statement.name() == name && this.stringExpressionCreatesOwnedValue(statement.expressionIndex(), program)) {
+                return true;
+            }
+
+            if (statement.isAssign() && statement.name() == name && this.stringExpressionCreatesOwnedValue(statement.expressionIndex(), program)) {
+                return true;
+            }
+
+            if (statement.isIf() || statement.isWhile() || statement.isFor()) {
+                if (this.stringLocalMayOwnValue(statement.bodyStatements(), name, program) || this.stringLocalMayOwnValue(statement.elseStatements(), name, program)) {
+                    return true;
+                }
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    private Bool stringExpressionCreatesOwnedValue(Int expressionIndex, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "string" || expression.kind() == "name" || expression.kind() == "field") {
+            return false;
+        }
+
+        if (expression.kindIs("binary")) {
+            return expression.textIs("+");
+        }
+
+        if (!expression.hasResolvedMethod()) {
+            return false;
+        }
+
+        String owner = expression.resolvedMethodOwner();
+        String name = expression.text();
+
+        if (owner == "String") {
+            if (name == "toString") {
+                return this.stringExpressionCreatesOwnedValue(expression.leftIndex(), program);
+            }
+
+            return name == "replace" || name == "substring" || name == "trim" || name == "toLower" || name == "toLowerCase" || name == "toUpper" || name == "toUpperCase" || name == "repeat" || name == "trimStart" || name == "trimEnd";
+        }
+
+        if (owner == "Int" || owner == "Char" || owner == "Float") {
+            return name == "toString";
+        }
+
+        if (owner == "List" || owner.startsWith("List<")) {
+            return name == "removeAt";
+        }
+
+        return this.callReturnsOwned(expression, "String", program);
+    }
+
+    public Int localInitializerIndex(List<Statement> statements, String name) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isVariable() && statement.name() == name) {
+                return statement.expressionIndex();
+            }
+
+            if (statement.isIf() || statement.isWhile() || statement.isFor()) {
+                Int bodyIndex = this.localInitializerIndex(statement.bodyStatements(), name);
+
+                if (bodyIndex != 0) {
+                    return bodyIndex;
+                }
+
+                Int elseIndex = this.localInitializerIndex(statement.elseStatements(), name);
+
+                if (elseIndex != 0) {
+                    return elseIndex;
+                }
+            }
+
+            index = index + 1;
+        }
+
+        return 0;
+    }
+
+    public Bool callReturnsOwned(Expression expression, String expectedReturnType, SyntaxProgram program) {
+        if (expression.kind() != "methodcall" && expression.kind() != "staticcall") {
+            return false;
+        }
+
+        if (expression.hasResolvedMethod()) {
+            if (this.isOwnedBuiltinList(expression)) {
+                return expectedReturnType == "List<String>";
+            }
+
+            Int resolvedIndex = this.escapes.resolvedSummaryIndex(expression);
+
+            if (this.escapes.summaryOwnerNameIsEmpty(resolvedIndex)) {
+                return false;
+            }
+
+            return this.escapes.summaryReturnTypeMatches(resolvedIndex, expectedReturnType) && this.escapes.summaryReturnsOwned(resolvedIndex);
+        }
+
+        Int parameterCount = expression.argumentCount();
+        String methodName = expression.text();
+        Expression receiver = program.expression(expression.leftIndex());
+
+        if (receiver.kind() == "name") {
+            Int staticOwnership = this.escapes.staticReturnOwnership(receiver.text(), methodName, parameterCount, expectedReturnType);
+
+            if (staticOwnership >= 0) {
+                return staticOwnership == 1;
+            }
+        }
+
+        return this.escapes.returnOwnership(methodName, parameterCount, expectedReturnType) == 1;
+    }
+
+    public Bool isOwnedReturnCall(Expression expression, String expectedReturnType, SyntaxProgram program) {
+        return (expression.kind() == "methodcall" || expression.kind() == "staticcall") && this.callReturnsOwned(expression, expectedReturnType, program);
+    }
+
+    // String.split builds a new List that owns its part Strings.
+    private Bool isOwnedBuiltinList(Expression expression) {
+        return expression.kindIs("methodcall") && expression.resolvedMethodOwner() == "String" && expression.textIs("split");
+    }
+
+    public String ownedReturnType(Expression expression) {
+        if (expression.hasResolvedMethod() && this.isOwnedBuiltinList(expression)) {
+            return "List<String>";
+        }
+
+        if (expression.hasResolvedMethod()) {
+            Int resolvedIndex = this.escapes.resolvedSummaryIndex(expression);
+
+            if (this.escapes.summaryOwnerNameIsEmpty(resolvedIndex) || !this.escapes.summaryReturnsOwned(resolvedIndex)) {
+                return "";
+            }
+
+            return this.escapes.summaryReturnTypeName(resolvedIndex);
+        }
+
+        Int parameterCount = expression.argumentCount();
+        return this.escapes.ownedReturnTypeForMethod(expression.text(), parameterCount);
+    }
+
+    private Bool propagateBorrowedReturns(SyntaxProgram program) {
+        Bool changed = false;
+        Int classIndex = 0;
+        Int summaryIndex = 0;
+
+        while (classIndex < program.classCount()) {
+            ClassDeclaration declaration = program.classAt(classIndex);
+            Int methodIndex = 0;
+
+            while (methodIndex < declaration.methodCount()) {
+                MethodDeclaration method = declaration.methodAt(methodIndex);
+                FunctionSummary summary = this.summaryAt(summaryIndex, method);
+                summaryIndex = summaryIndex + 1;
+
+                if (!summary.returnsOwned()) {
+                    if (!method.isStatic() && this.methodReturnsBorrowedName(method, "this", program) && summary.markReturnBorrowsReceiver()) {
+                        changed = true;
+                    }
+
+                    Int parameterIndex = 0;
+
+                    while (parameterIndex < method.parameterCount()) {
+                        Parameter parameter = method.parameterAt(parameterIndex);
+
+                        if (this.methodReturnsBorrowedName(method, parameter.name(), program) && summary.markReturnBorrowsParameter(parameterIndex)) {
+                            changed = true;
+                        }
+
+                        parameterIndex = parameterIndex + 1;
+                    }
+                }
+
+                methodIndex = methodIndex + 1;
+            }
+
+            classIndex = classIndex + 1;
+        }
+
+        return changed;
+    }
+
+    private Bool methodReturnsBorrowedName(MethodDeclaration method, String name, SyntaxProgram program) {
+        List<String> visitedNames = List();
+        return this.statementsReturnBorrowedName(method.statements(), method.statements(), name, visitedNames, program);
+    }
+
+    private Bool statementsReturnBorrowedName(List<Statement> statements, List<Statement> methodStatements, String name, List<String> visitedNames, SyntaxProgram program) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isReturn() && this.expressionBorrowsName(statement.expressionIndex(), methodStatements, name, visitedNames, program)) {
+                return true;
+            }
+
+            if (statement.isIf() || statement.isWhile() || statement.isFor()) {
+                if (this.statementsReturnBorrowedName(statement.bodyStatements(), methodStatements, name, visitedNames, program) || this.statementsReturnBorrowedName(statement.elseStatements(), methodStatements, name, visitedNames, program)) {
+                    return true;
+                }
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    private Bool expressionBorrowsName(Int expressionIndex, List<Statement> methodStatements, String name, List<String> visitedNames, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "name") {
+            if (expression.text() == name) {
+                return true;
+            }
+
+            if (visitedNames.contains(expression.text())) {
+                return false;
+            }
+
+            visitedNames.add(expression.text());
+            Bool borrows = this.localMayBorrowName(methodStatements, methodStatements, expression.text(), name, visitedNames, program);
+            this.removeName(visitedNames, expression.text());
+            return borrows;
+        }
+
+        if (expression.kind() == "field" || expression.kind() == "index") {
+            return this.expressionBorrowsName(expression.leftIndex(), methodStatements, name, visitedNames, program);
+        }
+
+        if (expression.kind() != "methodcall" && expression.kind() != "staticcall") {
+            return false;
+        }
+
+        if (expression.kindIs("methodcall") && expression.hasResolvedMethod() && expression.resolvedMethodOwner() == "String" && expression.textIs("toString")) {
+            return this.expressionBorrowsName(expression.leftIndex(), methodStatements, name, visitedNames, program);
+        }
+
+        if (expression.kind() == "methodcall" && expression.text() == "get") {
+            return this.expressionBorrowsName(expression.leftIndex(), methodStatements, name, visitedNames, program);
+        }
+
+        Int summaryIndex = this.summaryIndexForCall(expression);
+
+        if (this.escapes.summaryOwnerNameIsEmpty(summaryIndex) || this.escapes.summaryReturnsOwned(summaryIndex)) {
+            return false;
+        }
+
+        if (this.escapes.summaryReturnBorrowsReceiver(summaryIndex) && this.expressionBorrowsName(expression.leftIndex(), methodStatements, name, visitedNames, program)) {
+            return true;
+        }
+
+        Int argumentIndex = 0;
+
+        while (argumentIndex < expression.argumentCount()) {
+            if (this.escapes.summaryReturnBorrowsParameter(summaryIndex, argumentIndex) && this.expressionBorrowsName(expression.argumentIndexAt(argumentIndex), methodStatements, name, visitedNames, program)) {
+                return true;
+            }
+
+            argumentIndex = argumentIndex + 1;
+        }
+
+        return false;
+    }
+
+    private Bool localMayBorrowName(List<Statement> statements, List<Statement> methodStatements, String localName, String sourceName, List<String> visitedNames, SyntaxProgram program) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if ((statement.isVariable() || statement.isAssign()) && statement.name() == localName) {
+                if (this.expressionBorrowsName(statement.expressionIndex(), methodStatements, sourceName, visitedNames, program)) {
+                    return true;
+                }
+            }
+
+            if (statement.isIf() || statement.isWhile() || statement.isFor()) {
+                if (this.localMayBorrowName(statement.bodyStatements(), methodStatements, localName, sourceName, visitedNames, program) || this.localMayBorrowName(statement.elseStatements(), methodStatements, localName, sourceName, visitedNames, program)) {
+                    return true;
+                }
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    private Int summaryIndexForCall(Expression expression) {
+        return this.escapes.resolvedSummaryIndex(expression);
+    }
+
+    private FunctionSummary missingSummary() {
+        List<ParameterHyperAllocFlowEffect> effects = List();
+        return FunctionSummary("", "", 0, "Void", false, false, true, false, "missing function summary", effects);
+    }
+
+
+    private Void removeName(List<String> names, String name) {
+        Int index = 0;
+
+        while (index < names.length()) {
+            if (names.get(index) == name) {
+                names.removeAt(index);
+                return;
+            }
+
+            index = index + 1;
+        }
+    }
+
+    public Bool statementsContainReturn(List<Statement> statements) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isReturn()) {
+                return true;
+            }
+
+            if (statement.isIf()) {
+                if (this.statementsContainReturn(statement.bodyStatements()) || this.statementsContainReturn(statement.elseStatements())) {
+                    return true;
+                }
+            }
+
+            if (statement.isWhile() || statement.isFor()) {
+                if (this.statementsContainReturn(statement.bodyStatements()) || this.statementsContainReturn(statement.elseStatements())) {
+                    return true;
+                }
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+}

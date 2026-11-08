@@ -1,0 +1,63 @@
+namespace emerald::compiler::syntax;
+
+public class Token {
+    private String kindValue;
+    private String textValue;
+    private Int lineValue;
+    private Int columnValue;
+
+    public Token(String kind, String text, Int line, Int column) {
+        this.kindValue = kind;
+        this.textValue = text;
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public String kind() {
+        return this.kindValue + "";
+    }
+
+    public String text() {
+        return this.textValue + "";
+    }
+
+    public Int line() {
+        return this.lineValue;
+    }
+
+    public Int column() {
+        return this.columnValue;
+    }
+
+    public Bool kindIs(String kind) {
+        return this.kindValue == kind;
+    }
+
+    public Bool textIs(String text) {
+        return this.textValue == text;
+    }
+
+    public Bool isIdentifier(String name) {
+        if (!this.kindIs("identifier")) {
+            return false;
+        }
+
+        return this.textValue == name;
+    }
+
+    public Bool isTypeKeyword() {
+        if (!this.kindIs("identifier")) {
+            return false;
+        }
+
+        if (this.textValue == "Int") {
+            return true;
+        }
+
+        if (this.textValue == "String") {
+            return true;
+        }
+
+        return this.textValue == "Bool";
+    }
+}

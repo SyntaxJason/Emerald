@@ -1,0 +1,25 @@
+macro Tagged on Method {
+    String tag = args[0].toString();
+    StatementAST entry = Stmt::expr(
+        Expr::call("println", [Expr::str("[" + tag + "] " + method.name)])
+    );
+    method.body.prepend(entry);
+}
+
+public class Service {
+    @Tagged("AUTH")
+    public String login() {
+        return "logged in";
+    }
+
+    @Tagged("DB")
+    public String query() {
+        return "rows";
+    }
+}
+
+main() {
+    Service s = Service();
+    println(s.login());
+    println(s.query());
+}

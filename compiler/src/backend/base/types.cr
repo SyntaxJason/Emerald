@@ -100,6 +100,39 @@ module Emerald
       result
     end
 
+
+
+    def crystal_local_name(name : String) : String
+      return "__emerald_#{name}" if crystal_reserved_identifier?(name)
+
+      name
+    end
+
+    def crystal_method_name(name : String) : String
+      return "__emerald_#{name}" if crystal_reserved_identifier?(name)
+      return "__emerald_#{name}" if crystal_special_method_identifier?(name)
+
+      name
+    end
+
+    private def crystal_reserved_identifier?(name : String) : Bool
+      case name
+      when "abstract", "alias", "annotation", "as", "asm", "begin", "break", "case", "class", "def", "do", "else", "elsif", "end", "ensure", "enum", "extend", "false", "for", "fun", "if", "in", "include", "instance_sizeof", "is_a?", "lib", "macro", "module", "next", "nil", "of", "offsetof", "out", "pointerof", "private", "protected", "require", "rescue", "return", "select", "self", "sizeof", "struct", "super", "then", "true", "type", "typeof", "uninitialized", "union", "unless", "until", "verbatim", "when", "while", "with", "yield"
+        true
+      else
+        false
+      end
+    end
+
+    private def crystal_special_method_identifier?(name : String) : Bool
+      case name
+      when "initialize", "finalize"
+        true
+      else
+        false
+      end
+    end
+
     def mangle_fqn(fqn : String) : String
       fqn.gsub("::", "_")
     end

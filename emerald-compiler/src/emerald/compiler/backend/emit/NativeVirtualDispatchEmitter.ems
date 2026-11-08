@@ -1,0 +1,242 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Collections::ArrayList;
+use Std::Llvm::Llvm;
+use Std::Llvm::LlvmBasicBlock;
+use Std::Llvm::LlvmBuilder;
+use Std::Llvm::LlvmFunction;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmRuntimeFunction;
+use Std::Llvm::LlvmType;
+use Std::Llvm::LlvmValue;
+
+public class NativeVirtualDispatchEmitter {
+    // Overridden instance methods dispatch on the receiver's runtime class tag
+    // (the same tag interface dispatch uses). A call to a method without
+    // overrides stays a direct call.
+    private NativeEmitContext context;
+    private NativeLookup lookup;
+
+    public NativeVirtualDispatchEmitter(NativeEmitContext emitContext) {
+        this.context = emitContext;
+        this.lookup = NativeLookup();
+    }
+
+    public LlvmFunction target(String receiverType, MethodDeclaration method, SyntaxProgram program, LlvmNativeBackend backend) {
+        String directName = this.context.mangler().methodName(method);
+        LlvmFunction direct = backend.llvmModule().getFunction(directName);
+
+        if (method.isMissing() || method.isStatic() || method.isConstructor()) {
+            return direct;
+        }
+
+        // Programs without class inheritance only need dispatch synthesis for
+        // methods that have no emitted function of their own.
+        if (!direct.isNull() && !this.context.hasAnySubclasses(program)) {
+            return direct;
+        }
+
+        // Flow merges the summaries of a method and its overrides; calls
+        // dispatch exactly when that merged summary exists, so every call
+        // site's allocation and cleanup decisions already cover the overrides.
+        if (!direct.isNull() && this.context.hyperAllocFlowReport().methodHasOverrides(method)) {
+            return this.virtualDispatcher(directName, direct, method, program, backend);
+        }
+
+        ClassDeclaration receiverClass = this.lookup.findClass(program, this.lookup.dispatchClassName(program, receiverType));
+
+        if (!direct.isNull() || receiverClass.isMissing() || !receiverClass.isInterface()) {
+            return direct;
+        }
+
+        return this.interfaceDispatcher(directName, receiverClass, method, program, backend);
+    }
+
+    private LlvmFunction virtualDispatcher(String directName, LlvmFunction direct, MethodDeclaration method, SyntaxProgram program, LlvmNativeBackend backend) {
+        ClassDeclaration declaringClass = this.lookup.findClass(program, method.ownerName());
+
+        if (declaringClass.isMissing()) {
+            return direct;
+        }
+
+        String dispatcherName = directName + "__virtual";
+        LlvmFunction existing = backend.llvmModule().getFunction(dispatcherName);
+
+        if (!existing.isNull()) {
+            return existing;
+        }
+
+        List<Int> tags = List();
+        List<MethodDeclaration> implementations = List();
+        Int index = 0;
+
+        while (index < program.classCount()) {
+            ClassDeclaration candidate = program.classAt(index);
+
+            if (candidate.fullName() != declaringClass.fullName() && !candidate.isInterface() && !this.lookup.isTemplate(candidate) && this.lookup.extendsClass(candidate, declaringClass, program)) {
+                MethodDeclaration implementation = this.lookup.findMethod(program, candidate.fullName(), method.name(), method.parameterCount());
+
+                if (!implementation.isMissing() && this.context.mangler().methodName(implementation) != directName && this.sameSignature(method, implementation) && this.context.hyperAllocFlowReport().methodOverrides(method, implementation)) {
+                    tags.add(index + 1);
+                    implementations.add(implementation);
+                }
+            }
+
+            index = index + 1;
+        }
+
+        LlvmFunction dispatcher = backend.llvmModule().addFunction(dispatcherName, this.context.typeMapper().methodType(method, backend));
+        dispatcher.setLinkage(Llvm.internalLinkage());
+        this.emitDispatcher(dispatcher, method, tags, implementations, false, backend);
+        return dispatcher;
+    }
+
+    // A method inherited from a generic super-interface (ICollection<Int>
+    // behind IList<Int>) has no emitted dispatcher of its own; dispatch over
+    // the implementors of the receiver's interface instead.
+    private LlvmFunction interfaceDispatcher(String directName, ClassDeclaration receiverClass, MethodDeclaration method, SyntaxProgram program, LlvmNativeBackend backend) {
+        String dispatcherName = directName + "__dispatch";
+        LlvmFunction existing = backend.llvmModule().getFunction(dispatcherName);
+
+        if (!existing.isNull()) {
+            return existing;
+        }
+
+        List<Int> tags = List();
+        List<MethodDeclaration> implementations = List();
+        Int index = 0;
+
+        while (index < program.classCount()) {
+            ClassDeclaration candidate = program.classAt(index);
+
+            if (!this.lookup.isTemplate(candidate) && this.lookup.classImplementsInterface(candidate, receiverClass, program)) {
+                MethodDeclaration implementation = this.lookup.findMethod(program, candidate.fullName(), method.name(), method.parameterCount());
+
+                if (!implementation.isMissing() && this.sameSignature(method, implementation)) {
+                    tags.add(index + 1);
+                    implementations.add(implementation);
+                }
+            }
+
+            index = index + 1;
+        }
+
+        LlvmFunction dispatcher = backend.llvmModule().addFunction(dispatcherName, this.context.typeMapper().methodType(method, backend));
+        dispatcher.setLinkage(Llvm.internalLinkage());
+        this.emitDispatcher(dispatcher, method, tags, implementations, true, backend);
+        return dispatcher;
+    }
+
+    private Void emitDispatcher(LlvmFunction dispatcher, MethodDeclaration method, List<Int> tags, List<MethodDeclaration> implementations, Bool panicOnMiss, LlvmNativeBackend backend) {
+        LlvmBuilder builder = backend.context().createBuilder();
+        builder.positionAtEnd(dispatcher.appendBlock("entry"));
+        ArrayList<LlvmType> classTypes = ArrayList();
+        classTypes.add(backend.context().opaquePointerType());
+        LlvmRuntimeFunction getClass = backend.runtimeDeclarations().declare("emerald_object_class", backend.context().int32Type(), classTypes);
+        ArrayList<LlvmValue> receiverArgs = ArrayList();
+        receiverArgs.add(dispatcher.parameter(0));
+        LlvmValue classTag = builder.callFunction(getClass.type(), getClass.function(), receiverArgs, "class_tag");
+        Bool contractOwned = this.context.hyperAllocFlowReport().methodCallReturnsOwned(method);
+        Int index = 0;
+
+        while (index < tags.length()) {
+            MethodDeclaration implementation = implementations.get(index);
+            LlvmBasicBlock invoke = dispatcher.appendBlock("override_" + index.toString());
+            LlvmBasicBlock next = dispatcher.appendBlock("next_" + index.toString());
+            builder.conditionalBranch(builder.intEqual(classTag, backend.int32(tags.get(index)), "is_override_" + index.toString()), invoke, next);
+            builder.positionAtEnd(invoke);
+            this.emitForward(builder, dispatcher, method, implementation, !panicOnMiss, contractOwned, backend);
+            builder.positionAtEnd(next);
+            index = index + 1;
+        }
+
+        if (panicOnMiss) {
+            LlvmValue messageBytes = builder.globalStringPointer("Invalid interface dispatch: " + method.ownerName() + "." + method.name(), "dispatch_error_bytes");
+            ArrayList<LlvmValue> messageArgs = ArrayList();
+            messageArgs.add(messageBytes);
+            LlvmRuntimeFunction staticString = backend.runtimeDeclarations().staticStringFromCString();
+            ArrayList<LlvmValue> panicArgs = ArrayList();
+            panicArgs.add(builder.callFunction(staticString.type(), staticString.function(), messageArgs, "dispatch_error"));
+            LlvmRuntimeFunction panic = backend.runtimeDeclarations().panic();
+            builder.callFunction(panic.type(), panic.function(), panicArgs, "");
+            builder.unreachable();
+        } else {
+            this.emitForward(builder, dispatcher, method, method, true, contractOwned, backend);
+        }
+
+        builder.dispose();
+    }
+
+    // Callers of a class dispatcher apply the merged Flow summary of the
+    // method and its overrides, so `normalize` adapts each result to it: a
+    // String result is owned when any implementation owns it, so borrowed
+    // ones are copied. Other results are owned only when every implementation
+    // owns them; otherwise an owned result becomes a child of the receiver
+    // (registered as an owner first, as stack objects without owned fields
+    // are not) and the merged summary marks the result as borrowed from it.
+    // Interface dispatchers forward results unchanged.
+    private Void emitForward(LlvmBuilder builder, LlvmFunction dispatcher, MethodDeclaration method, MethodDeclaration implementation, Bool normalize, Bool contractOwned, LlvmNativeBackend backend) {
+        ArrayList<LlvmValue> args = ArrayList();
+        Int parameterIndex = 0;
+
+        while (parameterIndex <= method.parameterCount()) {
+            args.add(dispatcher.parameter(parameterIndex));
+            parameterIndex = parameterIndex + 1;
+        }
+
+        LlvmFunction callee = backend.llvmModule().getFunction(this.context.mangler().methodName(implementation));
+
+        if (method.returnTypeName() == "Void") {
+            builder.callFunction(this.context.typeMapper().methodType(implementation, backend), callee, args, "");
+            builder.returnVoid();
+            return;
+        }
+
+        LlvmValue result = builder.callFunction(this.context.typeMapper().methodType(implementation, backend), callee, args, "result");
+        Bool implementationOwned = this.context.hyperAllocFlowReport().methodReturnsOwned(implementation);
+
+        if (normalize && method.returnTypeName() == "String" && contractOwned && !implementationOwned) {
+            LlvmValue emptyBytes = builder.globalStringPointer("", "empty_bytes");
+            ArrayList<LlvmValue> emptyArgs = ArrayList();
+            emptyArgs.add(emptyBytes);
+            LlvmRuntimeFunction staticString = backend.runtimeDeclarations().staticStringFromCString();
+            LlvmValue empty = builder.callFunction(staticString.type(), staticString.function(), emptyArgs, "empty");
+            ArrayList<LlvmValue> concatArgs = ArrayList();
+            concatArgs.add(result);
+            concatArgs.add(empty);
+            LlvmRuntimeFunction concat = backend.runtimeDeclarations().stringConcat();
+            builder.returnValue(builder.callFunction(concat.type(), concat.function(), concatArgs, "owned_result"));
+            return;
+        }
+
+        if (normalize && method.returnTypeName() != "String" && !contractOwned && implementationOwned) {
+            ArrayList<LlvmType> adoptTypes = ArrayList();
+            adoptTypes.add(backend.context().opaquePointerType());
+            adoptTypes.add(backend.context().opaquePointerType());
+            LlvmRuntimeFunction adopt = backend.runtimeDeclarations().declare("hyperalloc_flow_root_adopt", backend.context().voidType(), adoptTypes);
+            LlvmRuntimeFunction ownerEnter = backend.runtimeDeclarations().ownerEnter();
+            ArrayList<LlvmValue> ownerArgs = ArrayList();
+            ownerArgs.add(dispatcher.parameter(0));
+            builder.callFunction(ownerEnter.type(), ownerEnter.function(), ownerArgs, "");
+            ArrayList<LlvmValue> adoptArgs = ArrayList();
+            adoptArgs.add(dispatcher.parameter(0));
+            adoptArgs.add(result);
+            builder.callFunction(adopt.type(), adopt.function(), adoptArgs, "");
+        }
+
+        builder.returnValue(result);
+    }
+
+    private Bool sameSignature(MethodDeclaration contract, MethodDeclaration implementation) {
+        if (contract.returnTypeName() != implementation.returnTypeName()) { return false; }
+        Int index = 0;
+        while (index < contract.parameterCount()) {
+            if (contract.parameterAt(index).typeName() != implementation.parameterAt(index).typeName()) { return false; }
+            index = index + 1;
+        }
+        return true;
+    }
+}

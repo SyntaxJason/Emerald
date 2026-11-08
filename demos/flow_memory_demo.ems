@@ -1,0 +1,126 @@
+namespace Demo;
+
+use Std::Io::File;
+
+// A small owned object graph: every Node owns a growing List<Int> and a
+// dynamically built String. Nothing here is returned or stored anywhere
+// outside the loop body below, so Flow must prove each Node (and its
+// contents) is dead at the end of every iteration and release it -
+// with no garbage collector involved.
+class Node {
+    private String label;
+    private List<Int> values;
+    private Node child;
+    private Bool hasChild;
+
+    public Node(String label) {
+        this.label = label;
+        this.values = List();
+        this.hasChild = false;
+    }
+
+    public Void fill(Int count) {
+        Int i = 0;
+
+        while (i < count) {
+            this.values.add(i * i);
+            i = i + 1;
+        }
+
+        return;
+    }
+
+    public Void attachChild(Node node) {
+        this.child = node;
+        this.hasChild = true;
+        return;
+    }
+
+    public Int sum() {
+        Int total = 0;
+        Int i = 0;
+
+        while (i < this.values.length()) {
+            total = total + this.values.get(i);
+            i = i + 1;
+        }
+
+        if (this.hasChild) {
+            total = total + this.child.sum();
+        }
+
+        return total;
+    }
+
+    public String describe() {
+        return this.label + " sum=" + this.sum().toString();
+    }
+}
+
+class MemoryProbe {
+    public MemoryProbe() {
+    }
+
+    public static Int rssKb() {
+        File status = File("/proc/self/status");
+        String content = status.readOr("");
+        List<String> lines = content.split("\n");
+        Int index = 0;
+
+        while (index < lines.length()) {
+            String line = lines.get(index);
+
+            if (line.startsWith("VmRSS:")) {
+                String rest = line.replace("VmRSS:", "").replace("kB", "").trim();
+                return rest.toInt();
+            }
+
+            index = index + 1;
+        }
+
+        return -1;
+    }
+}
+
+main() {
+    Int iteration = 0;
+    Int checkpoint = 0;
+    Int checkpointEvery = 20000;
+
+    println("HyperAlloc Flow memory demo - endlos, mit Ctrl+C beenden");
+    println("Jede Iteration erzeugt einen Objektgraphen (List<Int>, verschachtelte Node,");
+    println("dynamische Strings) und verwirft ihn wieder - ohne Garbage Collector.");
+    println("Wenn Flow korrekt arbeitet, bleibt VmRSS nach der Aufwaermphase flach.");
+    println("");
+
+    while (true) {
+        Node root = Node("root-" + iteration.toString());
+        root.fill(300);
+
+        Node inner = Node("inner-" + iteration.toString());
+        inner.fill(150);
+        root.attachChild(inner);
+
+        String description = root.describe();
+
+        List<String> scratch = List();
+        Int j = 0;
+
+        while (j < 80) {
+            scratch.add("entry-" + j.toString() + "-" + iteration.toString());
+            j = j + 1;
+        }
+
+        Int scratchLoad = scratch.length();
+
+        if (iteration - checkpoint >= checkpointEvery) {
+            checkpoint = iteration;
+            Int rss = MemoryProbe.rssKb();
+            println("iteration=" + iteration.toString() + "  VmRSS=" + rss.toString() + " kB  scratchLoad=" + scratchLoad.toString() + "  " + description);
+        }
+
+        iteration = iteration + 1;
+    }
+
+    return 0;
+}

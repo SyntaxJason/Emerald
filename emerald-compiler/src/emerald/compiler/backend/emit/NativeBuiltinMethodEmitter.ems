@@ -1,0 +1,302 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Collections::ArrayList;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmValue;
+use Std::Llvm::LlvmType;
+
+public class NativeBuiltinMethodEmitter {
+    private NativeEmitContext context;
+    private NativeExpressionEmitter expressions;
+
+    public NativeBuiltinMethodEmitter(NativeEmitContext emitContext, NativeExpressionEmitter expressionEmitter) {
+        this.context = emitContext;
+        this.expressions = expressionEmitter;
+    }
+
+    // Receivers whose methods exist only as compiler builtins.
+    public Bool isBuiltinOnlyReceiver(String receiverType) {
+        return receiverType == "String" || receiverType == "Char";
+    }
+
+    public Bool supports(String receiverType, String methodName) {
+        if (receiverType == "String") {
+            return this.isStringMethod(methodName);
+        }
+
+        if (receiverType == "Int" && (methodName == "toString" || methodName == "toFloat" || methodName == "toChar")) {
+            return true;
+        }
+
+        if (receiverType == "Float") { return methodName == "toString" || methodName == "toInt"; }
+
+        if (receiverType == "Char") {
+            return methodName == "toString" || methodName == "code" || methodName == "isDigit" || methodName == "isLetter" || methodName == "isWhitespace";
+        }
+
+        return receiverType == "Bool" && methodName == "toString";
+    }
+
+    private Bool isStringMethod(String name) {
+        return name == "toString" || name == "hashCode" || name == "length" || name == "size" || name == "isEmpty" || name == "equals" || name == "startsWith" || name == "endsWith" || name == "contains" || name == "replace" || name == "substring" || name == "indexOf" || name == "split" || name == "trim" || name == "toLower" || name == "toLowerCase" || name == "toUpper" || name == "toUpperCase" || name == "toInt" || name == "charAt" || name == "lastIndexOf" || name == "compareTo" || name == "repeat" || name == "trimStart" || name == "trimEnd" || name == "isBlank";
+    }
+
+    public LlvmValue emit(Expression expression, String receiverType, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (receiverType == "String") {
+            return this.emitString(expression, program, backend, locals);
+        }
+
+        if (receiverType == "Int") {
+            return this.emitInt(expression, program, backend, locals);
+        }
+
+        if (receiverType == "Float") {
+            LlvmValue receiver = this.expressions.emit(expression.leftIndex(), program, backend, locals);
+            if (expression.textIs("toString")) { return backend.floatToString(receiver, "float_text_" + this.context.nextTemp().toString()); }
+            ArrayList<LlvmType> types = ArrayList();
+            types.add(backend.context().doubleType());
+            ArrayList<LlvmValue> args = ArrayList();
+            args.add(LlvmValue(receiver.handle()));
+            return backend.callRuntime(backend.runtimeDeclarations().declare("emerald_float64_to_int", backend.context().int64Type(), types), args, "float_int_" + this.context.nextTemp().toString());
+        }
+
+        if (receiverType == "Char") {
+            return this.emitChar(expression, program, backend, locals);
+        }
+
+        return this.emitBool(expression, program, backend, locals);
+    }
+
+    private LlvmValue emitString(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Int receiverIndex = expression.leftIndex();
+        // Non-identity String builtins borrow their receiver only for the call.
+        // A literal empty concatenation therefore needs no owned intermediate;
+        // keep cleanup attached to the actual operand's original lifetime.
+        if (!expression.textIs("toString")) {
+            receiverIndex = this.withoutEmptyConcatenation(receiverIndex, program, backend, locals);
+        }
+        LlvmValue receiver = this.expressions.emit(receiverIndex, program, backend, locals);
+        List<LlvmValue> arguments = List();
+        Int index = 0;
+
+        while (index < expression.argumentCount()) {
+            arguments.add(this.expressions.emit(expression.argumentIndexAt(index), program, backend, locals));
+            index = index + 1;
+        }
+
+        // String.toString is an identity operation: the caller receives the
+        // receiver's lifetime. Every other supported builtin copies or returns
+        // a value that is independent of its String inputs.
+        if (expression.textIs("toString")) {
+            return receiver;
+        }
+
+        LlvmValue result = this.emitStringValue(expression, receiver, arguments, backend);
+        this.expressions.releaseOwnedStringTemporary(receiverIndex, receiver, program, backend, locals);
+        index = 0;
+
+        while (index < expression.argumentCount()) {
+            Int argumentIndex = expression.argumentIndexAt(index);
+
+            if (this.expressions.typer().typeOf(argumentIndex, program, locals, backend) == "String") {
+                this.expressions.releaseOwnedStringTemporary(argumentIndex, LlvmValue(arguments.get(index).handle()), program, backend, locals);
+            }
+
+            index = index + 1;
+        }
+
+        return result;
+    }
+
+    private Int withoutEmptyConcatenation(Int expressionIndex, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Int index = expressionIndex;
+        Bool changed = true;
+        while (changed) {
+            changed = false;
+            Expression value = program.expression(index);
+            if (value.kindIs("binary") && value.textIs("+")) {
+                Expression left = program.expression(value.leftIndex());
+                Expression right = program.expression(value.rightIndex());
+                if (right.kindIs("string") && right.text().isEmpty() && this.expressions.typer().typeOf(value.leftIndex(), program, locals, backend) == "String") {
+                    index = value.leftIndex();
+                    changed = true;
+                } else if (left.kindIs("string") && left.text().isEmpty() && this.expressions.typer().typeOf(value.rightIndex(), program, locals, backend) == "String") {
+                    index = value.rightIndex();
+                    changed = true;
+                }
+            }
+        }
+        return index;
+    }
+
+    private LlvmValue emitStringValue(Expression expression, LlvmValue receiver, List<LlvmValue> arguments, LlvmNativeBackend backend) {
+        if (expression.text() == "hashCode") {
+            ArrayList<LlvmType> params = ArrayList();
+            params.add(backend.context().opaquePointerType());
+            ArrayList<LlvmValue> args = ArrayList();
+            args.add(LlvmValue(receiver.handle()));
+            return backend.callRuntime(backend.runtimeDeclarations().declare("emerald_string_hash_int64", backend.context().int64Type(), params), args, "hash_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "lastIndexOf" || expression.text() == "compareTo") {
+            ArrayList<LlvmType> params = ArrayList();
+            params.add(backend.context().opaquePointerType());
+            params.add(backend.context().opaquePointerType());
+            ArrayList<LlvmValue> args = ArrayList();
+            args.add(LlvmValue(receiver.handle()));
+            args.add(LlvmValue(arguments.get(0).handle()));
+            String runtimeName = "emerald_string_last_index_of";
+            if (expression.text() == "compareTo") { runtimeName = "emerald_string_compare"; }
+            return backend.callRuntime(backend.runtimeDeclarations().declare(runtimeName, backend.context().int64Type(), params), args, "string_cmp_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "repeat") {
+            ArrayList<LlvmType> params = ArrayList();
+            params.add(backend.context().opaquePointerType());
+            params.add(backend.context().int64Type());
+            ArrayList<LlvmValue> args = ArrayList();
+            args.add(LlvmValue(receiver.handle()));
+            args.add(LlvmValue(arguments.get(0).handle()));
+            return backend.callRuntime(backend.runtimeDeclarations().declare("emerald_string_repeat", backend.context().opaquePointerType(), params), args, "string_repeat_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "trimStart" || expression.text() == "trimEnd" || expression.text() == "isBlank") {
+            ArrayList<LlvmType> params = ArrayList();
+            params.add(backend.context().opaquePointerType());
+            ArrayList<LlvmValue> args = ArrayList();
+            args.add(LlvmValue(receiver.handle()));
+            if (expression.text() == "isBlank") {
+                LlvmValue raw = backend.callRuntime(backend.runtimeDeclarations().declare("emerald_string_is_blank", backend.context().int32Type(), params), args, "string_blank_raw_" + this.context.nextTemp().toString());
+                return backend.builder().intNotEqual(raw, backend.int32(0), "string_blank_" + this.context.nextTemp().toString());
+            }
+            String runtimeName = "emerald_string_trim_start";
+            if (expression.text() == "trimEnd") { runtimeName = "emerald_string_trim_end"; }
+            return backend.callRuntime(backend.runtimeDeclarations().declare(runtimeName, backend.context().opaquePointerType(), params), args, "string_trim_side_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "length" || expression.text() == "size") {
+            return backend.stringLength(receiver, "string_len_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "isEmpty") {
+            LlvmValue length = backend.stringLength(receiver, "string_len_" + this.context.nextTemp().toString());
+            return backend.builder().intEqual(length, backend.int64(0), "string_empty_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "equals") {
+            LlvmValue other = LlvmValue(arguments.get(0).handle());
+            LlvmValue raw = backend.stringsEqual(receiver, other, "string_eq_raw_" + this.context.nextTemp().toString());
+            return backend.builder().intNotEqual(raw, backend.int32(0), "string_eq_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "startsWith") {
+            LlvmValue prefix = LlvmValue(arguments.get(0).handle());
+            LlvmValue raw = backend.stringStartsWith(receiver, prefix, "string_starts_raw_" + this.context.nextTemp().toString());
+            return backend.builder().intNotEqual(raw, backend.int32(0), "string_starts_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "endsWith") {
+            LlvmValue suffix = LlvmValue(arguments.get(0).handle());
+            LlvmValue raw = backend.stringEndsWith(receiver, suffix, "string_ends_raw_" + this.context.nextTemp().toString());
+            return backend.builder().intNotEqual(raw, backend.int32(0), "string_ends_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "contains") {
+            LlvmValue needle = LlvmValue(arguments.get(0).handle());
+            LlvmValue raw = backend.stringContains(receiver, needle, "string_contains_raw_" + this.context.nextTemp().toString());
+            return backend.builder().intNotEqual(raw, backend.int32(0), "string_contains_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "replace") {
+            LlvmValue needle = LlvmValue(arguments.get(0).handle());
+            LlvmValue replacement = LlvmValue(arguments.get(1).handle());
+            return backend.stringReplace(receiver, needle, replacement, "string_replace_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "substring") {
+            LlvmValue start = LlvmValue(arguments.get(0).handle());
+            LlvmValue end = LlvmValue(arguments.get(1).handle());
+            return backend.stringSubstring(receiver, start, end, "string_substring_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "indexOf") {
+            LlvmValue needle = LlvmValue(arguments.get(0).handle());
+            return backend.stringIndexOf(receiver, needle, "string_index_of_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "split") {
+            LlvmValue delimiter = LlvmValue(arguments.get(0).handle());
+            return backend.stringSplit(receiver, delimiter, "string_split_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "trim") {
+            return backend.stringTrim(receiver, "string_trim_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "toLower" || expression.text() == "toLowerCase") {
+            return backend.stringToLower(receiver, "string_lower_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "toUpper" || expression.text() == "toUpperCase") {
+            return backend.stringToUpper(receiver, "string_upper_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "toInt") {
+            return backend.stringToInt(receiver, "string_int_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "charAt") {
+            LlvmValue index = LlvmValue(arguments.get(0).handle());
+            return backend.stringCharAt(receiver, index, "string_char_" + this.context.nextTemp().toString());
+        }
+
+        return receiver;
+    }
+
+    private LlvmValue emitInt(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        LlvmValue receiver = this.expressions.emit(expression.leftIndex(), program, backend, locals);
+        if (expression.textIs("toFloat")) { return backend.asFloat(receiver, "int_float_" + this.context.nextTemp().toString()); }
+        if (expression.textIs("toChar")) {
+            ArrayList<LlvmType> params = ArrayList();
+            params.add(backend.context().int64Type());
+            ArrayList<LlvmValue> args = ArrayList();
+            args.add(LlvmValue(receiver.handle()));
+            return backend.callRuntime(backend.runtimeDeclarations().declare("emerald_int64_to_char", backend.context().int32Type(), params), args, "int_char_" + this.context.nextTemp().toString());
+        }
+        return backend.intToString(receiver, "int_text_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue emitChar(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        LlvmValue receiver = this.expressions.emit(expression.leftIndex(), program, backend, locals);
+
+        if (expression.text() == "toString") {
+            return backend.charToString(receiver, "char_text_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "code") {
+            return backend.builder().zeroExtend(receiver, backend.context().int64Type(), "char_code_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "isDigit") {
+            LlvmValue raw = backend.charIsDigit(receiver, "char_digit_raw_" + this.context.nextTemp().toString());
+            return backend.builder().intNotEqual(raw, backend.int32(0), "char_digit_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "isLetter") {
+            LlvmValue raw = backend.charIsLetter(receiver, "char_letter_raw_" + this.context.nextTemp().toString());
+            return backend.builder().intNotEqual(raw, backend.int32(0), "char_letter_" + this.context.nextTemp().toString());
+        }
+
+        LlvmValue raw = backend.charIsWhitespace(receiver, "char_whitespace_raw_" + this.context.nextTemp().toString());
+        return backend.builder().intNotEqual(raw, backend.int32(0), "char_whitespace_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue emitBool(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        LlvmValue receiver = this.expressions.emit(expression.leftIndex(), program, backend, locals);
+        LlvmValue trueText = backend.runtimeStaticString("true", "bool_true_" + this.context.nextTemp().toString());
+        LlvmValue falseText = backend.runtimeStaticString("false", "bool_false_" + this.context.nextTemp().toString());
+        return backend.builder().select(receiver, trueText, falseText, "bool_text_" + this.context.nextTemp().toString());
+    }
+}

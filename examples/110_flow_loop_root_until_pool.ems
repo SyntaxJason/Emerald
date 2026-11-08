@@ -1,0 +1,24 @@
+public class HyperAllocFlowLoopPacket {
+    private Int id;
+
+    public HyperAllocFlowLoopPacket(Int id) {
+        this.id = id;
+    }
+
+    public Int value() {
+        return this.id;
+    }
+}
+
+main() {
+    Int index = 0;
+    Int total = 0;
+
+    while (index < 3) {
+        HyperAllocFlowLoopPacket packet = HyperAllocFlowLoopPacket(index);
+        total = total + packet.value();
+        index = index + 1;
+    }
+
+    println(total.toString());
+}

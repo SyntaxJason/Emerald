@@ -1,0 +1,23 @@
+public data class LoopPair(Int x, Int y) {
+}
+
+main() {
+    List<LoopPair> values = List();
+    Int i = 0;
+    while (i < 2000000) {
+        values.add(LoopPair(i, i * 2));
+        i = i + 1;
+    }
+    Int sum = 0;
+    Int j = 0;
+    while (j < values.length()) {
+        LoopPair copy = values.get(j);
+        sum = sum + copy.x;
+        j = j + 1;
+    }
+    LoopPair removed = values.removeAt(values.length() - 1);
+    values.clear();
+    println(sum.toString());
+    println((removed.x + removed.y).toString());
+    return 0;
+}

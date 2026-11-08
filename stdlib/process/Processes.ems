@@ -1,0 +1,20 @@
+namespace Std::Process;
+
+use Std::Native::NativeProcess;
+
+public class Processes {
+    public Processes() {
+    }
+
+    public static List<String> args() {
+        return NativeProcess.args();
+    }
+
+    public static String command() {
+        return NativeProcess.command();
+    }
+
+    public static Void exit(Int code) {
+        NativeProcess.exit(code);
+    }
+}

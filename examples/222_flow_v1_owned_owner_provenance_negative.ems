@@ -1,0 +1,36 @@
+public class HyperAllocFlowV1OwnedOwnerItem {
+    public Int value;
+
+    public HyperAllocFlowV1OwnedOwnerItem(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1OwnedOwnerShelf {
+    private List<HyperAllocFlowV1OwnedOwnerItem> storedItems;
+
+    public HyperAllocFlowV1OwnedOwnerShelf() {
+        this.storedItems = List();
+        this.storedItems.add(HyperAllocFlowV1OwnedOwnerItem(42));
+    }
+
+    public List<HyperAllocFlowV1OwnedOwnerItem> items() {
+        return this.storedItems;
+    }
+}
+
+public class HyperAllocFlowV1OwnedOwnerLookup {
+    public static HyperAllocFlowV1OwnedOwnerShelf create() {
+        return HyperAllocFlowV1OwnedOwnerShelf();
+    }
+
+    public static HyperAllocFlowV1OwnedOwnerItem invalid() {
+        HyperAllocFlowV1OwnedOwnerShelf selected = HyperAllocFlowV1OwnedOwnerLookup.create();
+        HyperAllocFlowV1OwnedOwnerItem view = selected.items().get(0);
+        return view;
+    }
+}
+
+main() {
+    println(HyperAllocFlowV1OwnedOwnerLookup.invalid().value.toString());
+}

@@ -1,0 +1,57 @@
+namespace emerald::compiler::diagnostic;
+
+public class Diagnostic {
+    private String severityValue;
+    private String pathValue;
+    private String messageValue;
+    private Int lineValue;
+    private Int columnValue;
+
+    public Diagnostic(String severity, String message, Int line, Int column) {
+        this.severityValue = severity;
+        this.pathValue = "";
+        this.messageValue = message;
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public Diagnostic(String severity, String path, String message, Int line, Int column) {
+        this.severityValue = severity;
+        this.pathValue = path;
+        this.messageValue = message;
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public String severity() {
+        return this.severityValue;
+    }
+
+    public String path() {
+        return this.pathValue;
+    }
+
+    public String message() {
+        return this.messageValue;
+    }
+
+    public Int line() {
+        return this.lineValue;
+    }
+
+    public Int column() {
+        return this.columnValue;
+    }
+
+    public Bool isError() {
+        return this.severityValue == "error";
+    }
+
+    public String format() {
+        if (!this.pathValue.isEmpty()) {
+            return this.severityValue + ":" + this.pathValue + ":" + this.lineValue.toString() + ":" + this.columnValue.toString() + ": " + this.messageValue;
+        }
+
+        return this.severityValue + ":" + this.lineValue.toString() + ":" + this.columnValue.toString() + ": " + this.messageValue;
+    }
+}

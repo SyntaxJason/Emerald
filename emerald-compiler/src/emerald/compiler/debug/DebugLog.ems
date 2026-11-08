@@ -1,0 +1,35 @@
+namespace emerald::compiler::debug;
+
+use Std::Native::NativeEnv;
+
+public class DebugLog {
+    public DebugLog() {
+    }
+
+    public static Bool enabled() {
+        String value = NativeEnv.getOr("EMERALD_DEBUG", "");
+        return !value.isEmpty() && value != "0";
+    }
+
+    public static Void log(String message) {
+        if (DebugLog.enabled()) {
+            println("[emerald-debug] " + message);
+        }
+    }
+
+    public static Bool hyperAllocFlowEnabled() {
+        String value = NativeEnv.getOr("HYPERALLOC_FLOW_DEBUG", "");
+
+        if (!value.isEmpty() && value != "0") {
+            return true;
+        }
+
+        return DebugLog.enabled();
+    }
+
+    public static Void flow(String message) {
+        if (DebugLog.hyperAllocFlowEnabled()) {
+            println("[hyperalloc-flow-debug] " + message);
+        }
+    }
+}

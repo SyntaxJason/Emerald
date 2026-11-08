@@ -1,0 +1,28 @@
+class Node {
+    private String label;
+    private List<Int> values;
+    private Node child;
+    private Bool hasChild;
+
+    public Node(String label) {
+        this.label = label;
+        this.values = List();
+        this.hasChild = false;
+    }
+
+    public Int sum() {
+        Int total = 0;
+
+        if (this.hasChild) {
+            total = total + this.child.sum();
+        }
+
+        return total;
+    }
+}
+
+main() {
+    Node n = Node("x");
+    println(n.sum().toString());
+    return 0;
+}

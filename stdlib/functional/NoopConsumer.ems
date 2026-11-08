@@ -1,5 +1,7 @@
 namespace Std::Functional;
 
+use Std::Functional::IConsumer;
+
 public class NoopConsumer<T> implements IConsumer<T> {
     public NoopConsumer() {
     }

@@ -1,0 +1,39 @@
+namespace Emerald::HyperAllocFlowTests;
+
+public class HyperAllocFlowV1NamespacedItem {
+    public Int value;
+
+    public HyperAllocFlowV1NamespacedItem(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1NamespacedShelf {
+    private List<HyperAllocFlowV1NamespacedItem> storedItems;
+
+    public HyperAllocFlowV1NamespacedShelf() {
+        this.storedItems = List();
+        this.storedItems.add(HyperAllocFlowV1NamespacedItem(42));
+    }
+
+    public List<HyperAllocFlowV1NamespacedItem> items() {
+        return this.storedItems;
+    }
+}
+
+public class HyperAllocFlowV1NamespacedCatalog {
+    public static HyperAllocFlowV1NamespacedShelf select(HyperAllocFlowV1NamespacedShelf shelf) {
+        return shelf;
+    }
+
+    public static HyperAllocFlowV1NamespacedItem first(HyperAllocFlowV1NamespacedShelf shelf) {
+        HyperAllocFlowV1NamespacedShelf selected = HyperAllocFlowV1NamespacedCatalog.select(shelf);
+        HyperAllocFlowV1NamespacedItem item = selected.items().get(0);
+        return item;
+    }
+}
+
+main() {
+    HyperAllocFlowV1NamespacedShelf shelf = HyperAllocFlowV1NamespacedShelf();
+    println(HyperAllocFlowV1NamespacedCatalog.first(shelf).value.toString());
+}

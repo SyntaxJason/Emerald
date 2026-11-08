@@ -1,0 +1,14 @@
+public data class HyperAllocFlowV1BoundaryMutable(Int value) {
+}
+
+public class HyperAllocFlowV1BoundaryMutator {
+    public static Int increment(HyperAllocFlowV1BoundaryMutable value) {
+        value.value = value.value + 1;
+        return value.value;
+    }
+}
+
+main() {
+    HyperAllocFlowV1BoundaryMutable value = HyperAllocFlowV1BoundaryMutable(41);
+    println(HyperAllocFlowV1BoundaryMutator.increment(value).toString());
+}

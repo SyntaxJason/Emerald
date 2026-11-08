@@ -1,5 +1,7 @@
 namespace Std::Collections;
 
+use Std::Collections::ICollection;
+use Std::Functional::IPredicate;
 public interface IList<T> extends ICollection<T> {
     public T get(Int index);
 

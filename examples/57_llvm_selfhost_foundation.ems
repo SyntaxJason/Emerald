@@ -1,0 +1,80 @@
+use Std::Llvm::Llvm;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmNativeVariable;
+use Std::Llvm::LlvmNativeIf;
+use Std::Llvm::LlvmNativeWhile;
+use Std::Llvm::LlvmFunction;
+use Std::Llvm::LlvmBuilder;
+use Std::Llvm::LlvmValue;
+
+main() {
+    LlvmNativeBackend backend = LlvmNativeBackend("emerald_selfhost_foundation", "emerald-selfhost-foundation");
+
+    if (!backend.initialize()) {
+        println(backend.lastMessage());
+        return;
+    }
+
+    LlvmFunction mainFunction = backend.beginMain();
+    LlvmBuilder builder = backend.builder();
+
+    LlvmNativeVariable counter = backend.localInt32("counter");
+    counter.store(builder, backend.int32(0));
+
+    LlvmNativeVariable total = backend.localInt32("total");
+    total.store(builder, backend.int32(0));
+
+    LlvmNativeWhile loop = LlvmNativeWhile(mainFunction, "sum_loop");
+    loop.jumpToCondition(builder);
+
+    loop.enterCondition(builder);
+    LlvmValue counterValue = counter.load(builder);
+    LlvmValue keepRunning = builder.intSignedLessThan(counterValue, backend.int32(5), "keep_running");
+    loop.branchOn(builder, keepRunning);
+
+    loop.enterBody(builder);
+    LlvmValue currentTotal = total.load(builder);
+    LlvmValue nextTotal = builder.add(currentTotal, counter.load(builder), "next_total");
+    total.store(builder, nextTotal);
+
+    LlvmValue nextCounter = builder.add(counter.load(builder), backend.int32(1), "next_counter");
+    counter.store(builder, nextCounter);
+    loop.continueLoop(builder);
+
+    loop.enterExit(builder);
+    LlvmValue expected = backend.int32(10);
+    LlvmValue result = total.load(builder);
+    LlvmValue ok = builder.intEqual(result, expected, "sum_ok");
+
+    LlvmNativeIf resultBranch = LlvmNativeIf(mainFunction, "result");
+    resultBranch.branchFrom(builder, ok);
+
+    resultBranch.enterTrue(builder);
+    backend.println(backend.runtimeString("Emerald native backend foundation works", "success_message"));
+    resultBranch.leaveToMerge(builder);
+
+    resultBranch.enterFalse(builder);
+    backend.println(backend.runtimeString("Emerald native backend foundation failed", "failure_message"));
+    resultBranch.leaveToMerge(builder);
+
+    resultBranch.enterMerge(builder);
+    backend.returnCode(0);
+
+    if (!backend.writeIr("emerald-selfhost-foundation.ll")) {
+        println(backend.lastMessage());
+        backend.dispose();
+        return;
+    }
+
+    if (!backend.buildExecutable()) {
+        println(backend.lastMessage());
+        backend.dispose();
+        return;
+    }
+
+    println("Wrote " + backend.objectPath());
+    println("Compiled " + backend.runtimeObjectPath());
+    println("Linked " + backend.executablePath());
+
+    backend.dispose();
+}

@@ -1,5 +1,7 @@
 namespace Std::Data;
 
+use Std::Data::IKeyValuePair;
+
 public class KeyValuePair<K, V> implements IKeyValuePair<K, V> {
     private K storedKey;
     private V storedValue;

@@ -1,0 +1,23 @@
+namespace Std::Native;
+
+public class NativeDirectory {
+    public NativeDirectory() {
+    }
+
+    public static Bool exists(String path) {
+        return false;
+    }
+
+    public static Bool create(String path) {
+        return false;
+    }
+
+    public static Bool delete(String path) {
+        return false;
+    }
+
+    public static List<String> list(String path) {
+        List<String> entries = List();
+        return entries;
+    }
+}

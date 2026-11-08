@@ -1,5 +1,10 @@
 namespace Std::Collections;
 
+use Std::Collections::IIterator;
+use Std::Collections::IList;
+use Std::Collections::ListIterator;
+use Std::Functional::IConsumer;
+use Std::Functional::IPredicate;
 public class ArrayList<T> implements IList<T> {
     private List<T> items;
 

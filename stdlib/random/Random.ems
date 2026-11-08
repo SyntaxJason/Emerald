@@ -1,18 +1,29 @@
 namespace Std::Random;
 
+use Std::Native::NativeRandom;
+use Std::Random::IRandom;
+
 public class Random implements IRandom {
     public Random() {
     }
 
-    public Int nextInt(Int max) {
-        return Random.nextInt(max);
+    // Uniform in [0, max). max must be positive.
+    public static Int nextInt(Int max) {
+        if (max <= 0) { panic("Random.nextInt requires a positive bound"); }
+        return NativeRandom.nextInt63() % max;
     }
 
-    public Int nextIntBetween(Int min, Int max) {
-        return Random.nextIntBetween(min, max);
+    // Uniform in [min, max]. min must not exceed max.
+    public static Int nextIntBetween(Int min, Int max) {
+        if (min > max) { panic("Random.nextIntBetween requires min <= max"); }
+        return min + NativeRandom.nextInt63() % (max - min + 1);
     }
 
-    public Bool nextBool() {
-        return Random.nextBool();
+    public static Bool nextBool() {
+        return NativeRandom.nextInt63() % 2 == 1;
     }
+
+    public Int nextInt(Int max) { return Random.nextInt(max); }
+    public Int nextIntBetween(Int min, Int max) { return Random.nextIntBetween(min, max); }
+    public Bool nextBool() { return Random.nextBool(); }
 }

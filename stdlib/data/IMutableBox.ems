@@ -1,5 +1,7 @@
 namespace Std::Data;
 
+use Std::Data::IBox;
+
 public interface IMutableBox<T> extends IBox<T> {
     public Void set(T value);
 }

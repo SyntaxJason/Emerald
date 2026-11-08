@@ -1,0 +1,92 @@
+namespace Std::Net;
+
+use Std::Net::Endpoint;
+use Std::Net::IEndpoint;
+use Std::Net::IUdpSocket;
+use Std::Net::UdpSocket;
+use Std::Native::NativeUdp;
+use Std::Result::Failure;
+use Std::Result::BoolSuccess;
+use Std::Result::IResult;
+use Std::Result::Success;
+
+public class Udp {
+    public Udp() {
+    }
+
+    public static IResult<IUdpSocket, String> bind(String host, Int port) {
+        Int handle = NativeUdp.bind(host, port);
+
+        if (handle < 0) {
+            return Failure("Could not bind UDP socket on " + host + ":" + port.toString());
+        }
+
+        Int actualPort = NativeUdp.localPort(handle);
+        return Success(UdpSocket(handle, Endpoint(host, actualPort)));
+    }
+
+
+    public static Int bindHandle(String host, Int port) {
+        return NativeUdp.bind(host, port);
+    }
+
+    public static Bool isOpen(Int handle) {
+        return NativeUdp.isOpen(handle);
+    }
+
+    public static Int localPort(Int handle) {
+        return NativeUdp.localPort(handle);
+    }
+
+    public static Bool sendText(Int handle, String host, Int port, String text) {
+        return NativeUdp.sendText(handle, host, port, text);
+    }
+
+    public static IResult<Bool, String> trySendText(Int handle, String host, Int port, String text) {
+        if (!Udp.isOpen(handle)) {
+            return Failure("UDP socket is closed");
+        }
+
+        if (!Udp.sendText(handle, host, port, text)) {
+            return Failure("Could not send UDP packet");
+        }
+
+        return BoolSuccess(true);
+    }
+
+    public static String receiveText(Int handle) {
+        return NativeUdp.receiveText(handle);
+    }
+
+    public static IResult<String, String> tryReceiveText(Int handle) {
+        if (!Udp.isOpen(handle)) {
+            return Failure("UDP socket is closed");
+        }
+
+        return Success(Udp.receiveText(handle));
+    }
+
+    public static String lastSenderHost(Int handle) {
+        return NativeUdp.lastSenderHost(handle);
+    }
+
+    public static Int lastSenderPort(Int handle) {
+        return NativeUdp.lastSenderPort(handle);
+    }
+
+    public static Bool close(Int handle) {
+        return NativeUdp.close(handle);
+    }
+
+    public static IResult<Bool, String> tryClose(Int handle) {
+        if (!Udp.isOpen(handle)) {
+            return BoolSuccess(true);
+        }
+
+        if (!Udp.close(handle)) {
+            return Failure("Could not close UDP socket");
+        }
+
+        return BoolSuccess(true);
+    }
+}

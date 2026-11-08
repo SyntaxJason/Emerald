@@ -1,0 +1,65 @@
+use Std::Collections::IList;
+use Std::Io::Directory;
+use Std::Process::Process;
+
+public class SelfhostOverloadTarget {
+    private Int valueValue;
+
+    public SelfhostOverloadTarget(String name, Bool enabled) {
+        this.valueValue = 0;
+    }
+
+    public SelfhostOverloadTarget(String name, List<String> values) {
+        this.valueValue = values.get(0).toInt();
+    }
+
+    public Int value() {
+        return this.valueValue;
+    }
+}
+
+main() {
+    String normalized = " 4-2 ".trim().replace("-", "").toLowerCase().toUpperCase();
+
+    if (normalized != "42") {
+        println("api-parity-fail: String trim/replace/case");
+        Process.exit(1);
+    }
+
+    List<String> segments = "42::7".split("::");
+
+    if (segments.length() != 2 || segments.get(0).toInt() != 42 || segments.get(1).toInt() != 7) {
+        println("api-parity-fail: String split/List access");
+        Process.exit(1);
+    }
+
+    Bool characters = "4".charAt(0).isDigit() && "A".charAt(0).isLetter() && " ".charAt(0).isWhitespace();
+
+    if (!characters) {
+        println("api-parity-fail: Char classification");
+        Process.exit(1);
+    }
+
+    SelfhostOverloadTarget target = SelfhostOverloadTarget("value", segments);
+
+    if (target.value() != 42) {
+        println("api-parity-fail: overloaded constructor");
+        Process.exit(1);
+    }
+
+    List<String> processArgs = Process.args();
+
+    if (processArgs.length() != 2 || processArgs.get(0) != "emerald-selfhost" || processArgs.get(1) != "42") {
+        println("api-parity-fail: Process.args");
+        Process.exit(1);
+    }
+
+    IList<String> directoryEntries = Directory(".").list();
+
+    if (directoryEntries.size() < 0) {
+        println("api-parity-fail: IList/Directory");
+        Process.exit(1);
+    }
+
+    println(42);
+}

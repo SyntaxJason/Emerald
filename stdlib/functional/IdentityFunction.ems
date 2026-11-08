@@ -1,5 +1,7 @@
 namespace Std::Functional;
 
+use Std::Functional::IUnaryOperator;
+
 public class IdentityFunction<T> implements IUnaryOperator<T> {
     public IdentityFunction() {
     }

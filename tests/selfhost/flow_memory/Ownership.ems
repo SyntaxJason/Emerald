@@ -1,0 +1,328 @@
+use Std::Collections::HashSet;
+use Std::Collections::IIterator;
+use Std::Env::Env;
+use Std::Io::Paths;
+use Std::Process::Process;
+
+// Regressions for Flow ownership soundness and temporary leaks. The harness
+// links this program with ASan/UBSan and requires zero live Flow allocations
+// before shutdown.
+
+public class OwnedItem {
+    private Int number;
+
+    public OwnedItem(Int value) { this.number = value; }
+    public Int value() { return this.number; }
+}
+
+public interface IOwnedSink {
+    public Void take(OwnedItem item);
+    public Int total();
+}
+
+public class KeepingSink implements IOwnedSink {
+    private List<OwnedItem> kept;
+
+    public KeepingSink() { this.kept = List(); }
+
+    public Void take(OwnedItem item) {
+        this.kept.add(item);
+    }
+
+    public Int total() {
+        Int sum = 0;
+        Int index = 0;
+
+        while (index < this.kept.length()) {
+            sum = sum + this.kept.get(index).value();
+            index = index + 1;
+        }
+
+        return sum;
+    }
+}
+
+public class CountingSink implements IOwnedSink {
+    private List<OwnedItem> kept;
+
+    public CountingSink() { this.kept = List(); }
+
+    public Void take(OwnedItem item) {
+        this.kept.add(item);
+    }
+
+    public Int total() { return this.kept.length(); }
+}
+
+public class OwnershipRunner {
+    // The interface contract has no body; the item must not become a stack
+    // Local just because the contract cannot show the implementation's store.
+    public static Void feed(IOwnedSink sink, Int value) {
+        OwnedItem item = OwnedItem(value);
+        sink.take(item);
+    }
+}
+
+public class SharedData {
+    public List<Int> values;
+
+    public SharedData() {
+        this.values = List();
+        this.values.add(11);
+        this.values.add(22);
+    }
+
+    public Int first() { return this.values.get(0); }
+
+    // `this` is adopted by a short-lived context and read afterwards.
+    public Int viaContext() {
+        SharedContext context = SharedContext(this);
+        Int value = context.peek();
+        return value + this.values.length();
+    }
+
+    // Stored only in the registry's own storage: the registry keeps and later
+    // frees it, so no counted share (and no leak) is introduced.
+    public Void register(SharedRegistry registry) {
+        registry.add(this);
+        this.values.add(33);
+    }
+}
+
+public class SharedRegistry {
+    private List<SharedData> items;
+
+    public SharedRegistry() { this.items = List(); }
+    public Void add(SharedData data) { this.items.add(data); }
+    public Int count() { return this.items.length(); }
+}
+
+public class SharedContext {
+    private SharedData data;
+
+    public SharedContext(SharedData value) { this.data = value; }
+    public Int peek() { return this.data.first(); }
+}
+
+public class SharedPart {
+    private SharedContext context;
+
+    public SharedPart(SharedContext value) { this.context = value; }
+    public Int run() { return this.context.peek(); }
+}
+
+public class SharedEmitter {
+    public SharedEmitter() { }
+
+    // The callee-local context adopts the caller's data and dies on return.
+    public Int emit(SharedData data) {
+        SharedContext context = SharedContext(data);
+        SharedPart left = SharedPart(context);
+        SharedPart right = SharedPart(context);
+        return left.run() + right.run();
+    }
+}
+
+public class SharedUse {
+    // The parameter is adopted by the callee's short-lived context and still
+    // read afterwards; the call site shares the caller's unparented Root.
+    public static Int viaParameter(SharedEmitter emitter, SharedData data) {
+        Int total = emitter.emit(data);
+        return total + data.first() + data.values.length();
+    }
+
+    // The same hand-off through an alias of the parameter.
+    public static Int viaAlias(SharedEmitter emitter, SharedData data) {
+        SharedData alias = data;
+        Int total = emitter.emit(alias);
+        return total + data.first();
+    }
+
+    // A callee-local List adopts the parameter and dies on return.
+    public static Int collect(SharedData data) {
+        List<SharedData> items = List();
+        items.add(data);
+        return items.length();
+    }
+
+    public static Int viaCollect(SharedData data) {
+        Int count = SharedUse.collect(data);
+        return count + data.first();
+    }
+}
+
+public class TextCursor {
+    private String source;
+    private Int index;
+
+    public TextCursor(String text) {
+        this.source = text;
+        this.index = 0;
+    }
+
+    // Literal and owned returns mixed in one String method.
+    public String peekText() {
+        if (this.index >= this.source.length()) {
+            return "";
+        }
+
+        return this.source.charAt(this.index).toString();
+    }
+
+    public Void advance() { this.index = this.index + 1; }
+    public Void reset() { this.index = 0; }
+
+    // Borrowed field and owned concatenation mixed in one String method.
+    public String nameOr(Bool owned) {
+        if (owned) {
+            return this.source + "!";
+        }
+
+        return this.source;
+    }
+}
+
+public class TempNode {
+    private String label;
+    private List<TempNode> children;
+
+    public TempNode(String name) {
+        this.label = name;
+        this.children = List();
+    }
+
+    public String name() { return this.label; }
+    public TempNode copy() { return TempNode(this.label + ""); }
+}
+
+public class TempScale {
+    public TempScale() { }
+    public Int weigh(TempNode node) { return node.name().length(); }
+
+    // A locally built List is returned by ownership transfer.
+    public List<String> labels(Int count) {
+        List<String> labels = List();
+        Int index = 0;
+
+        while (index < count) {
+            labels.add("label" + index.toString());
+            index = index + 1;
+        }
+
+        return labels;
+    }
+
+    // The borrowed name of a temporary is copied for the owned String result.
+    public String tempName(Bool owned) {
+        if (owned) {
+            return "t" + "emp";
+        }
+
+        return TempNode("temp").name();
+    }
+}
+
+public class TempReader {
+    private Int size;
+
+    // Only reads its argument; an owned temporary argument dies afterwards.
+    public TempReader(TempNode node) {
+        this.size = node.name().length();
+    }
+
+    public Int size() { return this.size; }
+
+    public static Int sizeOfCopy(TempNode node) {
+        TempReader reader = TempReader(node.copy());
+        return reader.size();
+    }
+}
+
+main() {
+    IOwnedSink keeper = KeepingSink();
+    IOwnedSink counter = CountingSink();
+    SharedEmitter emitter = SharedEmitter();
+    SharedRegistry registry = SharedRegistry();
+    TextCursor cursor = TextCursor("abab");
+    TempScale scale = TempScale();
+    TempNode root = TempNode("root");
+    HashSet<Int> set = HashSet();
+    set.add(3);
+    set.add(4);
+    String big = "alpha\nbeta\ngamma";
+    List<Float> floats = List();
+    floats.add(1.5);
+    Int index = 0;
+
+    while (index < 500) {
+        OwnershipRunner.feed(keeper, 1);
+        OwnershipRunner.feed(counter, 2);
+
+        SharedData data = SharedData();
+        if (emitter.emit(data) != 22 || data.first() != 11 || data.values.length() != 2) { Process.exit(11); }
+
+        // removeAt hands out unparented Roots with scope cleanup; each callee
+        // below adopts its argument into a short-lived owner and reads it again.
+        List<SharedData> pool = List();
+        pool.add(SharedData());
+        pool.add(SharedData());
+        pool.add(SharedData());
+        pool.add(SharedData());
+        pool.add(SharedData());
+        SharedData moved = pool.removeAt(0);
+        if (SharedUse.viaParameter(emitter, moved) != 35) { Process.exit(20); }
+        SharedData aliased = pool.removeAt(0);
+        if (SharedUse.viaAlias(emitter, aliased) != 33) { Process.exit(21); }
+        SharedData listed = pool.removeAt(0);
+        if (SharedUse.viaCollect(listed) != 12) { Process.exit(22); }
+        SharedData owner = pool.removeAt(0);
+        if (owner.viaContext() != 13) { Process.exit(23); }
+        SharedData taken = pool.removeAt(0);
+        if (emitter.emit(taken) != 22 || taken.first() != 11 || taken.values.length() != 2) { Process.exit(24); }
+
+        SharedData direct = SharedData();
+        SharedData directAlias = direct;
+        if (emitter.emit(directAlias) != 22 || direct.first() != 11 || direct.values.length() != 2) { Process.exit(25); }
+
+        SharedData member = SharedData();
+        member.register(registry);
+
+        cursor.reset();
+        Int letters = 0;
+        while (cursor.peekText() == "a" || cursor.peekText() == "b") {
+            cursor.advance();
+            letters = letters + 1;
+        }
+        String owned = cursor.nameOr(true);
+        String borrowed = cursor.nameOr(false);
+        if (letters != 4 || owned.length() != 5 || borrowed.length() != 4 || cursor.peekText() != "") { Process.exit(12); }
+
+        if (scale.weigh(TempNode("abc")) != 3 || TempNode("abcd").name().length() != 4 || root.copy().name().length() != 4) { Process.exit(13); }
+        List<String> labels = scale.labels(3);
+        if (TempReader.sizeOfCopy(root) != 4 || TempReader(TempNode("ab")).size() != 2 || labels.length() != 3 || scale.labels(2).length() != 2) { Process.exit(18); }
+        if (scale.tempName(false) != "temp" || scale.tempName(true) != "temp") { Process.exit(19); }
+        TempNode("discarded").name();
+
+        List<String> parts = big.split("\n");
+        big.split("a");
+        if (parts.length() != 3 || big.split("\n").length() != 3 || big.split("\n").get(1).length() != 4) { Process.exit(14); }
+
+        Int sum = 0;
+        IIterator<Int> iterator = set.iterator();
+        while (iterator.hasNext()) { sum = sum + iterator.next(); }
+        if (sum != 7) { Process.exit(15); }
+
+        String joined = Paths.join("flow", "memory");
+        String home = Env.get("HYPERALLOC_FLOW_MEMORY_UNSET");
+        if (joined.length() < 11 || home.length() != 0) { Process.exit(16); }
+
+        index = index + 1;
+    }
+
+    Float copied = floats.get(0);
+    floats.clear();
+
+    if (keeper.total() != 500 || counter.total() != 500 || copied.toString() != "1.5" || registry.count() != 500) { Process.exit(17); }
+
+    println("flow-ownership-ok");
+}

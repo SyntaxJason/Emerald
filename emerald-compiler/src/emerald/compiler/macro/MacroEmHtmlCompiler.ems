@@ -1,0 +1,517 @@
+namespace emerald::compiler::macro;
+
+use emerald::compiler::syntax::Annotation;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+
+public class MacroEmHtmlCompiler {
+    private MacroInterpreterContext context;
+    private MacroValueConverter values;
+    private MacroAstFactory ast;
+
+    public MacroEmHtmlCompiler(MacroInterpreterContext interpreterContext, MacroValueConverter valueConverter, MacroAstFactory astFactory) {
+        this.context = interpreterContext;
+        this.values = valueConverter;
+        this.ast = astFactory;
+    }
+
+    public MethodDeclaration createRenderMethod(ClassDeclaration declaration, String template, Int line, Int column) {
+        List<Parameter> parameters = List();
+        List<Statement> statements = List();
+
+        Int empty = this.context.program().addExpression(this.ast.simpleExpression("string", "", 0, false, 0, 0, line, column));
+        statements.add(this.ast.simpleStatement("variable", "html", "String", empty, 0, line, column));
+
+        this.compileEmHtmlSegment(declaration, statements, template, 0, template.length(), line, column, "", "");
+
+        Int htmlExpression = this.context.program().addExpression(this.ast.simpleExpression("name", "html", 0, false, 0, 0, line, column));
+        statements.add(this.ast.simpleStatement("return", "", "", htmlExpression, 0, line, column));
+
+        return MethodDeclaration("", "render", "String", parameters, statements, false, false, line, column);
+    }
+
+    private Void compileEmHtmlSegment(ClassDeclaration declaration, List<Statement> statements, String template, Int start, Int end, Int line, Int column, String loopName, String loopType) {
+        Int cursor = start;
+
+        while (cursor < end) {
+            Int special = this.nextEmHtmlSpecial(template, cursor, end);
+
+            if (special < 0) {
+                this.appendEmHtmlStatic(statements, template.substring(cursor, end), line, column);
+                cursor = end;
+            }
+
+            if (special >= 0) {
+                this.appendEmHtmlStatic(statements, template.substring(cursor, special), line, column);
+
+                if (this.startsWithAt(template, special, "{{")) {
+                    cursor = this.compileEmHtmlBinding(declaration, statements, template, special, end, line, column, loopName, loopType, false);
+                    continue;
+                }
+
+                if (this.startsWithAt(template, special, "{!!")) {
+                    cursor = this.compileEmHtmlBinding(declaration, statements, template, special, end, line, column, loopName, loopType, true);
+                    continue;
+                }
+
+                if (this.startsWithAt(template, special, "@if")) {
+                    cursor = this.compileEmHtmlIf(declaration, statements, template, special, end, line, column, loopName, loopType);
+                    continue;
+                }
+
+                if (this.startsWithAt(template, special, "@for")) {
+                    cursor = this.compileEmHtmlFor(declaration, statements, template, special, end, line, column, loopName, loopType);
+                    continue;
+                }
+
+                if (this.startsWithAt(template, special, ":class=\"")) {
+                    cursor = this.compileEmHtmlDynamicClass(declaration, statements, template, special, end, line, column, loopName, loopType);
+                    continue;
+                }
+
+                if (this.startsWithAt(template, special, "?")) {
+                    cursor = this.compileEmHtmlConditionalAttribute(declaration, statements, template, special, end, line, column, loopName, loopType);
+                    continue;
+                }
+
+                this.appendEmHtmlStatic(statements, template.substring(special, special + 1), line, column);
+                cursor = special + 1;
+            }
+        }
+    }
+
+    private Int compileEmHtmlBinding(ClassDeclaration declaration, List<Statement> statements, String template, Int start, Int end, Int line, Int column, String loopName, String loopType, Bool raw) {
+        String close = "}}";
+        Int openSize = 2;
+
+        if (raw) {
+            close = "!!}";
+            openSize = 3;
+        }
+
+        Int expressionStart = start + openSize;
+        Int closeIndex = this.indexOfFrom(template, close, expressionStart, end);
+
+        if (closeIndex < 0) {
+            this.appendEmHtmlStatic(statements, template.substring(start, end), line, column);
+            return end;
+        }
+
+        String bindingName = template.substring(expressionStart, closeIndex).trim();
+        Int value = this.emHtmlExpression(declaration, bindingName, line, column, loopName, loopType);
+
+        if (value == 0) {
+            this.appendEmHtmlStatic(statements, template.substring(start, closeIndex + close.length()), line, column);
+            return closeIndex + close.length();
+        }
+
+        this.appendEmHtmlDynamic(statements, value, raw, line, column);
+        return closeIndex + close.length();
+    }
+
+    private Int compileEmHtmlIf(ClassDeclaration declaration, List<Statement> statements, String template, Int start, Int end, Int line, Int column, String loopName, String loopType) {
+        Int open = this.findEmHtmlOpeningBrace(template, start + 3, end);
+
+        if (open < 0) {
+            this.appendEmHtmlStatic(statements, template.substring(start, end), line, column);
+            return end;
+        }
+
+        Int close = this.findEmHtmlClosingBrace(template, open, end);
+
+        if (close < 0) {
+            this.appendEmHtmlStatic(statements, template.substring(start, end), line, column);
+            return end;
+        }
+
+        String conditionName = template.substring(start + 3, open).trim();
+        Int condition = this.emHtmlConditionExpression(declaration, conditionName, line, column, loopName, loopType);
+        List<Statement> body = List();
+        this.compileEmHtmlSegment(declaration, body, template, open + 1, close, line, column, loopName, loopType);
+        statements.add(Statement("if", "", "", condition, 0, body, this.ast.emptyStatements(), line, column));
+        return close + 1;
+    }
+
+    private Int compileEmHtmlFor(ClassDeclaration declaration, List<Statement> statements, String template, Int start, Int end, Int line, Int column, String loopName, String loopType) {
+        Int open = this.findEmHtmlOpeningBrace(template, start + 4, end);
+
+        if (open < 0) {
+            this.appendEmHtmlStatic(statements, template.substring(start, end), line, column);
+            return end;
+        }
+
+        Int close = this.findEmHtmlClosingBrace(template, open, end);
+
+        if (close < 0) {
+            this.appendEmHtmlStatic(statements, template.substring(start, end), line, column);
+            return end;
+        }
+
+        String header = template.substring(start + 4, open).trim();
+        Int split = header.indexOf(" in ");
+
+        if (split < 0) {
+            this.appendEmHtmlStatic(statements, template.substring(start, close + 1), line, column);
+            return close + 1;
+        }
+
+        String itemName = header.substring(0, split).trim();
+        String sourceName = header.substring(split + 4, header.length()).trim();
+        String methodName = this.findEmHtmlBindingMethod(declaration, sourceName);
+
+        if (methodName.isEmpty()) {
+            methodName = sourceName + "";
+        }
+
+        String listType = this.findEmHtmlMethodReturnType(declaration, methodName);
+
+        if (listType.isEmpty()) {
+            listType = "List<String>";
+        }
+
+        String itemType = this.emHtmlListElementType(listType);
+        String suffix = this.context.program().expressions().length().toString();
+        String listName = "emhtmlList" + suffix;
+        String indexName = "emhtmlIndex" + suffix;
+
+        Int listExpression = this.emHtmlMethodCall(methodName, line, column);
+        statements.add(this.ast.simpleStatement("variable", listName, listType, listExpression, 0, line, column));
+
+        Int zero = this.context.program().addExpression(this.ast.simpleExpression("int", "", 0, false, 0, 0, line, column));
+        statements.add(this.ast.simpleStatement("variable", indexName, "Int", zero, 0, line, column));
+
+        List<Statement> body = List();
+        Int listNameExpression = this.context.program().addExpression(this.ast.simpleExpression("name", listName, 0, false, 0, 0, line, column));
+        Int indexExpression = this.context.program().addExpression(this.ast.simpleExpression("name", indexName, 0, false, 0, 0, line, column));
+        List<Int> getArgs = List();
+        getArgs.add(indexExpression);
+        Int itemExpression = this.context.program().addExpression(Expression("methodcall", "get", 0, false, listNameExpression, 0, getArgs, line, column));
+        body.add(this.ast.simpleStatement("variable", itemName, itemType, itemExpression, 0, line, column));
+
+        this.compileEmHtmlSegment(declaration, body, template, open + 1, close, line, column, itemName, itemType);
+
+        Int indexLeft = this.context.program().addExpression(this.ast.simpleExpression("name", indexName, 0, false, 0, 0, line, column));
+        Int one = this.context.program().addExpression(this.ast.simpleExpression("int", "", 1, false, 0, 0, line, column));
+        Int next = this.context.program().addExpression(this.ast.simpleExpression("binary", "+", 0, false, indexLeft, one, line, column));
+        body.add(this.ast.simpleStatement("assign", indexName, "", next, 0, line, column));
+
+        Int conditionIndex = this.emHtmlListLoopCondition(listName, indexName, line, column);
+        statements.add(Statement("while", "", "", conditionIndex, 0, body, this.ast.emptyStatements(), line, column));
+        return close + 1;
+    }
+
+    private Int compileEmHtmlDynamicClass(ClassDeclaration declaration, List<Statement> statements, String template, Int start, Int end, Int line, Int column, String loopName, String loopType) {
+        Int valueStart = start + 8;
+        Int close = this.indexOfFrom(template, "\"", valueStart, end);
+
+        if (close < 0) {
+            this.appendEmHtmlStatic(statements, template.substring(start, end), line, column);
+            return end;
+        }
+
+        String bindingName = template.substring(valueStart, close).trim();
+        this.appendEmHtmlStatic(statements, "class=\"", line, column);
+        Int value = this.emHtmlExpression(declaration, bindingName, line, column, loopName, loopType);
+
+        if (value != 0) {
+            this.appendEmHtmlDynamic(statements, value, false, line, column);
+        }
+
+        this.appendEmHtmlStatic(statements, "\"", line, column);
+        return close + 1;
+    }
+
+    private Int compileEmHtmlConditionalAttribute(ClassDeclaration declaration, List<Statement> statements, String template, Int start, Int end, Int line, Int column, String loopName, String loopType) {
+        Int equals = this.indexOfFrom(template, "=\"", start, end);
+
+        if (equals < 0) {
+            this.appendEmHtmlStatic(statements, template.substring(start, start + 1), line, column);
+            return start + 1;
+        }
+
+        String attributeName = template.substring(start + 1, equals).trim();
+        Int valueStart = equals + 2;
+        Int close = this.indexOfFrom(template, "\"", valueStart, end);
+
+        if (close < 0) {
+            this.appendEmHtmlStatic(statements, template.substring(start, end), line, column);
+            return end;
+        }
+
+        String conditionName = template.substring(valueStart, close).trim();
+        Int condition = this.emHtmlConditionExpression(declaration, conditionName, line, column, loopName, loopType);
+        List<Statement> body = List();
+        this.appendEmHtmlStatic(body, " " + attributeName, line, column);
+        statements.add(Statement("if", "", "", condition, 0, body, this.ast.emptyStatements(), line, column));
+        return close + 1;
+    }
+
+    private Int emHtmlListLoopCondition(String listName, String indexName, Int line, Int column) {
+        Int listExpression = this.context.program().addExpression(this.ast.simpleExpression("name", listName, 0, false, 0, 0, line, column));
+        List<Int> args = List();
+        Int length = this.context.program().addExpression(Expression("methodcall", "length", 0, false, listExpression, 0, args, line, column));
+        Int indexExpression = this.context.program().addExpression(this.ast.simpleExpression("name", indexName, 0, false, 0, 0, line, column));
+        return this.context.program().addExpression(this.ast.simpleExpression("binary", "<", 0, false, indexExpression, length, line, column));
+    }
+
+    private Int emHtmlExpression(ClassDeclaration declaration, String bindingName, Int line, Int column, String loopName, String loopType) {
+        if (!loopName.isEmpty() && bindingName == loopName) {
+            return this.context.program().addExpression(this.ast.simpleExpression("name", loopName, 0, false, 0, 0, line, column));
+        }
+
+        if (!loopName.isEmpty() && bindingName.startsWith(loopName + ".")) {
+            String fieldName = bindingName.substring(loopName.length() + 1, bindingName.length()).trim();
+            Int left = this.context.program().addExpression(this.ast.simpleExpression("name", loopName, 0, false, 0, 0, line, column));
+            return this.context.program().addExpression(this.ast.simpleExpression("field", fieldName, 0, false, left, 0, line, column));
+        }
+
+        String methodName = this.findEmHtmlBindingMethod(declaration, bindingName);
+
+        if (methodName.isEmpty()) {
+            methodName = bindingName + "";
+        }
+
+        return this.emHtmlMethodCall(methodName, line, column);
+    }
+
+    private Int emHtmlConditionExpression(ClassDeclaration declaration, String bindingName, Int line, Int column, String loopName, String loopType) {
+        if (!loopName.isEmpty() && bindingName == loopName) {
+            return this.context.program().addExpression(this.ast.simpleExpression("name", loopName, 0, false, 0, 0, line, column));
+        }
+
+        String methodName = this.findEmHtmlBindingMethod(declaration, bindingName);
+
+        if (methodName.isEmpty()) {
+            methodName = bindingName + "";
+        }
+
+        return this.emHtmlMethodCall(methodName, line, column);
+    }
+
+    private Int emHtmlMethodCall(String methodName, Int line, Int column) {
+        List<Int> arguments = List();
+        Int thisIndex = this.context.program().addExpression(this.ast.simpleExpression("name", "this", 0, false, 0, 0, line, column));
+        return this.context.program().addExpression(Expression("methodcall", methodName, 0, false, thisIndex, 0, arguments, line, column));
+    }
+
+    private Void appendEmHtmlStatic(List<Statement> statements, String value, Int line, Int column) {
+        if (value.isEmpty()) {
+            return;
+        }
+
+        String transformed = this.transformEmHtmlStatic(value);
+        Int expressionIndex = this.context.program().addExpression(this.ast.simpleExpression("string", transformed, 0, false, 0, 0, line, column));
+        this.appendEmHtmlExpression(statements, expressionIndex, line, column);
+    }
+
+    private Void appendEmHtmlDynamic(List<Statement> statements, Int valueIndex, Bool raw, Int line, Int column) {
+        if (raw) {
+            this.appendEmHtmlExpression(statements, valueIndex, line, column);
+            return;
+        }
+
+        this.appendEmHtmlEscape(statements, valueIndex, line, column);
+    }
+
+    private Void appendEmHtmlEscape(List<Statement> statements, Int valueIndex, Int line, Int column) {
+        List<Int> arguments = List();
+        arguments.add(valueIndex);
+        Int thisIndex = this.context.program().addExpression(this.ast.simpleExpression("name", "this", 0, false, 0, 0, line, column));
+        Int callIndex = this.context.program().addExpression(Expression("methodcall", "emhtmlEscape", 0, false, thisIndex, 0, arguments, line, column));
+        this.appendEmHtmlExpression(statements, callIndex, line, column);
+    }
+
+    private Void appendEmHtmlExpression(List<Statement> statements, Int valueIndex, Int line, Int column) {
+        Int htmlIndex = this.context.program().addExpression(this.ast.simpleExpression("name", "html", 0, false, 0, 0, line, column));
+        Int concatIndex = this.context.program().addExpression(this.ast.simpleExpression("binary", "+", 0, false, htmlIndex, valueIndex, line, column));
+        statements.add(this.ast.simpleStatement("assign", "html", "", concatIndex, 0, line, column));
+    }
+
+    private String transformEmHtmlStatic(String value) {
+        String transformed = value.replace("@click=", "data-em-action=");
+        transformed = transformed.replace("@input=", "data-em-input=");
+        transformed = transformed.replace("@change=", "data-em-change=");
+
+        if (transformed.contains("</body>")) {
+            transformed = transformed.replace("</body>", this.emHtmlEventBridgeScript() + "</body>");
+        }
+
+        return transformed;
+    }
+
+    private Int nextEmHtmlSpecial(String template, Int cursor, Int end) {
+        Int result = -1;
+        result = this.nearestEmHtmlIndex(result, this.indexOfFrom(template, "{{", cursor, end));
+        result = this.nearestEmHtmlIndex(result, this.indexOfFrom(template, "{!!", cursor, end));
+        result = this.nearestEmHtmlIndex(result, this.indexOfFrom(template, "@if", cursor, end));
+        result = this.nearestEmHtmlIndex(result, this.indexOfFrom(template, "@for", cursor, end));
+        result = this.nearestEmHtmlIndex(result, this.indexOfFrom(template, ":class=\"", cursor, end));
+        result = this.nearestEmHtmlIndex(result, this.indexOfFrom(template, "?", cursor, end));
+        return result;
+    }
+
+    private Int nearestEmHtmlIndex(Int current, Int candidate) {
+        if (candidate < 0) {
+            return current;
+        }
+
+        if (current < 0) {
+            return candidate;
+        }
+
+        if (candidate < current) {
+            return candidate;
+        }
+
+        return current;
+    }
+
+    private Bool startsWithAt(String value, Int index, String marker) {
+        if (index < 0) {
+            return false;
+        }
+
+        if (index + marker.length() > value.length()) {
+            return false;
+        }
+
+        return value.substring(index, index + marker.length()) == marker;
+    }
+
+    private Int indexOfFrom(String value, String marker, Int start, Int end) {
+        if (start >= end) {
+            return -1;
+        }
+
+        String rest = value.substring(start, end);
+        Int index = rest.indexOf(marker);
+
+        if (index < 0) {
+            return -1;
+        }
+
+        return start + index;
+    }
+
+    private Int findEmHtmlOpeningBrace(String template, Int start, Int end) {
+        return this.indexOfFrom(template, "{", start, end);
+    }
+
+    private Int findEmHtmlClosingBrace(String template, Int open, Int end) {
+        Int depth = 0;
+        Int index = open;
+
+        while (index < end) {
+            String part = template.substring(index, index + 1);
+
+            if (part == "{") {
+                depth = depth + 1;
+            }
+
+            if (part == "}") {
+                depth = depth - 1;
+
+                if (depth == 0) {
+                    return index;
+                }
+            }
+
+            index = index + 1;
+        }
+
+        return -1;
+    }
+
+    private String findEmHtmlMethodReturnType(ClassDeclaration declaration, String methodName) {
+        Int index = 0;
+
+        while (index < declaration.methods().length()) {
+            MethodDeclaration method = declaration.methods().get(index);
+
+            if (method.name() == methodName && method.parameters().length() == 0) {
+                return method.returnTypeName();
+            }
+
+            index = index + 1;
+        }
+
+        return "";
+    }
+
+    private String emHtmlListElementType(String listType) {
+        if (!listType.startsWith("List<")) {
+            return "String";
+        }
+
+        if (!listType.endsWith(">")) {
+            return "String";
+        }
+
+        return listType.substring(5, listType.length() - 1).trim();
+    }
+
+    private String emHtmlEventBridgeScript() {
+        String script = "<script>";
+        script = script + "document.addEventListener('click',function(event){";
+        script = script + "var node=event.target;";
+        script = script + "while(node&&node!==document){";
+        script = script + "var action=node.getAttribute('data-em-action');";
+        script = script + "if(action){event.preventDefault();var encoded=encodeURIComponent(action);";
+        script = script + "if(location.protocol==='http:'||location.protocol==='https:'){fetch('/__emerald_action/'+encoded).then(function(){setTimeout(function(){location.reload();},60);});return;}";
+        script = script + "window.location.href='emerald://action/'+encoded;return;}";
+        script = script + "node=node.parentElement;";
+        script = script + "}";
+        script = script + "});";
+        script = script + "</script>";
+        return script;
+    }
+
+    private String findEmHtmlBindingMethod(ClassDeclaration declaration, String bindingName) {
+        Int index = 0;
+
+        while (index < declaration.methods().length()) {
+            MethodDeclaration method = declaration.methods().get(index);
+            String annotationName = this.findEmHtmlBindName(method);
+
+            if (annotationName == bindingName) {
+                return method.name();
+            }
+
+            index = index + 1;
+        }
+
+        Int fallbackIndex = 0;
+
+        while (fallbackIndex < declaration.methods().length()) {
+            MethodDeclaration method = declaration.methods().get(fallbackIndex);
+
+            if (method.name() == bindingName && method.parameters().length() == 0) {
+                return method.name();
+            }
+
+            fallbackIndex = fallbackIndex + 1;
+        }
+
+        return "";
+    }
+
+    private String findEmHtmlBindName(MethodDeclaration method) {
+        Int index = 0;
+
+        while (index < method.annotations().length()) {
+            Annotation annotation = method.annotations().get(index);
+
+            if (annotation.name() == "UiBind" && annotation.argumentIndexes().length() > 0) {
+                return this.values.expressionToString(annotation.argumentIndexes().get(0));
+            }
+
+            index = index + 1;
+        }
+
+        return "";
+    }
+
+}

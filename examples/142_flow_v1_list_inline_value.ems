@@ -1,0 +1,10 @@
+public data class HyperAllocFlowV1ListPoint(Int x, Int y) {
+}
+
+main() {
+    List<HyperAllocFlowV1ListPoint> points = List();
+    HyperAllocFlowV1ListPoint point = HyperAllocFlowV1ListPoint(20, 22);
+    points.add(point);
+    HyperAllocFlowV1ListPoint stored = points.get(0);
+    println((stored.x + stored.y).toString());
+}

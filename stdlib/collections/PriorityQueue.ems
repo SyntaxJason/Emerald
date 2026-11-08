@@ -1,0 +1,82 @@
+namespace Std::Collections;
+
+use Std::Compare::IComparator;
+
+// Binary min-heap ordered by the comparator: poll() returns the smallest
+// element (the one for which compare(a, b) < 0 against all others).
+public class PriorityQueue<T> {
+    private List<T> items;
+    private List<T> scratch;
+    private IComparator<T> comparator;
+
+    public PriorityQueue(IComparator<T> comparator) {
+        this.items = List();
+        this.scratch = List();
+        this.comparator = comparator;
+    }
+
+    public Int size() { return this.items.length(); }
+    public Bool isEmpty() { return this.items.isEmpty(); }
+    public Void clear() { this.items.clear(); }
+
+    public T peek() {
+        if (this.items.isEmpty()) { panic("PriorityQueue is empty"); }
+        return this.items.get(0);
+    }
+
+    public T peekOr(T fallback) {
+        if (this.items.isEmpty()) { return fallback; }
+        return this.items.get(0);
+    }
+
+    public Void add(T value) {
+        this.items.add(value);
+        this.siftUp(this.items.length() - 1);
+    }
+
+    public T poll() {
+        if (this.items.isEmpty()) { panic("PriorityQueue is empty"); }
+        Int last = this.items.length() - 1;
+        if (last == 0) { return this.items.removeAt(0); }
+        this.swap(0, last);
+        T smallest = this.items.removeAt(last);
+        this.siftDown(0);
+        return smallest;
+    }
+
+    // Swaps two slots. The scratch list keeps the first element alive while
+    // its slot is overwritten (no borrowed view is held across a set).
+    private Void swap(Int left, Int right) {
+        this.scratch.add(this.items.get(left));
+        this.items.set(left, this.items.get(right));
+        this.items.set(right, this.scratch.get(0));
+        this.scratch.clear();
+    }
+
+    private Void siftUp(Int start) {
+        Int index = start;
+        while (index > 0) {
+            Int parent = (index - 1) / 2;
+            if (this.comparator.compare(this.items.get(index), this.items.get(parent)) >= 0) { return; }
+            this.swap(index, parent);
+            index = parent;
+        }
+    }
+
+    private Void siftDown(Int start) {
+        Int index = start;
+        Int count = this.items.length();
+        Bool moving = true;
+        while (moving) {
+            Int smallest = index;
+            Int left = index * 2 + 1;
+            Int right = left + 1;
+            if (left < count && this.comparator.compare(this.items.get(left), this.items.get(smallest)) < 0) { smallest = left; }
+            if (right < count && this.comparator.compare(this.items.get(right), this.items.get(smallest)) < 0) { smallest = right; }
+            if (smallest == index) { moving = false; } else {
+            this.swap(index, smallest);
+            index = smallest;
+            }
+        }
+    }
+}

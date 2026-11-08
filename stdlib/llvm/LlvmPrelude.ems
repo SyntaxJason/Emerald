@@ -1,0 +1,27 @@
+namespace Std::Llvm;
+
+use Std::Llvm::Llvm;
+use Std::Llvm::LlvmBasicBlock;
+use Std::Llvm::LlvmBuilder;
+use Std::Llvm::LlvmContext;
+use Std::Llvm::LlvmFunction;
+use Std::Llvm::LlvmLinkage;
+use Std::Llvm::LlvmModule;
+use Std::Llvm::LlvmNative;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmNativeIf;
+use Std::Llvm::LlvmNativeLinker;
+use Std::Llvm::LlvmNativeVariable;
+use Std::Llvm::LlvmNativeWhile;
+use Std::Llvm::LlvmRuntime;
+use Std::Llvm::LlvmRuntimeDeclarations;
+use Std::Llvm::LlvmRuntimeFunction;
+use Std::Llvm::LlvmTarget;
+use Std::Llvm::LlvmTargetMachine;
+use Std::Llvm::LlvmType;
+use Std::Llvm::LlvmValue;
+
+public class LlvmPrelude {
+    public LlvmPrelude() {
+    }
+}

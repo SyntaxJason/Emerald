@@ -1,0 +1,305 @@
+namespace emerald::compiler::syntax;
+
+public class ClassDeclaration {
+    private String namespaceValue;
+    private String nameValue;
+    private List<String> genericParameterItems;
+    private Bool dataValue;
+    private Bool interfaceValue;
+    private String parentNameValue;
+    private List<String> interfaceNameItems;
+    private List<Annotation> annotationItems;
+    private List<FieldDeclaration> fieldItems;
+    private List<MethodDeclaration> methodItems;
+    private Int lineValue;
+    private Int columnValue;
+
+    public ClassDeclaration() {
+        this.namespaceValue = "";
+        this.nameValue = "";
+        this.genericParameterItems = List();
+        this.dataValue = false;
+        this.interfaceValue = false;
+        this.parentNameValue = "";
+        this.interfaceNameItems = List();
+        this.annotationItems = List();
+        this.fieldItems = List();
+        this.methodItems = List();
+        this.lineValue = 1;
+        this.columnValue = 1;
+    }
+
+    public ClassDeclaration(String name, List<FieldDeclaration> fields, List<MethodDeclaration> methods, Int line, Int column) {
+        this.namespaceValue = "";
+        this.nameValue = name;
+        this.genericParameterItems = List();
+        this.dataValue = false;
+        this.interfaceValue = false;
+        this.parentNameValue = "";
+        this.interfaceNameItems = List();
+        this.annotationItems = List();
+        this.fieldItems = List();
+        this.methodItems = List();
+        this.copyFields(fields);
+        this.copyMethods(methods);
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public ClassDeclaration(String namespaceName, String name, Bool isDataClass, List<FieldDeclaration> fields, List<MethodDeclaration> methods, Int line, Int column) {
+        this.namespaceValue = namespaceName;
+        this.nameValue = name;
+        this.genericParameterItems = List();
+        this.dataValue = isDataClass;
+        this.interfaceValue = false;
+        this.parentNameValue = "";
+        this.interfaceNameItems = List();
+        this.annotationItems = List();
+        this.fieldItems = List();
+        this.methodItems = List();
+        this.copyFields(fields);
+        this.copyMethods(methods);
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+
+    public ClassDeclaration(String namespaceName, String name, Bool isDataClass, List<Annotation> annotations, List<FieldDeclaration> fields, List<MethodDeclaration> methods, Int line, Int column) {
+        this.namespaceValue = namespaceName;
+        this.nameValue = name;
+        this.genericParameterItems = List();
+        this.dataValue = isDataClass;
+        this.interfaceValue = false;
+        this.parentNameValue = "";
+        this.interfaceNameItems = List();
+        this.annotationItems = List();
+        this.fieldItems = List();
+        this.methodItems = List();
+        this.copyAnnotations(annotations);
+        this.copyFields(fields);
+        this.copyMethods(methods);
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public ClassDeclaration(String namespaceName, String name, Bool isDataClass, Bool isInterface, String parentName, List<String> interfaceNames, List<Annotation> annotations, List<FieldDeclaration> fields, List<MethodDeclaration> methods, Int line, Int column) {
+        this.namespaceValue = namespaceName;
+        this.nameValue = name;
+        this.genericParameterItems = List();
+        this.dataValue = isDataClass;
+        this.interfaceValue = isInterface;
+        this.parentNameValue = parentName;
+        this.interfaceNameItems = List();
+        this.annotationItems = List();
+        this.fieldItems = List();
+        this.methodItems = List();
+        this.copyInterfaceNames(interfaceNames);
+        this.copyAnnotations(annotations);
+        this.copyFields(fields);
+        this.copyMethods(methods);
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public String namespaceName() {
+        return this.namespaceValue + "";
+    }
+
+    public String name() {
+        return this.nameValue + "";
+    }
+
+    public Bool hasName(String candidate) {
+        return this.nameValue == candidate;
+    }
+
+    public String fullName() {
+        if (this.namespaceValue.isEmpty()) {
+            return this.nameValue + "";
+        }
+
+        return this.namespaceValue + "::" + this.nameValue;
+    }
+
+    public Bool hasFullName(String candidate) {
+        if (this.namespaceValue.isEmpty()) {
+            return this.nameValue == candidate;
+        }
+
+        if (!candidate.endsWith(this.nameValue)) {
+            return false;
+        }
+
+        Int prefixLength = candidate.length() - this.nameValue.length();
+
+        if (prefixLength != this.namespaceValue.length() + 2) {
+            return false;
+        }
+
+        if (!candidate.startsWith(this.namespaceValue)) {
+            return false;
+        }
+
+        String boundary = candidate.substring(prefixLength - 2, prefixLength);
+        return boundary == "::";
+    }
+
+    public Bool isData() {
+        return this.dataValue;
+    }
+
+    public Bool isInterface() {
+        return this.interfaceValue;
+    }
+
+    public String parentName() {
+        return this.parentNameValue + "";
+    }
+
+    public List<String> implementedInterfaces() {
+        return this.interfaceNameItems;
+    }
+
+    public List<Annotation> annotations() {
+        return this.annotationItems;
+    }
+
+    public List<FieldDeclaration> fields() {
+        return this.fieldItems;
+    }
+
+    public Int fieldCount() {
+        return this.fieldItems.length();
+    }
+
+    public FieldDeclaration fieldAt(Int index) {
+        return this.fieldItems.get(index);
+    }
+
+    public List<MethodDeclaration> methods() {
+        return this.methodItems;
+    }
+
+    public Int methodCount() {
+        return this.methodItems.length();
+    }
+
+    public MethodDeclaration methodAt(Int index) {
+        return this.methodItems.get(index);
+    }
+
+    public Int line() {
+        return this.lineValue;
+    }
+
+    public Int column() {
+        return this.columnValue;
+    }
+
+    public ClassDeclaration shifted(Int offset) {
+        List<MethodDeclaration> shiftedMethods = List();
+        Int index = 0;
+
+        while (index < this.methodItems.length()) {
+            shiftedMethods.add(this.methodItems.get(index).shifted(offset));
+            index = index + 1;
+        }
+
+        List<FieldDeclaration> shiftedFields = List();
+        Int fieldIndex = 0;
+
+        while (fieldIndex < this.fieldItems.length()) {
+            shiftedFields.add(this.fieldItems.get(fieldIndex).shifted(offset));
+            fieldIndex = fieldIndex + 1;
+        }
+
+        List<Annotation> shiftedAnnotations = List();
+        Int annotationIndex = 0;
+
+        while (annotationIndex < this.annotationItems.length()) {
+            shiftedAnnotations.add(this.annotationItems.get(annotationIndex).shifted(offset));
+            annotationIndex = annotationIndex + 1;
+        }
+
+        List<String> interfaces = List();
+        Int interfaceIndex = 0;
+
+        while (interfaceIndex < this.interfaceNameItems.length()) {
+            interfaces.add(this.interfaceNameItems.get(interfaceIndex) + "");
+            interfaceIndex = interfaceIndex + 1;
+        }
+
+        return ClassDeclaration(this.namespaceValue + "", this.nameValue + "", this.dataValue, this.interfaceValue, this.parentNameValue + "", interfaces, shiftedAnnotations, shiftedFields, shiftedMethods, this.lineValue, this.columnValue).withGenericParameters(this.genericParameterItems);
+    }
+
+    public ClassDeclaration headerCopy() {
+        // Header consumers only inspect these lists. Sharing their immutable
+        // AST storage avoids rebuilding every method signature for each type
+        // lookup; Flow ownership keeps the shared lists bonded to both nodes.
+        ClassDeclaration copy = ClassDeclaration();
+        copy.namespaceValue = this.namespaceValue + "";
+        copy.nameValue = this.nameValue + "";
+        copy.dataValue = this.dataValue;
+        copy.interfaceValue = this.interfaceValue;
+        copy.parentNameValue = this.parentNameValue + "";
+        copy.interfaceNameItems = this.interfaceNameItems;
+        copy.annotationItems = this.annotationItems;
+        copy.fieldItems = this.fieldItems;
+        copy.methodItems = this.methodItems;
+        copy.genericParameterItems = this.genericParameterItems;
+        copy.lineValue = this.lineValue;
+        copy.columnValue = this.columnValue;
+        return copy;
+    }
+
+    public Bool isMissing() {
+        return this.nameValue.isEmpty();
+    }
+
+    private Void copyInterfaceNames(List<String> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            this.interfaceNameItems.add(source.get(index) + "");
+            index = index + 1;
+        }
+    }
+
+    private Void copyAnnotations(List<Annotation> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            this.annotationItems.add(source.get(index).shifted(0));
+            index = index + 1;
+        }
+    }
+
+    private Void copyFields(List<FieldDeclaration> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            this.fieldItems.add(source.get(index).shifted(0));
+            index = index + 1;
+        }
+    }
+
+    private Void copyMethods(List<MethodDeclaration> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            this.methodItems.add(source.get(index).shifted(0));
+            index = index + 1;
+        }
+    }
+    public List<String> genericParameters() { return this.genericParameterItems; }
+    public ClassDeclaration withGenericParameters(List<String> parameters) {
+        this.genericParameterItems = List();
+        Int index = 0;
+        while (index < parameters.length()) {
+            this.genericParameterItems.add(parameters.get(index) + "");
+            index = index + 1;
+        }
+        return this;
+    }
+
+}

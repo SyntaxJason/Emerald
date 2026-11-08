@@ -1,0 +1,33 @@
+namespace Std::Llvm;
+
+use Std::Collections::ArrayList;
+use Std::Collections::IList;
+
+public class LlvmNativeLinker {
+    public LlvmNativeLinker() {
+    }
+
+    public Bool linkExecutable(String output, IList<String> objectFiles) {
+        ArrayList<String> libraryPaths = ArrayList();
+        ArrayList<String> libraries = ArrayList();
+        ArrayList<String> extraArgs = ArrayList();
+
+        return LlvmNative.linkExecutable(output, objectFiles, libraryPaths, libraries, extraArgs);
+    }
+
+    public Bool linkExecutableWith(String output, IList<String> objectFiles, IList<String> libraryPaths, IList<String> libraries, IList<String> extraArgs) {
+        return LlvmNative.linkExecutable(output, objectFiles, libraryPaths, libraries, extraArgs);
+    }
+
+    public String lastCommand() {
+        return LlvmNative.linkerLastCommand();
+    }
+
+    public String lastOutput() {
+        return LlvmNative.linkerLastOutput();
+    }
+
+    public String lastError() {
+        return LlvmNative.linkerLastError();
+    }
+}

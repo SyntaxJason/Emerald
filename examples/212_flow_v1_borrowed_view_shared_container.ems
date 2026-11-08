@@ -1,0 +1,18 @@
+public class HyperAllocFlowV1SharedViewItem {
+    public Int value;
+
+    public HyperAllocFlowV1SharedViewItem(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1SharedViewItem> left = List();
+    List<HyperAllocFlowV1SharedViewItem> right = List();
+    HyperAllocFlowV1SharedViewItem owned = HyperAllocFlowV1SharedViewItem(42);
+    left.add(owned);
+    HyperAllocFlowV1SharedViewItem view = left.get(0);
+    right.add(view);
+    left.clear();
+    println(right.get(0).value.toString());
+}

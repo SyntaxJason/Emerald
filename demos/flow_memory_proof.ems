@@ -1,0 +1,100 @@
+namespace Demo;
+
+// Combines every allocation pattern from the live demo (nested owned object
+// graph with a List<Int> each, a self-referential child field, a dynamic
+// String built via concatenation, and an 80-element List<String> of dynamic
+// strings) into one bounded run. Set HYPERALLOC_FLOW_DEBUG=1 before running
+// this program: on a normal exit Flow prints its own byte-precise ledger
+// ("HyperAlloc Flow debug: live=... bytes=... peak=... invalid-releases=...").
+// If Flow is correctly reclaiming everything, "live" stays at the small
+// constant runtime baseline no matter how many iterations ran - proving
+// the millions of objects created along the way were fully released,
+// not just "not yet observed to leak".
+class Node {
+    private String label;
+    private List<Int> values;
+    private Node child;
+    private Bool hasChild;
+
+    public Node(String label) {
+        this.label = label;
+        this.values = List();
+        this.hasChild = false;
+    }
+
+    public Void fill(Int count) {
+        Int i = 0;
+
+        while (i < count) {
+            this.values.add(i * i);
+            i = i + 1;
+        }
+
+        return;
+    }
+
+    public Void attachChild(Node node) {
+        this.child = node;
+        this.hasChild = true;
+        return;
+    }
+
+    public Int sum() {
+        Int total = 0;
+        Int i = 0;
+
+        while (i < this.values.length()) {
+            total = total + this.values.get(i);
+            i = i + 1;
+        }
+
+        if (this.hasChild) {
+            total = total + this.child.sum();
+        }
+
+        return total;
+    }
+
+    public String describe() {
+        return this.label + " sum=" + this.sum().toString();
+    }
+}
+
+main() {
+    Int total = 5000000;
+    Int i = 0;
+    Int checksum = 0;
+
+    println("HyperAlloc Flow memory proof");
+    println("Fuehrt " + total.toString() + " Iterationen aus (verschachtelte Objekte,");
+    println("List<Int>, dynamische Strings, 80er List<String>) und beendet sich dann");
+    println("normal. Mit HYPERALLOC_FLOW_DEBUG=1 gestartet zeigt die letzte Zeile die");
+    println("exakte, byte-genaue Flow-Bilanz - unabhaengig von OS-Seiten-Rauschen.");
+    println("");
+
+    while (i < total) {
+        Node root = Node("root-" + i.toString());
+        root.fill(300);
+
+        Node inner = Node("inner-" + i.toString());
+        inner.fill(150);
+        root.attachChild(inner);
+
+        String description = root.describe();
+        checksum = checksum + description.length();
+
+        List<String> scratch = List();
+        Int j = 0;
+
+        while (j < 80) {
+            scratch.add("entry-" + j.toString() + "-" + i.toString());
+            j = j + 1;
+        }
+
+        checksum = checksum + scratch.length();
+        i = i + 1;
+    }
+
+    println("fertig. iterations=" + total.toString() + " checksum=" + checksum.toString());
+    return 0;
+}

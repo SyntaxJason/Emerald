@@ -1,6 +1,23 @@
 namespace Std::Math;
 
+use Std::Native::NativeMath;
+
 public class Math {
-    public Math() {
-    }
+    public Math() {}
+    public static Float sqrt(Float value) { return NativeMath.sqrt(value); }
+    public static Float absFloat(Float value) { return NativeMath.absFloat(value); }
+    public static Float floor(Float value) { return NativeMath.floor(value); }
+    public static Float ceil(Float value) { return NativeMath.ceil(value); }
+    public static Float round(Float value) { return NativeMath.round(value); }
+    public static Float sin(Float value) { return NativeMath.sin(value); }
+    public static Float cos(Float value) { return NativeMath.cos(value); }
+    public static Float tan(Float value) { return NativeMath.tan(value); }
+    public static Float log(Float value) { return NativeMath.log(value); }
+    public static Float log10(Float value) { return NativeMath.log10(value); }
+    public static Float exp(Float value) { return NativeMath.exp(value); }
+    public static Float pow(Float base, Float exponent) { return NativeMath.pow(base, exponent); }
+    public static Int abs(Int value) { if (value < 0) { return -value; } return value; }
+    public static Int min(Int left, Int right) { if (left < right) { return left; } return right; }
+    public static Int max(Int left, Int right) { if (left > right) { return left; } return right; }
+    public static Int clamp(Int value, Int low, Int high) { return Math.min(Math.max(value, low), high); }
 }

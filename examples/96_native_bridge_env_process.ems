@@ -1,0 +1,11 @@
+use Std::Native::NativeEnv;
+use Std::Native::NativeProcess;
+
+main() {
+    println(NativeEnv.currentDirectory());
+    println(NativeEnv.has("PATH"));
+    println(NativeEnv.getOr("EMERALD_NOT_SET", "fallback"));
+    println(NativeEnv.args().length());
+    println(NativeProcess.command());
+    println(NativeProcess.args().length());
+}

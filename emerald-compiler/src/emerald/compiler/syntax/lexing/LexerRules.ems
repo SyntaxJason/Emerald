@@ -1,0 +1,172 @@
+namespace emerald::compiler::syntax;
+
+public class LexerRules {
+    public LexerRules() {
+    }
+
+    public Bool isWhitespace(String value) {
+        if (value == " ") {
+            return true;
+        }
+
+        if (value == "\t") {
+            return true;
+        }
+
+        if (value == "\r") {
+            return true;
+        }
+
+        return value == "\n";
+    }
+
+    public Bool isDigit(String value) {
+        if (value.isEmpty()) {
+            return false;
+        }
+
+        return value.charAt(0).isDigit();
+    }
+
+    public Bool isIdentifierStart(String value) {
+        if (value.isEmpty()) {
+            return false;
+        }
+
+        if (value == "_") {
+            return true;
+        }
+
+        return value.charAt(0).isLetter();
+    }
+
+    public Bool isIdentifierPart(String value) {
+        if (this.isIdentifierStart(value)) {
+            return true;
+        }
+
+        return this.isDigit(value);
+    }
+
+    public Bool isTwoCharacterSymbol(String first, String second) {
+        if (first == "-" && second == ">") { return true; }
+
+        if (first == ":" && second == ":") {
+            return true;
+        }
+
+        if (first == "." && second == ".") {
+            return true;
+        }
+
+        if (first == "=" && second == "=") {
+            return true;
+        }
+
+        if (first == "!" && second == "=") {
+            return true;
+        }
+
+        if (first == "<" && second == "=") {
+            return true;
+        }
+
+        if (first == ">" && second == "=") {
+            return true;
+        }
+
+        if (first == "&" && second == "&") {
+            return true;
+        }
+
+        return first == "|" && second == "|";
+    }
+
+    public Bool isSymbol(String value) {
+        if (value == "(") {
+            return true;
+        }
+
+        if (value == ")") {
+            return true;
+        }
+
+        if (value == "{") {
+            return true;
+        }
+
+        if (value == "}") {
+            return true;
+        }
+
+        if (value == "[") {
+            return true;
+        }
+
+        if (value == "]") {
+            return true;
+        }
+
+        if (value == ";") {
+            return true;
+        }
+
+        if (value == ",") {
+            return true;
+        }
+
+        if (value == ".") {
+            return true;
+        }
+
+        return this.isOperatorSymbol(value);
+    }
+
+    private Bool isOperatorSymbol(String value) {
+        if (value == "=") {
+            return true;
+        }
+
+        if (value == "+") {
+            return true;
+        }
+
+        if (value == "-") {
+            return true;
+        }
+
+        if (value == "*") {
+            return true;
+        }
+
+        if (value == "/") {
+            return true;
+        }
+
+        if (value == "%") {
+            return true;
+        }
+
+        if (value == "!") {
+            return true;
+        }
+
+        if (value == "<") {
+            return true;
+        }
+
+        if (value == ">") {
+            return true;
+        }
+
+        if (value == "@") {
+            return true;
+        }
+
+        if (value == "$") {
+            return true;
+        }
+
+        return value == ":";
+    }
+}

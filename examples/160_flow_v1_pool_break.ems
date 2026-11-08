@@ -1,0 +1,15 @@
+public class HyperAllocFlowV1PoolBreakValue {
+    public Int value;
+
+    public HyperAllocFlowV1PoolBreakValue(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    while (true) {
+        HyperAllocFlowV1PoolBreakValue value = HyperAllocFlowV1PoolBreakValue(42);
+        println(value.value.toString());
+        break;
+    }
+}

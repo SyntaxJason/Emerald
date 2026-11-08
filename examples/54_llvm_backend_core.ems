@@ -1,0 +1,79 @@
+use Std::Collections::ArrayList;
+use Std::Llvm::Llvm;
+use Std::Llvm::LlvmContext;
+use Std::Llvm::LlvmModule;
+use Std::Llvm::LlvmBuilder;
+use Std::Llvm::LlvmType;
+use Std::Llvm::LlvmValue;
+use Std::Llvm::LlvmFunction;
+use Std::Llvm::LlvmBasicBlock;
+
+main() {
+    LlvmContext context = Llvm.createContext();
+    LlvmModule llvmModule = context.createModule("emerald_backend_core");
+    LlvmBuilder builder = context.createBuilder();
+
+    LlvmType int32 = context.int32Type();
+    LlvmType boolType = context.boolType();
+
+    ArrayList<LlvmType> addParams = ArrayList();
+    addParams.add(int32);
+    addParams.add(int32);
+
+    LlvmType addType = context.functionTypeWithParams(int32, addParams);
+    LlvmFunction addFunction = llvmModule.addFunction("emerald_add", addType);
+    LlvmBasicBlock addEntry = addFunction.appendBlock("entry");
+
+    builder.positionAtEnd(addEntry);
+
+    LlvmValue left = addFunction.parameter(0);
+    LlvmValue right = addFunction.parameter(1);
+    left.setName("left");
+    right.setName("right");
+
+    LlvmValue sum = builder.add(left, right, "sum");
+    builder.returnValue(sum);
+
+    LlvmType mainType = context.functionType(int32);
+    LlvmFunction mainFunction = llvmModule.addFunction("main", mainType);
+    LlvmBasicBlock entry = mainFunction.appendBlock("entry");
+    LlvmBasicBlock thenBlock = mainFunction.appendBlock("then");
+    LlvmBasicBlock elseBlock = mainFunction.appendBlock("else");
+
+    builder.positionAtEnd(entry);
+
+    LlvmValue valueA = Llvm.constInt(int32, 40);
+    LlvmValue valueB = Llvm.constInt(int32, 2);
+
+    ArrayList<LlvmValue> callArgs = ArrayList();
+    callArgs.add(valueA);
+    callArgs.add(valueB);
+
+    LlvmValue callResult = builder.callFunction(addType, addFunction, callArgs, "call_result");
+    LlvmValue slot = builder.alloca(int32, "slot");
+    builder.store(callResult, slot);
+
+    LlvmValue loaded = builder.load(int32, slot, "loaded");
+    LlvmValue expected = Llvm.constInt(int32, 42);
+    LlvmValue matches = builder.intEqual(loaded, expected, "matches");
+
+    builder.conditionalBranch(matches, thenBlock, elseBlock);
+
+    builder.positionAtEnd(thenBlock);
+    builder.returnValue(Llvm.constInt(int32, 0));
+
+    builder.positionAtEnd(elseBlock);
+    builder.returnValue(Llvm.constInt(int32, 1));
+
+    if (!llvmModule.verify()) {
+        println(llvmModule.verifyMessage());
+        return;
+    }
+
+    llvmModule.writeIr("emerald-backend-core.ll");
+    println(llvmModule.toIr());
+
+    builder.dispose();
+    llvmModule.dispose();
+    context.dispose();
+}

@@ -1,0 +1,21 @@
+public class HyperAllocFlowV1MutatingHelperItem {
+    public Int value;
+
+    public HyperAllocFlowV1MutatingHelperItem(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1MutatingHelper {
+    public static Void clear(List<HyperAllocFlowV1MutatingHelperItem> items) {
+        items.clear();
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1MutatingHelperItem> items = List();
+    items.add(HyperAllocFlowV1MutatingHelperItem(42));
+    HyperAllocFlowV1MutatingHelperItem view = items.get(0);
+    HyperAllocFlowV1MutatingHelper.clear(items);
+    println(view.value.toString());
+}

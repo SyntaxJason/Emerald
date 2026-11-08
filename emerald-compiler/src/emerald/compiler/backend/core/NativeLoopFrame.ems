@@ -1,0 +1,40 @@
+namespace emerald::compiler::backend;
+
+use Std::Llvm::LlvmBasicBlock;
+use Std::Llvm::LlvmValue;
+
+public class NativeLoopFrame {
+    private LlvmBasicBlock continueBlockValue;
+    private LlvmBasicBlock exitBlockValue;
+    private Int localStartValue;
+    private LlvmValue shardTokenValue;
+    private Bool shardValue;
+
+    public NativeLoopFrame(LlvmBasicBlock continueBlock, LlvmBasicBlock exitBlock, Int localStart, LlvmValue shardToken, Bool usesShard) {
+        this.continueBlockValue = LlvmBasicBlock(continueBlock.handle());
+        this.exitBlockValue = LlvmBasicBlock(exitBlock.handle());
+        this.localStartValue = localStart;
+        this.shardTokenValue = LlvmValue(shardToken.handle());
+        this.shardValue = usesShard;
+    }
+
+    public LlvmBasicBlock continueBlock() {
+        return LlvmBasicBlock(this.continueBlockValue.handle());
+    }
+
+    public LlvmBasicBlock exitBlock() {
+        return LlvmBasicBlock(this.exitBlockValue.handle());
+    }
+
+    public Int localStart() {
+        return this.localStartValue;
+    }
+
+    public LlvmValue shardToken() {
+        return LlvmValue(this.shardTokenValue.handle());
+    }
+
+    public Bool usesShard() {
+        return this.shardValue;
+    }
+}

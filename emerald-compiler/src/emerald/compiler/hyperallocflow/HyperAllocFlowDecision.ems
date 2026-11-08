@@ -1,0 +1,175 @@
+namespace emerald::compiler::hyperallocflow;
+
+public class HyperAllocFlowDecision {
+    private Int expressionIndexValue;
+    private String typeNameValue;
+    private AllocationKind kindValue;
+    private String reasonValue;
+    private String loweringNameValue;
+    private String loweringReasonValue;
+    private String cleanupNameValue;
+    private String cleanupReasonValue;
+    private String cleanupPolicyValue;
+    private Int lineValue;
+    private Int columnValue;
+    private Int estimatedBytesValue;
+    private Bool strictIssueValue;
+    private String strictReasonValue;
+    private Bool safetyIssueValue;
+    private String safetyReasonValue;
+    private Bool allocationValue;
+    private Bool ownershipTransferValue;
+
+    public HyperAllocFlowDecision(Int expressionIndex, String typeName, AllocationKind kind, String reason, Int line, Int column) {
+        this.expressionIndexValue = expressionIndex;
+        this.typeNameValue = typeName;
+        this.kindValue = kind;
+        this.reasonValue = reason;
+        this.loweringNameValue = "pending";
+        this.loweringReasonValue = "backend has not lowered this allocation yet";
+        this.cleanupNameValue = "pending";
+        this.cleanupReasonValue = "backend has not emitted deterministic cleanup yet";
+        this.cleanupPolicyValue = "None";
+        this.lineValue = line;
+        this.columnValue = column;
+        this.estimatedBytesValue = 0;
+        this.strictIssueValue = false;
+        this.strictReasonValue = "";
+        this.safetyIssueValue = false;
+        this.safetyReasonValue = "";
+        this.allocationValue = true;
+        this.ownershipTransferValue = false;
+    }
+
+    public Int expressionIndex() {
+        return this.expressionIndexValue;
+    }
+
+    public String typeName() {
+        return this.typeNameValue + "";
+    }
+
+    public AllocationKind kind() {
+        return this.kindValue;
+    }
+
+    public String reason() {
+        return this.reasonValue;
+    }
+
+    public Void markLowering(String name, String reason) {
+        this.loweringNameValue = name;
+        this.loweringReasonValue = reason;
+    }
+
+    public String loweringName() {
+        return this.loweringNameValue + "";
+    }
+
+    public String loweringReason() {
+        return this.loweringReasonValue + "";
+    }
+
+    public Bool hasLowering() {
+        return this.loweringNameValue != "pending";
+    }
+
+    public Void markCleanup(String name, String reason) {
+        this.cleanupNameValue = name;
+        this.cleanupReasonValue = reason;
+    }
+
+    public String cleanupName() {
+        return this.cleanupNameValue + "";
+    }
+
+    public String cleanupReason() {
+        return this.cleanupReasonValue + "";
+    }
+
+    public Bool hasCleanup() {
+        return this.cleanupNameValue != "pending";
+    }
+
+    public Void allowScopeCleanup() {
+        this.cleanupPolicyValue = "Scope";
+    }
+
+    public String cleanupPolicy() {
+        return this.cleanupPolicyValue;
+    }
+
+    public Bool scopeCleanupAllowed() {
+        return this.cleanupPolicyValue == "Scope";
+    }
+
+    // A fresh object that only lives for the enclosing expression: the
+    // emitter releases it once the consuming call no longer needs it.
+    public Void allowTemporaryRelease() {
+        this.cleanupPolicyValue = "Temporary";
+    }
+
+    public Bool temporaryReleaseAllowed() {
+        return this.cleanupPolicyValue == "Temporary";
+    }
+
+    public Int line() {
+        return this.lineValue;
+    }
+
+    public Int column() {
+        return this.columnValue;
+    }
+
+    public Void setEstimatedBytes(Int bytes) {
+        this.estimatedBytesValue = bytes;
+    }
+
+    public Int estimatedBytes() {
+        return this.estimatedBytesValue;
+    }
+
+
+    public Void markOwnershipTransfer() {
+        this.allocationValue = false;
+        this.ownershipTransferValue = true;
+    }
+
+    public Void markNonAllocation() {
+        this.allocationValue = false;
+    }
+
+    public Bool isAllocation() {
+        return this.allocationValue;
+    }
+
+    public Bool isOwnershipTransfer() {
+        return this.ownershipTransferValue;
+    }
+
+    public Void markStrictIssue(String reason) {
+        this.strictIssueValue = true;
+        this.strictReasonValue = reason;
+    }
+
+    public Bool isStrictIssue() {
+        return this.strictIssueValue;
+    }
+
+    public String strictReason() {
+        return this.strictReasonValue;
+    }
+
+    public Void markSafetyIssue(String reason) {
+        this.safetyIssueValue = true;
+        this.safetyReasonValue = reason;
+    }
+
+    public Bool isSafetyIssue() {
+        return this.safetyIssueValue;
+    }
+
+    public String safetyReason() {
+        return this.safetyReasonValue;
+    }
+}

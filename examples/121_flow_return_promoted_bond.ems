@@ -1,0 +1,38 @@
+public class HyperAllocFlowPromotedValue {
+    private Int number;
+
+    public HyperAllocFlowPromotedValue(Int number) {
+        this.number = number;
+    }
+
+    public Int value() {
+        return this.number;
+    }
+}
+
+public class HyperAllocFlowPromotedFactory {
+    public HyperAllocFlowPromotedValue create(Int number) {
+        HyperAllocFlowPromotedValue value = HyperAllocFlowPromotedValue(number);
+        return value;
+    }
+}
+
+public class HyperAllocFlowPromotedBox {
+    private HyperAllocFlowPromotedValue value;
+
+    public HyperAllocFlowPromotedBox(HyperAllocFlowPromotedValue value) {
+        this.value = value;
+    }
+
+    public Int number() {
+        return this.value.value();
+    }
+}
+
+main() {
+    HyperAllocFlowPromotedFactory factory = HyperAllocFlowPromotedFactory();
+    HyperAllocFlowPromotedValue shared = factory.create(6);
+    HyperAllocFlowPromotedBox left = HyperAllocFlowPromotedBox(shared);
+    HyperAllocFlowPromotedBox right = HyperAllocFlowPromotedBox(shared);
+    println((left.number() + right.number()).toString());
+}

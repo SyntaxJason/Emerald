@@ -1,0 +1,38 @@
+namespace emerald::compiler::backend;
+
+public class NativeOperatorRules {
+    public NativeOperatorRules() {
+    }
+
+    public Bool isComparison(String op) {
+        if (op == "==") {
+            return true;
+        }
+
+        if (op == "!=") {
+            return true;
+        }
+
+        if (op == "<") {
+            return true;
+        }
+
+        if (op == "<=") {
+            return true;
+        }
+
+        if (op == ">") {
+            return true;
+        }
+
+        return op == ">=";
+    }
+
+    public Bool isBoolOperator(String op) {
+        if (op == "&&") {
+            return true;
+        }
+
+        return op == "||";
+    }
+}

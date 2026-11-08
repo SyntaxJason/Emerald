@@ -1,0 +1,16 @@
+public class HyperAllocFlowV1SetBox {
+    public Int value;
+
+    public HyperAllocFlowV1SetBox(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1SetBox> boxes = List();
+    HyperAllocFlowV1SetBox previous = HyperAllocFlowV1SetBox(1);
+    HyperAllocFlowV1SetBox next = HyperAllocFlowV1SetBox(42);
+    boxes.add(previous);
+    boxes.set(0, next);
+    println(boxes.get(0).value.toString());
+}

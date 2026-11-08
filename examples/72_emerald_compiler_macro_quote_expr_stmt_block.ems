@@ -1,0 +1,48 @@
+macro AddQuoteEntry on Method {
+    StatementAST entry = quote stmt {
+        println("quote enter");
+    };
+
+    method.body.prepend(entry);
+}
+
+macro AddQuoteExit on Method {
+    ExpressionAST message = quote expr {
+        "quote exit"
+    };
+
+    StatementAST exitLine = Stmt::expr(
+        Expr::call("println", [message])
+    );
+
+    method.body.append(exitLine);
+}
+
+macro AddQuoteMethod on Class {
+    BlockAST body = quote block {
+        return "quoted method";
+    };
+
+    MethodAST method = MethodAST::create("quoted", "String", [], body);
+
+    class.addMethod(method);
+}
+
+@AddQuoteMethod
+public class QuoteProbe {
+    public QuoteProbe() {
+    }
+
+    @AddQuoteEntry
+    @AddQuoteExit
+    public Void run() {
+        println("body");
+    }
+}
+
+main() {
+    QuoteProbe probe = QuoteProbe();
+
+    probe.run();
+    println(probe.quoted());
+}

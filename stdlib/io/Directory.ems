@@ -1,5 +1,16 @@
 namespace Std::Io;
 
+use Std::Collections::IList;
+use Std::Io::Directories;
+use Std::Io::File;
+use Std::Io::FileInfo;
+use Std::Io::Files;
+use Std::Io::IDirectory;
+use Std::Io::IFile;
+use Std::Io::IFileInfo;
+use Std::Io::IPath;
+use Std::Io::Path;
+
 public class Directory implements IDirectory {
     private Path directoryPath;
 
@@ -24,19 +35,19 @@ public class Directory implements IDirectory {
     }
 
     public Bool exists() {
-        return Directory.exists(this.directoryPath.value());
+        return Directories.exists(this.directoryPath.value());
     }
 
     public Bool isFile() {
-        return false;
+        return Files.isFile(this.directoryPath.value());
     }
 
     public Bool isDirectory() {
-        return Directory.exists(this.directoryPath.value());
+        return Directories.exists(this.directoryPath.value());
     }
 
     public Bool create() {
-        return Directory.create(this.directoryPath.value());
+        return Directories.create(this.directoryPath.value());
     }
 
     public Bool ensureExists() {
@@ -48,7 +59,7 @@ public class Directory implements IDirectory {
     }
 
     public Bool delete() {
-        return Directory.delete(this.directoryPath.value());
+        return Directories.delete(this.directoryPath.value());
     }
 
     public Bool deleteIfExists() {
@@ -63,8 +74,8 @@ public class Directory implements IDirectory {
         return this.info(name).exists();
     }
 
-    public Std::Collections::IList<String> list() {
-        return Std::Collections::ArrayList(Directory.list(this.directoryPath.value()));
+    public IList<String> list() {
+        return Directories.list(this.directoryPath.value());
     }
 
     public IPath childPath(String name) {

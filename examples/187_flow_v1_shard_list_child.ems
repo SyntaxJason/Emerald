@@ -1,0 +1,19 @@
+public class HyperAllocFlowV1ShardListOwner {
+    public List<String> values;
+
+    public HyperAllocFlowV1ShardListOwner(Int value) {
+        this.values = List();
+        this.values.add(value.toString());
+    }
+}
+
+main() {
+    Int index = 0;
+
+    while (index < 1) {
+        HyperAllocFlowV1ShardListOwner first = HyperAllocFlowV1ShardListOwner(42);
+        HyperAllocFlowV1ShardListOwner second = HyperAllocFlowV1ShardListOwner(1);
+        println(first.values.get(0));
+        index = index + second.values.length();
+    }
+}

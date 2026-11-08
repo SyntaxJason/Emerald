@@ -1,0 +1,8 @@
+public data class HyperAllocFlowInlinePoint(Int x, Int y) {
+}
+
+main() {
+    HyperAllocFlowInlinePoint first = HyperAllocFlowInlinePoint(20, 22);
+    HyperAllocFlowInlinePoint second = first;
+    println((second.x + second.y).toString());
+}

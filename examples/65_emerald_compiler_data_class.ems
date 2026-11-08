@@ -1,0 +1,7 @@
+public data class Score(Int value);
+
+main() {
+    Score score = Score(42);
+    println(score.value);
+    return 0;
+}

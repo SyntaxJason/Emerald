@@ -1,5 +1,20 @@
 namespace Std::Io;
 
+use Std::Collections::IList;
+use Std::Io::FileInfo;
+use Std::Io::Files;
+use Std::Io::IFile;
+use Std::Io::IFileInfo;
+use Std::Io::IPath;
+use Std::Io::ITextReader;
+use Std::Io::ITextWriter;
+use Std::Io::Path;
+use Std::Io::TextReader;
+use Std::Io::TextWriter;
+use Std::Native::NativeDirectory;
+use Std::Result::IResult;
+use Std::Native::NativeSystem;
+
 public class File implements IFile {
     private Path filePath;
 
@@ -24,67 +39,71 @@ public class File implements IFile {
     }
 
     public Bool exists() {
-        return File.exists(this.filePath.value());
+        return Files.exists(this.filePath.value());
     }
 
     public Bool isFile() {
-        return File.isFile(this.filePath.value());
+        return Files.isFile(this.filePath.value());
     }
 
     public Bool isDirectory() {
-        return false;
+        return NativeDirectory.exists(this.filePath.value());
     }
 
     public String readText() {
-        return File.readText(this.filePath.value());
+        return Files.readText(this.filePath.value());
     }
 
     public String readOr(String fallback) {
-        return this.tryReadText().unwrapOr(fallback);
+        if (!this.exists()) {
+            return fallback;
+        }
+
+        return this.readText();
     }
 
-    public Std::Collections::IList<String> readLines() {
-        return Std::Collections::ArrayList(File.readLines(this.filePath.value()));
+    public IList<String> readLines() {
+        return Files.readLines(this.filePath.value());
     }
 
-    public Std::Result::IResult<String, String> tryReadText() {
-        return File.tryReadText(this.filePath.value());
+    public IResult<String, String> tryReadText() {
+        return Files.tryReadText(this.filePath.value());
     }
 
     public Void writeText(String text) {
-        File.writeText(this.filePath.value(), text);
+        Files.writeText(this.filePath.value(), text);
     }
 
     public Void writeLine(String text) {
-        this.writeText(text + "\n");
+        this.writeText(text + NativeSystem.lineSeparator());
     }
 
-    public Std::Result::IResult<Bool, String> tryWriteText(String text) {
-        return File.tryWriteText(this.filePath.value(), text);
+    public IResult<Bool, String> tryWriteText(String text) {
+        return Files.tryWriteText(this.filePath.value(), text);
     }
 
-    public Std::Result::IResult<Bool, String> tryWriteLine(String text) {
-        return this.tryWriteText(text + "\n");
+    public IResult<Bool, String> tryWriteLine(String text) {
+        return this.tryWriteText(text + NativeSystem.lineSeparator());
     }
 
     public Void appendText(String text) {
-        File.appendText(this.filePath.value(), text);
+        Files.appendText(this.filePath.value(), text);
     }
 
     public Void appendLine(String text) {
-        this.appendText(text + "\n");
+        this.appendText(text + NativeSystem.lineSeparator());
     }
 
-    public Std::Result::IResult<Bool, String> tryAppendText(String text) {
-        return File.tryAppendText(this.filePath.value(), text);
+    public IResult<Bool, String> tryAppendText(String text) {
+        return Files.tryAppendText(this.filePath.value(), text);
     }
 
-    public Std::Result::IResult<Bool, String> tryAppendLine(String text) {
-        return this.tryAppendText(text + "\n");
+    public IResult<Bool, String> tryAppendLine(String text) {
+        return this.tryAppendText(text + NativeSystem.lineSeparator());
     }
 
     public Bool delete() {
-        return File.delete(this.filePath.value());
+        return Files.delete(this.filePath.value());
     }
 
     public Bool deleteIfExists() {
@@ -100,22 +119,22 @@ public class File implements IFile {
     }
 
     public Bool ensureParentDirectory() {
-        return Directory(this.filePath.parent()).ensureExists();
+        return NativeDirectory.create(this.filePath.parent().value());
     }
 
     public Int size() {
-        return File.size(this.filePath.value());
+        return Files.size(this.filePath.value());
     }
 
     public IFileInfo info() {
-        return FileInfo(this.filePath);
+        return FileInfo(this.filePath.value());
     }
 
     public ITextReader reader() {
-        return TextReader(this.filePath);
+        return TextReader(this.filePath.value());
     }
 
     public ITextWriter writer() {
-        return TextWriter(this.filePath);
+        return TextWriter(this.filePath.value());
     }
 }

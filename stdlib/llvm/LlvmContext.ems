@@ -1,0 +1,111 @@
+namespace Std::Llvm;
+
+use Std::Collections::IList;
+
+public class LlvmContext {
+    private Int contextHandle;
+
+    public LlvmContext(Int handle) {
+        this.contextHandle = handle;
+    }
+
+    public Int handle() {
+        return this.contextHandle;
+    }
+
+    public LlvmModule createModule(String name) {
+        return LlvmModule(LlvmNative.createModule(this.contextHandle, name), this.contextHandle);
+    }
+
+    public LlvmBuilder createBuilder() {
+        return LlvmBuilder(LlvmNative.createBuilder(this.contextHandle));
+    }
+
+    public LlvmType voidType() {
+        return LlvmType(LlvmNative.voidType(this.contextHandle));
+    }
+
+    public LlvmType boolType() {
+        return LlvmType(LlvmNative.i1Type(this.contextHandle));
+    }
+
+    public LlvmType int1Type() {
+        return LlvmType(LlvmNative.i1Type(this.contextHandle));
+    }
+
+    public LlvmType int8Type() {
+        return LlvmType(LlvmNative.i8Type(this.contextHandle));
+    }
+
+    public LlvmType int16Type() {
+        return LlvmType(LlvmNative.i16Type(this.contextHandle));
+    }
+
+    public LlvmType int32Type() {
+        return LlvmType(LlvmNative.i32Type(this.contextHandle));
+    }
+
+    public LlvmType int64Type() {
+        return LlvmType(LlvmNative.i64Type(this.contextHandle));
+    }
+
+    public LlvmType intType(Int bits) {
+        return LlvmType(LlvmNative.intType(this.contextHandle, bits));
+    }
+
+    public LlvmType floatType() {
+        return LlvmType(LlvmNative.floatType(this.contextHandle));
+    }
+
+    public LlvmType doubleType() {
+        return LlvmType(LlvmNative.doubleType(this.contextHandle));
+    }
+
+    public LlvmType opaquePointerType() {
+        return LlvmType(LlvmNative.opaquePointerType(this.contextHandle));
+    }
+
+    public LlvmType pointerTo(LlvmType sourceType) {
+        return LlvmType(LlvmNative.pointerType(sourceType.handle()));
+    }
+
+    public LlvmType arrayType(LlvmType elementType, Int count) {
+        return LlvmType(LlvmNative.arrayType(elementType.handle(), count));
+    }
+
+    public LlvmType structType(IList<LlvmType> elementTypes, Bool packed) {
+        return LlvmType(LlvmNative.structType(this.contextHandle, elementTypes, packed));
+    }
+
+    public LlvmType namedStructType(String name) {
+        return LlvmType(LlvmNative.namedStructType(this.contextHandle, name));
+    }
+
+    public LlvmType functionType(LlvmType returnType) {
+        return LlvmType(LlvmNative.functionType(returnType.handle()));
+    }
+
+    public LlvmType functionTypeWithParams(LlvmType returnType, IList<LlvmType> parameterTypes) {
+        return LlvmType(LlvmNative.functionTypeWithParams(returnType.handle(), parameterTypes, false));
+    }
+
+    public LlvmType variadicFunctionType(LlvmType returnType, IList<LlvmType> parameterTypes) {
+        return LlvmType(LlvmNative.functionTypeWithParams(returnType.handle(), parameterTypes, true));
+    }
+
+    public LlvmValue constString(String value, Bool nullTerminate) {
+        return LlvmValue(LlvmNative.constString(this.contextHandle, value, nullTerminate));
+    }
+
+    public LlvmValue constStruct(IList<LlvmValue> values, Bool packed) {
+        return LlvmValue(LlvmNative.constStruct(this.contextHandle, values, packed));
+    }
+
+    public LlvmValue constArray(LlvmType elementType, IList<LlvmValue> values) {
+        return LlvmValue(LlvmNative.constArray(elementType.handle(), values));
+    }
+
+    public Void dispose() {
+        LlvmNative.disposeContext(this.contextHandle);
+    }
+}

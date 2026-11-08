@@ -1,0 +1,23 @@
+macro Logged on Method {
+    StatementAST entry = Stmt::expr(
+        Expr::call("println", [Expr::str("enter " + method.name)])
+    );
+
+    method.body.prepend(entry);
+}
+
+public class Worker {
+    public Worker() {
+    }
+
+    @Logged
+    public Int value() {
+        return 42;
+    }
+}
+
+main() {
+    Worker worker = Worker();
+    println(worker.value());
+    return 0;
+}

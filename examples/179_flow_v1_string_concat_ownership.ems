@@ -1,0 +1,6 @@
+main() {
+    String left = 4.toString();
+    String right = 2.toString();
+    String value = left + right;
+    println(value);
+}

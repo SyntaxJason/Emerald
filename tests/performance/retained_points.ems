@@ -1,0 +1,30 @@
+use Std::Collections::HashMap;
+use Std::Collections::ArrayList;
+
+public class PackedPoint {
+    public Int x;
+    public Int y;
+    public Int z;
+    public Int w;
+    public PackedPoint(Int x, Int y, Int z, Int w) {
+        this.x = x; this.y = y; this.z = z; this.w = w;
+    }
+}
+main() {
+List<PackedPoint> points = List();
+Int i = 0;
+while (i < 2000000) {
+    PackedPoint p = PackedPoint(i, 2, 3, 4);
+    points.add(p);
+    i = i + 1;
+}
+Int sum = 0;
+i = 0;
+while (i < points.length()) {
+    PackedPoint p = points.get(i);
+    sum = sum + p.x;
+    i = i + 1;
+}
+if (sum != 1999999000000) { panic("packed sum"); }
+println(sum);
+}

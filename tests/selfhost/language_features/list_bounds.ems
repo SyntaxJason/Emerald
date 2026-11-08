@@ -1,0 +1,6 @@
+main() {
+    List<Int> values = List();
+    values.add(7);
+    println(values.get(0));
+    println(values.get(values.length()));
+}

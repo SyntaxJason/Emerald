@@ -1,0 +1,13 @@
+use Std::Llvm::LlvmPrelude;
+use emerald::compiler::CompilerPrelude;
+use emerald::compiler::cli::Cli;
+use Std::Process::Process;
+
+main() {
+    Cli cli = Cli();
+    Int code = cli.run();
+
+    if (code != 0) {
+        Process.exit(code);
+    }
+}

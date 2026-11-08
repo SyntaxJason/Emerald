@@ -1,4 +1,6 @@
 namespace Std::Functional;
 
+use Std::Functional::IFunction;
+
 public interface IUnaryOperator<T> extends IFunction<T, T> {
 }

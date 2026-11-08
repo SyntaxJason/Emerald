@@ -1,0 +1,39 @@
+namespace emerald::compiler::source;
+
+public class SourceUseScanner {
+    public SourceUseScanner() {
+    }
+
+    public List<SourceUse> scan(String text) {
+        List<SourceUse> result = List();
+        List<String> lines = text.split("\n");
+        Int index = 0;
+
+        while (index < lines.length()) {
+            String line = lines.get(index).trim();
+
+            if (line.startsWith("use ")) {
+                result.add(SourceUse(this.extract(line), index + 1, 1));
+            }
+
+            index = index + 1;
+        }
+
+        return result;
+    }
+
+    private String extract(String line) {
+        String value = line.substring(4, line.length()).trim();
+        Int importAliasIndex = value.indexOf(" as ");
+
+        if (importAliasIndex >= 0) {
+            value = value.substring(0, importAliasIndex).trim();
+        }
+
+        if (value.endsWith(";")) {
+            value = value.substring(0, value.length() - 1).trim();
+        }
+
+        return value;
+    }
+}

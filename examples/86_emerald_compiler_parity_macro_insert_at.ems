@@ -1,0 +1,24 @@
+macro InsertLines on Method {
+    StatementAST first = Stmt::expr(
+        Expr::call("println", [Expr::str("before 1")])
+    );
+
+    StatementAST second = Stmt::expr(
+        Expr::call("println", [Expr::str("before 2")])
+    );
+
+    method.body.insertAt(0, first);
+    method.body.insertAt(1, second);
+}
+
+public class InsertProbe {
+    @InsertLines
+    public Void run() {
+        println("body");
+    }
+}
+
+main() {
+    InsertProbe probe = InsertProbe();
+    probe.run();
+}

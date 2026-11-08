@@ -1,0 +1,56 @@
+use Std::Net::Endpoint;
+use Std::Net::IEndpoint;
+use Std::Net::Uri;
+use Std::Net::IUri;
+use Std::Net::TcpConnection;
+use Std::Net::ITcpConnection;
+use Std::Net::TcpListener;
+use Std::Net::ITcpListener;
+use Std::Http::HttpHeaders;
+use Std::Http::IHttpHeaders;
+use Std::Http::HttpRequest;
+use Std::Http::IHttpRequest;
+use Std::Http::HttpResponse;
+use Std::Http::IHttpResponse;
+use Std::WebSocket::WebSocket;
+use Std::WebSocket::IWebSocketMessage;
+use Std::WebSocket::IWebSocketCloseStatus;
+
+main() {
+    IEndpoint endpoint = Endpoint("localhost", 8080);
+    println(endpoint.isValidPort().toString());
+    println(endpoint.withPort(9090).toString());
+
+    IUri httpUri = Uri("https://example.com/docs");
+    IUri socketUri = Uri("wss://example.com/socket");
+    println(httpUri.hasScheme().toString());
+    println(httpUri.isHttp().toString());
+    println(socketUri.isWebSocket().toString());
+
+    ITcpConnection connection = TcpConnection(0, endpoint);
+    println(connection.readOr("fallback"));
+    println(connection.closeIfOpen().toString());
+
+    ITcpListener listener = TcpListener(0, endpoint);
+    println(listener.closeIfOpen().toString());
+
+    IHttpHeaders headers = HttpHeaders();
+    println(headers.isMissing("accept").toString());
+    println(headers.setIfMissing("Accept", "text/plain").toString());
+    println(headers.setIfMissing("Accept", "application/json").toString());
+
+    IHttpRequest request = HttpRequest("put", httpUri.toString(), "payload");
+    println(request.isMethod("PUT").toString());
+    println(request.isPut().toString());
+    println(request.hasBody().toString());
+
+    IHttpResponse response = HttpResponse(404, "Not Found", "");
+    println(response.isError().toString());
+    println(response.hasBody().toString());
+
+    WebSocket sockets = WebSocket();
+    IWebSocketMessage ping = sockets.pingMessage("hello");
+    IWebSocketCloseStatus status = sockets.protocolError("bad frame");
+    println(ping.isControl().toString());
+    println(status.isError().toString());
+}

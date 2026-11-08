@@ -1,0 +1,33 @@
+namespace Std::Ui;
+
+use Std::Native::NativeUi;
+use Std::Ui::UiWindow;
+
+public class UiApplication {
+    public UiApplication() {
+        NativeUi.init();
+    }
+
+    public String backend() {
+        return NativeUi.backend();
+    }
+
+    public UiWindow window(String title, Int width, Int height) {
+        return UiWindow(NativeUi.createWindow(title, width, height));
+    }
+
+    public UiWindow open(String title, Int width, Int height, String html) {
+        UiWindow window = this.window(title, width, height);
+        window.mountHtml(html);
+        window.show();
+        return window;
+    }
+
+    public Bool pump() {
+        return NativeUi.pump();
+    }
+
+    public Int run() {
+        return NativeUi.run();
+    }
+}

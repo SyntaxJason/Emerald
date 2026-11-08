@@ -1,5 +1,7 @@
 namespace Std::Data;
 
+use Std::Data::IPair;
+
 public class Pair<A, B> implements IPair<A, B> {
     private A left;
     private B right;

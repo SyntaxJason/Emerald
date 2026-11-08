@@ -1,0 +1,37 @@
+public class HyperAllocFlowV1BorrowedOwnerItem {
+    public Int value;
+
+    public HyperAllocFlowV1BorrowedOwnerItem(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1BorrowedOwnerShelf {
+    private List<HyperAllocFlowV1BorrowedOwnerItem> storedItems;
+
+    public HyperAllocFlowV1BorrowedOwnerShelf() {
+        this.storedItems = List();
+        this.storedItems.add(HyperAllocFlowV1BorrowedOwnerItem(42));
+    }
+
+    public List<HyperAllocFlowV1BorrowedOwnerItem> items() {
+        return this.storedItems;
+    }
+}
+
+public class HyperAllocFlowV1BorrowedOwnerLookup {
+    public static HyperAllocFlowV1BorrowedOwnerShelf select(HyperAllocFlowV1BorrowedOwnerShelf shelf) {
+        return shelf;
+    }
+
+    public static HyperAllocFlowV1BorrowedOwnerItem first(HyperAllocFlowV1BorrowedOwnerShelf shelf) {
+        HyperAllocFlowV1BorrowedOwnerShelf selected = HyperAllocFlowV1BorrowedOwnerLookup.select(shelf);
+        HyperAllocFlowV1BorrowedOwnerItem view = selected.items().get(0);
+        return view;
+    }
+}
+
+main() {
+    HyperAllocFlowV1BorrowedOwnerShelf shelf = HyperAllocFlowV1BorrowedOwnerShelf();
+    println(HyperAllocFlowV1BorrowedOwnerLookup.first(shelf).value.toString());
+}

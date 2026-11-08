@@ -1,5 +1,11 @@
 namespace Std::Io;
 
+use Std::Io::IFileInfo;
+use Std::Io::IPath;
+use Std::Io::Path;
+use Std::Native::NativeDirectory;
+use Std::Native::NativeFile;
+
 public class FileInfo implements IFileInfo {
     private Path infoPath;
 
@@ -24,7 +30,11 @@ public class FileInfo implements IFileInfo {
     }
 
     public Bool exists() {
-        return File.exists(this.infoPath.value()) || Directory.exists(this.infoPath.value());
+        if (NativeFile.exists(this.infoPath.value())) {
+            return true;
+        }
+
+        return NativeDirectory.exists(this.infoPath.value());
     }
 
     public Bool isMissing() {
@@ -32,14 +42,14 @@ public class FileInfo implements IFileInfo {
     }
 
     public Bool isFile() {
-        return File.isFile(this.infoPath.value());
+        return NativeFile.isFile(this.infoPath.value());
     }
 
     public Bool isDirectory() {
-        return Directory.exists(this.infoPath.value());
+        return NativeDirectory.exists(this.infoPath.value());
     }
 
     public Int size() {
-        return File.size(this.infoPath.value());
+        return NativeFile.size(this.infoPath.value());
     }
 }

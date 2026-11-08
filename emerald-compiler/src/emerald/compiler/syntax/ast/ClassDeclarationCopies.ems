@@ -1,0 +1,90 @@
+namespace emerald::compiler::syntax;
+
+public class ClassDeclarationCopies {
+    public ClassDeclarationCopies() {
+    }
+
+    public List<String> interfaceNames(List<String> source) {
+        List<String> result = List();
+        Int index = 0;
+
+        while (index < source.length()) {
+            result.add(source.get(index) + "");
+            index = index + 1;
+        }
+
+        return result;
+    }
+
+    public List<Annotation> annotations(List<Annotation> source) {
+        List<Annotation> result = List();
+        Int index = 0;
+
+        while (index < source.length()) {
+            result.add(source.get(index).shifted(0));
+            index = index + 1;
+        }
+
+        return result;
+    }
+
+    public List<FieldDeclaration> fields(List<FieldDeclaration> source) {
+        List<FieldDeclaration> result = List();
+        Int index = 0;
+
+        while (index < source.length()) {
+            result.add(source.get(index).shifted(0));
+            index = index + 1;
+        }
+
+        return result;
+    }
+
+    public List<MethodDeclaration> methods(List<MethodDeclaration> source) {
+        List<MethodDeclaration> result = List();
+        Int index = 0;
+
+        while (index < source.length()) {
+            result.add(source.get(index).shifted(0));
+            index = index + 1;
+        }
+
+        return result;
+    }
+
+    public List<Annotation> shiftedAnnotations(List<Annotation> source, Int offset) {
+        List<Annotation> result = List();
+        Int index = 0;
+
+        while (index < source.length()) {
+            result.add(source.get(index).shifted(offset));
+            index = index + 1;
+        }
+
+        return result;
+    }
+
+    public List<FieldDeclaration> shiftedFields(List<FieldDeclaration> source, Int offset) {
+        List<FieldDeclaration> result = List();
+        Int index = 0;
+
+        while (index < source.length()) {
+            result.add(source.get(index).shifted(offset));
+            index = index + 1;
+        }
+
+        return result;
+    }
+
+    public List<MethodDeclaration> shiftedMethods(List<MethodDeclaration> source, Int offset) {
+        List<MethodDeclaration> result = List();
+        Int index = 0;
+
+        while (index < source.length()) {
+            result.add(source.get(index).shifted(offset));
+            index = index + 1;
+        }
+
+        return result;
+    }
+}

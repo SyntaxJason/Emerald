@@ -1,0 +1,488 @@
+namespace Std::Llvm;
+
+use Std::Collections::IList;
+
+public class LlvmNative {
+    public LlvmNative() {
+    }
+
+    public static Bool initializeNativeTarget() {
+        return false;
+    }
+
+    public static Bool initializeTarget(String value0) {
+        return false;
+    }
+
+    public static String defaultTargetTriple() {
+        return "";
+    }
+
+    public static String normalizeTargetTriple(String value0) {
+        return "";
+    }
+
+    public static Int lookupTarget(String value0) {
+        return 0;
+    }
+
+    public static String lastError() {
+        return "";
+    }
+
+    public static String nativeObjectExtension() {
+        return "";
+    }
+
+    public static String nativeExecutableExtension() {
+        return "";
+    }
+
+    public static String targetName(Int value0) {
+        return "";
+    }
+
+    public static String targetDescription(Int value0) {
+        return "";
+    }
+
+    public static Int createTargetMachine(Int value0, String value1, String value2, String value3, Int value4) {
+        return 0;
+    }
+
+    public static Void disposeTargetMachine(Int value0) {
+    }
+
+    public static Bool targetMachineApplyDataLayout(Int value0, Int value1) {
+        return false;
+    }
+
+    public static Bool targetMachineEmitObjectFile(Int value0, Int value1, String value2) {
+        return false;
+    }
+
+    public static Bool targetMachineEmitAssemblyFile(Int value0, Int value1, String value2) {
+        return false;
+    }
+
+    public static Bool runPasses(Int value0, String value1) {
+        return false;
+    }
+
+    public static Bool linkExecutable(String value0, IList<String> value1, IList<String> value2, IList<String> value3, IList<String> value4) {
+        return false;
+    }
+
+    public static String linkerLastCommand() {
+        return "";
+    }
+
+    public static String linkerLastOutput() {
+        return "";
+    }
+
+    public static String linkerLastError() {
+        return "";
+    }
+
+    public static String runtimeSourcePath() {
+        return "";
+    }
+
+    public static String runtimeHeaderPath() {
+        return "";
+    }
+
+    public static Bool compileIrObject(String value0, String value1, IList<String> value2) {
+        return false;
+    }
+
+    public static Bool compileRuntimeObject(String value0, String value1, IList<String> value2) {
+        return false;
+    }
+
+    public static String runtimeFlowLibraryName() {
+        return "";
+    }
+
+    public static String runtimeFlowLibraryPath() {
+        return "";
+    }
+
+    public static String runtimeLastCommand() {
+        return "";
+    }
+
+    public static String runtimeLastOutput() {
+        return "";
+    }
+
+    public static String runtimeLastError() {
+        return "";
+    }
+
+    public static Int createContext() {
+        return 0;
+    }
+
+    public static Void disposeContext(Int value0) {
+    }
+
+    public static Int createModule(Int value0, String value1) {
+        return 0;
+    }
+
+    public static Void disposeModule(Int value0) {
+    }
+
+    public static Void moduleSetTarget(Int value0, String value1) {
+    }
+
+    public static String moduleToIr(Int value0) {
+        return "";
+    }
+
+    public static Bool moduleWriteIr(Int value0, String value1) {
+        return false;
+    }
+
+    public static Bool moduleVerify(Int value0) {
+        return false;
+    }
+
+    public static String moduleVerifyMessage(Int value0) {
+        return "";
+    }
+
+    public static Int createBuilder(Int value0) {
+        return 0;
+    }
+
+    public static Void disposeBuilder(Int value0) {
+    }
+
+    public static Int currentBlock(Int value0) {
+        return 0;
+    }
+
+    public static Int voidType(Int value0) {
+        return 0;
+    }
+
+    public static Int i1Type(Int value0) {
+        return 0;
+    }
+
+    public static Int i8Type(Int value0) {
+        return 0;
+    }
+
+    public static Int i16Type(Int value0) {
+        return 0;
+    }
+
+    public static Int i32Type(Int value0) {
+        return 0;
+    }
+
+    public static Int i64Type(Int value0) {
+        return 0;
+    }
+
+    public static Int intType(Int value0, Int value1) {
+        return 0;
+    }
+
+    public static Int floatType(Int value0) {
+        return 0;
+    }
+
+    public static Int doubleType(Int value0) {
+        return 0;
+    }
+
+    public static Int opaquePointerType(Int value0) {
+        return 0;
+    }
+
+    public static Int pointerType(Int value0) {
+        return 0;
+    }
+
+    public static Int arrayType(Int value0, Int value1) {
+        return 0;
+    }
+
+    public static Int structType(Int value0, IList<LlvmType> value1, Bool value2) {
+        return 0;
+    }
+
+    public static Int namedStructType(Int value0, String value1) {
+        return 0;
+    }
+
+    public static Void structSetBody(Int value0, IList<LlvmType> value1, Bool value2) {
+    }
+
+    public static Int functionType(Int value0) {
+        return 0;
+    }
+
+    public static Int functionTypeWithParams(Int value0, IList<LlvmType> value1, Bool value2) {
+        return 0;
+    }
+
+    public static String typeToIr(Int value0) {
+        return "";
+    }
+
+    public static Int sizeOf(Int value0) {
+        return 0;
+    }
+
+    public static Int alignOf(Int value0) {
+        return 0;
+    }
+
+    public static Int addFunction(Int value0, String value1, Int value2) {
+        return 0;
+    }
+
+    public static Int getFunction(Int value0, String value1) {
+        return 0;
+    }
+
+    public static Int functionParameterCount(Int value0) {
+        return 0;
+    }
+
+    public static Int functionParameter(Int value0, Int value1) {
+        return 0;
+    }
+
+    public static Int appendBlock(Int value0, Int value1, String value2) {
+        return 0;
+    }
+
+    public static String blockName(Int value0) {
+        return "";
+    }
+
+    public static Int addGlobal(Int value0, String value1, Int value2) {
+        return 0;
+    }
+
+    public static Int getGlobal(Int value0, String value1) {
+        return 0;
+    }
+
+    public static Void globalSetInitializer(Int value0, Int value1) {
+    }
+
+    public static Void globalSetConstant(Int value0, Bool value1) {
+    }
+
+    public static Void valueSetLinkage(Int value0, Int value1) {
+    }
+
+    public static Int valueType(Int value0) {
+        return 0;
+    }
+
+    public static String valueName(Int value0) {
+        return "";
+    }
+
+    public static Void valueSetName(Int value0, String value1) {
+    }
+
+    public static String valueToIr(Int value0) {
+        return "";
+    }
+
+    public static Void positionAtEnd(Int value0, Int value1) {
+    }
+
+    public static Void returnVoid(Int value0) {
+    }
+
+    public static Void returnValue(Int value0, Int value1) {
+    }
+
+    public static Int buildBranch(Int value0, Int value1) {
+        return 0;
+    }
+
+    public static Int buildConditionalBranch(Int value0, Int value1, Int value2, Int value3) {
+        return 0;
+    }
+
+    public static Int buildUnreachable(Int value0) {
+        return 0;
+    }
+
+    public static Int constInt(Int value0, Int value1) {
+        return 0;
+    }
+
+    public static Int constBool(Int value0, Bool value1) {
+        return 0;
+    }
+
+    public static Int constNull(Int value0) {
+        return 0;
+    }
+
+    public static Int constPointerNull(Int value0) {
+        return 0;
+    }
+
+    public static Int constString(Int value0, String value1, Bool value2) {
+        return 0;
+    }
+
+    public static Int constStruct(Int value0, IList<LlvmValue> value1, Bool value2) {
+        return 0;
+    }
+
+    public static Int constArray(Int value0, IList<LlvmValue> value1) {
+        return 0;
+    }
+
+    public static Int buildAdd(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildSub(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildMul(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildSignedDiv(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildUnsignedDiv(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildSignedRem(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildUnsignedRem(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildNeg(Int value0, Int value1, String value2) {
+        return 0;
+    }
+
+    public static Int buildAnd(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildOr(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildXor(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildNot(Int value0, Int value1, String value2) {
+        return 0;
+    }
+
+    public static Int buildShiftLeft(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildLogicalShiftRight(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildArithmeticShiftRight(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildIntCompare(Int value0, Int value1, Int value2, Int value3, String value4) {
+        return 0;
+    }
+
+    public static Int buildEntryAlloca(Int value0, Int value1, String value2) {
+        return 0;
+    }
+
+    public static Int buildAlloca(Int value0, Int value1, String value2) {
+        return 0;
+    }
+
+    public static Int buildLoad(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildStore(Int value0, Int value1, Int value2) {
+        return 0;
+    }
+
+    public static Int buildGep(Int value0, Int value1, Int value2, IList<LlvmValue> value3, String value4) {
+        return 0;
+    }
+
+    public static Int buildInboundsGep(Int value0, Int value1, Int value2, IList<LlvmValue> value3, String value4) {
+        return 0;
+    }
+
+    public static Int buildGlobalStringPointer(Int value0, String value1, String value2) {
+        return 0;
+    }
+
+    public static Int buildCall(Int value0, Int value1, Int value2, IList<LlvmValue> value3, String value4) {
+        return 0;
+    }
+
+    public static Int buildPhi(Int value0, Int value1, String value2) {
+        return 0;
+    }
+
+    public static Void addIncoming(Int value0, Int value1, Int value2) {
+    }
+
+    public static Int buildSelect(Int value0, Int value1, Int value2, Int value3, String value4) {
+        return 0;
+    }
+
+    public static Int buildTruncate(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildZeroExtend(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildSignExtend(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildPointerToInt(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildIntToPointer(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int buildBitCast(Int value0, Int value1, Int value2, String value3) {
+        return 0;
+    }
+
+    public static Int constIntegerText(Int type, String text) { return 0; }
+    public static Int constFloatText(Int type, String text) { return 0; }
+    public static Int buildExtractValue(Int builder, Int value, Int index, String name) { return 0; }
+    public static Int buildFloatOperation(Int builder, Int left, Int right, Int operation, String name) { return 0; }
+
+}

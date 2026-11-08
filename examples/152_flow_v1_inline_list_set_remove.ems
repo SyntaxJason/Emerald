@@ -1,0 +1,12 @@
+public data class HyperAllocFlowV1InlineListPair(Int left, Int right) {
+}
+
+main() {
+    List<HyperAllocFlowV1InlineListPair> values = List();
+    HyperAllocFlowV1InlineListPair first = HyperAllocFlowV1InlineListPair(1, 1);
+    HyperAllocFlowV1InlineListPair second = HyperAllocFlowV1InlineListPair(19, 23);
+    values.add(first);
+    values.set(0, second);
+    HyperAllocFlowV1InlineListPair removed = values.removeAt(0);
+    println((removed.left + removed.right).toString());
+}

@@ -1,0 +1,27 @@
+public class HyperAllocFlowV1TransitiveMutationItem {
+    public Int value;
+
+    public HyperAllocFlowV1TransitiveMutationItem(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1TransitiveMutationCore {
+    public static Void release(List<HyperAllocFlowV1TransitiveMutationItem> items) {
+        items.clear();
+    }
+}
+
+public class HyperAllocFlowV1TransitiveMutationWrapper {
+    public static Void release(List<HyperAllocFlowV1TransitiveMutationItem> items) {
+        HyperAllocFlowV1TransitiveMutationCore.release(items);
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1TransitiveMutationItem> items = List();
+    items.add(HyperAllocFlowV1TransitiveMutationItem(42));
+    HyperAllocFlowV1TransitiveMutationItem view = items.get(0);
+    HyperAllocFlowV1TransitiveMutationWrapper.release(items);
+    println(view.value.toString());
+}

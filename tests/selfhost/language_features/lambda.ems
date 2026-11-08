@@ -1,0 +1,2 @@
+use Std::Collections::ArrayList;
+main() { ArrayList<String> names = ArrayList(); names.add("Ada"); names.forEach((name) -> println(name)); }

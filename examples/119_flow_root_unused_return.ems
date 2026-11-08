@@ -1,0 +1,19 @@
+public class HyperAllocFlowUnusedValue {
+    private Int number;
+
+    public HyperAllocFlowUnusedValue(Int number) {
+        this.number = number;
+    }
+}
+
+public class HyperAllocFlowUnusedFactory {
+    public HyperAllocFlowUnusedValue buildUnusedValue() {
+        return HyperAllocFlowUnusedValue(7);
+    }
+}
+
+main() {
+    HyperAllocFlowUnusedFactory factory = HyperAllocFlowUnusedFactory();
+    factory.buildUnusedValue();
+    println("released");
+}

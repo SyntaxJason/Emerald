@@ -1,5 +1,8 @@
 namespace Std::Data;
 
+use Std::Data::IMutableBox;
+use Std::Functional::IResettable;
+
 public class ResettableBox<T> implements IMutableBox<T>, IResettable {
     private T initialValue;
     private T stored;

@@ -1,0 +1,23 @@
+main() {
+    Int value = 40 + 2;
+    Bool works = value == 42;
+    String prefix = "Emerald Compiler";
+
+    if (works) {
+        println(prefix + " control flow works");
+    } else {
+        println("broken");
+        return 1;
+    }
+
+    Int index = 0;
+
+    while (index < 3) {
+        println("tick " + "ok");
+        index = index + 1;
+    }
+
+    println(value);
+    println(works);
+    return 0;
+}

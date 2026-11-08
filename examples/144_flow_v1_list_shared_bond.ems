@@ -1,0 +1,16 @@
+public class HyperAllocFlowV1SharedListBox {
+    public Int value;
+
+    public HyperAllocFlowV1SharedListBox(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1SharedListBox> first = List();
+    List<HyperAllocFlowV1SharedListBox> second = List();
+    HyperAllocFlowV1SharedListBox shared = HyperAllocFlowV1SharedListBox(42);
+    first.add(shared);
+    second.add(shared);
+    println(first.get(0).value.toString());
+}

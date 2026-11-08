@@ -1,0 +1,758 @@
+namespace emerald::compiler::hyperallocflow::analysis::container;
+
+use emerald::compiler::debug::DebugLog;
+use emerald::compiler::hyperallocflow::analysis::escape::HyperAllocFlowEscapeAnalyzer;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class HyperAllocFlowContainerAnalyzer {
+    private HyperAllocFlowEscapeAnalyzer escapes;
+    private Int bvesCounter;
+    private Int eboCounter;
+    private Int bviiCounter;
+    private Int sveCounter;
+
+    public HyperAllocFlowContainerAnalyzer(HyperAllocFlowEscapeAnalyzer escapeAnalyzer) {
+        this.escapes = escapeAnalyzer;
+        this.bvesCounter = 0;
+        this.eboCounter = 0;
+        this.bviiCounter = 0;
+        this.sveCounter = 0;
+    }
+
+    public Bool borrowedViewEscapesScope(Statement declaration, Int startIndex, List<Statement> statements, List<String> borrowedOwnerNames, SyntaxProgram program) {
+        this.bvesCounter = this.bvesCounter + 1;
+
+        if (this.bvesCounter % 2000000 == 0) {
+            DebugLog.flow("borrowedViewEscapesScope calls=" + this.bvesCounter.toString());
+        }
+
+        List<String> aliases = List();
+        aliases.add(declaration.name());
+        return this.scanViewEscape(startIndex, statements, aliases, declaration.typeName(), this.viewMayReturnFromOwner(declaration, startIndex, statements, borrowedOwnerNames, program), program);
+    }
+
+    public List<String> extendBorrowedOwners(Int endIndex, List<Statement> statements, List<String> borrowedOwnerNames, SyntaxProgram program) {
+        this.eboCounter = this.eboCounter + 1;
+
+        if (this.eboCounter % 2000000 == 0) {
+            DebugLog.flow("extendBorrowedOwners calls=" + this.eboCounter.toString());
+        }
+
+        List<String> extended = List();
+
+
+        this.copyNamesInto(borrowedOwnerNames, extended);
+        Int index = 0;
+
+        while (index < endIndex && index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isVariable() && !extended.contains(statement.name())) {
+                List<String> visitedNames = List();
+
+                if (this.expressionBorrowsOwner(statement.expressionIndex(), index, statements, extended, visitedNames, program)) {
+                    extended.add(statement.name());
+                }
+            }
+
+            index = index + 1;
+        }
+
+        return extended;
+    }
+
+    public Bool borrowedViewIsInvalidated(Statement declaration, Int startIndex, List<Statement> statements, SyntaxProgram program) {
+        this.bviiCounter = this.bviiCounter + 1;
+
+        if (this.bviiCounter % 2000000 == 0) {
+            DebugLog.flow("borrowedViewIsInvalidated calls=" + this.bviiCounter.toString());
+        }
+
+        Expression initializer = program.expression(declaration.expressionIndex());
+
+        if (initializer.kind() != "methodcall" || initializer.text() != "get") {
+            return false;
+        }
+
+        Expression receiver = program.expression(initializer.leftIndex());
+        String receiverReference = this.containerReference(receiver, program);
+
+        if (receiverReference.isEmpty()) {
+            return true;
+        }
+
+        HyperAllocFlowContainerViewState state = HyperAllocFlowContainerViewState();
+        List<String> viewAliases = List();
+        List<String> containerAliases = List();
+        this.collectPriorContainerAliases(receiverReference, startIndex - 1, statements, program, containerAliases);
+        viewAliases.add(declaration.name());
+        this.scanStatements(startIndex, statements, viewAliases, containerAliases, state, program);
+        return state.unsafe();
+    }
+
+
+    private Bool scanViewEscape(Int startIndex, List<Statement> statements, List<String> aliases, String viewType, Bool borrowedReturnAllowed, SyntaxProgram program) {
+        this.sveCounter = this.sveCounter + 1;
+
+        if (this.sveCounter % 2000000 == 0) {
+            DebugLog.flow("scanViewEscape calls=" + this.sveCounter.toString());
+        }
+
+        Int index = startIndex;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isReturn() && this.expressionCarriesAnyTypedName(statement.expressionIndex(), aliases, viewType, program) && !borrowedReturnAllowed) {
+                return true;
+            }
+
+            if (statement.isFieldAssign() && this.expressionCarriesAnyTypedName(statement.expressionIndex(), aliases, viewType, program)) {
+                return true;
+            }
+
+            if (statement.isVariable()) {
+                Bool borrowedAlias = this.expressionCarriesAnyTypedName(statement.expressionIndex(), aliases, viewType, program);
+
+                if (borrowedAlias) {
+                    if (!aliases.contains(statement.name())) {
+                        aliases.add(statement.name());
+                    }
+                } else if (this.expressionPassesAnyToCall(statement.expressionIndex(), aliases, viewType, program)) {
+                    return true;
+                }
+            }
+
+            if (statement.isAssign()) {
+                Bool borrowedAlias = this.expressionCarriesAnyTypedName(statement.expressionIndex(), aliases, viewType, program);
+
+                if (borrowedAlias) {
+                    if (!aliases.contains(statement.name())) {
+                        return true;
+                    }
+                } else if (aliases.contains(statement.name())) {
+                    this.removeName(aliases, statement.name());
+                } else if (this.expressionPassesAnyToCall(statement.expressionIndex(), aliases, viewType, program)) {
+                    return true;
+                }
+            }
+
+            if (statement.isExpression() && this.expressionPassesAnyToCall(statement.expressionIndex(), aliases, viewType, program)) {
+                return true;
+            }
+
+            if (statement.isIf() || statement.isWhile() || statement.isFor()) {
+                List<String> bodyAliases = List();
+
+                this.copyNamesInto(aliases, bodyAliases);
+                List<String> elseAliases = List();
+
+                this.copyNamesInto(aliases, elseAliases);
+
+                if (this.scanViewEscape(0, statement.bodyStatements(), bodyAliases, viewType, borrowedReturnAllowed, program) || this.scanViewEscape(0, statement.elseStatements(), elseAliases, viewType, borrowedReturnAllowed, program)) {
+                    return true;
+                }
+
+                this.mergeNames(aliases, bodyAliases, elseAliases);
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    private Bool expressionPassesAnyToCall(Int expressionIndex, List<String> aliases, String viewType, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "call" || expression.kind() == "methodcall" || expression.kind() == "staticcall") {
+            Int argumentIndex = 0;
+
+            while (argumentIndex < expression.argumentIndexes().length()) {
+                Int valueIndex = expression.argumentIndexes().get(argumentIndex);
+
+                if (this.expressionCarriesAnyTypedName(valueIndex, aliases, viewType, program)) {
+                    // Interface contracts keep their former View acceptance in
+                    // this diagnostic: their joined summary is conservative for
+                    // allocation decisions, and every store of a reference
+                    // element adopts it (Bond promotion), which keeps it alive.
+                    Bool viewArgument = this.escapes.callArgumentIsView(expression, argumentIndex, program) || this.escapes.callIsInterfaceContract(expression);
+                    Bool ownershipStorage = this.isOwnershipAwareContainerStorage(expression, argumentIndex);
+
+                    if (!viewArgument && !ownershipStorage) {
+                        return true;
+                    }
+                }
+
+                argumentIndex = argumentIndex + 1;
+            }
+        }
+
+        if (this.expressionPassesAnyToCall(expression.leftIndex(), aliases, viewType, program) || this.expressionPassesAnyToCall(expression.rightIndex(), aliases, viewType, program)) {
+            return true;
+        }
+
+        Int nestedIndex = 0;
+        while (nestedIndex < expression.argumentIndexes().length()) {
+            if (this.expressionPassesAnyToCall(expression.argumentIndexes().get(nestedIndex), aliases, viewType, program)) {
+                return true;
+            }
+            nestedIndex = nestedIndex + 1;
+        }
+
+        return false;
+    }
+
+    private Bool expressionCarriesAnyTypedName(Int expressionIndex, List<String> aliases, String viewType, SyntaxProgram program) {
+        Int index = 0;
+
+        while (index < aliases.length()) {
+            if (this.escapes.expressionCarriesTypedName(expressionIndex, aliases.get(index), viewType, program)) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    private Bool isOwnershipAwareContainerStorage(Expression expression, Int argumentIndex) {
+        if (expression.kind() != "methodcall") {
+            return false;
+        }
+
+        if (expression.text() == "add") {
+            return argumentIndex == 0;
+        }
+
+        if (expression.text() == "addAt" || expression.text() == "set") {
+            return argumentIndex == 1;
+        }
+
+        return false;
+    }
+
+    private Bool viewMayReturnFromOwner(Statement declaration, Int startIndex, List<Statement> statements, List<String> borrowedOwnerNames, SyntaxProgram program) {
+        Expression initializer = program.expression(declaration.expressionIndex());
+
+        if (initializer.kind() != "methodcall" || initializer.text() != "get") {
+            return false;
+        }
+
+        List<String> visitedNames = List();
+
+        if (this.expressionBorrowsOwner(initializer.leftIndex(), startIndex - 1, statements, borrowedOwnerNames, visitedNames, program)) {
+            return true;
+        }
+
+        Expression receiver = program.expression(initializer.leftIndex());
+        String receiverReference = this.containerReference(receiver, program);
+
+        if (receiverReference.isEmpty()) {
+            return false;
+        }
+
+        List<String> aliases = List();
+        this.collectPriorContainerAliases(receiverReference, startIndex - 1, statements, program, aliases);
+        Int aliasIndex = 0;
+
+        while (aliasIndex < aliases.length()) {
+            String root = this.referenceRoot(aliases.get(aliasIndex));
+
+            if (borrowedOwnerNames.contains(root)) {
+                return true;
+            }
+
+            aliasIndex = aliasIndex + 1;
+        }
+
+        return false;
+    }
+
+    private Bool expressionBorrowsOwner(Int expressionIndex, Int endIndex, List<Statement> statements, List<String> borrowedOwnerNames, List<String> visitedNames, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "name") {
+            if (borrowedOwnerNames.contains(expression.text())) {
+                return true;
+            }
+
+            if (visitedNames.contains(expression.text())) {
+                return false;
+            }
+
+            Int valueIndex = this.priorLocalValueIndex(expression.text(), endIndex, statements);
+
+            if (valueIndex == 0) {
+                return false;
+            }
+
+            visitedNames.add(expression.text());
+            Bool borrows = this.expressionBorrowsOwner(valueIndex, endIndex, statements, borrowedOwnerNames, visitedNames, program);
+            this.removeName(visitedNames, expression.text());
+            return borrows;
+        }
+
+        if (expression.kind() == "field" || expression.kind() == "index") {
+            return this.expressionBorrowsOwner(expression.leftIndex(), endIndex, statements, borrowedOwnerNames, visitedNames, program);
+        }
+
+        if (expression.kind() != "methodcall" && expression.kind() != "staticcall") {
+            return false;
+        }
+
+        if (this.escapes.callReturnBorrowsReceiver(expression) && this.expressionBorrowsOwner(expression.leftIndex(), endIndex, statements, borrowedOwnerNames, visitedNames, program)) {
+            return true;
+        }
+
+        Int argumentIndex = 0;
+
+        while (argumentIndex < expression.argumentIndexes().length()) {
+            if (this.escapes.callReturnBorrowsParameter(expression, argumentIndex) && this.expressionBorrowsOwner(expression.argumentIndexes().get(argumentIndex), endIndex, statements, borrowedOwnerNames, visitedNames, program)) {
+                return true;
+            }
+
+            argumentIndex = argumentIndex + 1;
+        }
+
+        return false;
+    }
+
+    private Int priorLocalValueIndex(String name, Int endIndex, List<Statement> statements) {
+        Int index = endIndex - 1;
+
+        while (index >= 0 && index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if ((statement.isVariable() || statement.isAssign()) && statement.name() == name) {
+                return statement.expressionIndex();
+            }
+
+            index = index - 1;
+        }
+
+        return 0;
+    }
+
+    private Void collectPriorContainerAliases(String receiverReference, Int endIndex, List<Statement> statements, SyntaxProgram program, List<String> aliases) {
+        aliases.add(receiverReference);
+        Bool changed = true;
+
+        while (changed) {
+            changed = false;
+            Int index = 0;
+
+            while (index < endIndex && index < statements.length()) {
+                Statement statement = statements.get(index);
+
+                if (statement.isVariable() || statement.isAssign() || statement.isFieldAssign()) {
+                    String targetReference = this.statementTargetReference(statement, program);
+                    Expression value = program.expression(statement.expressionIndex());
+                    String valueReference = this.containerReference(value, program);
+
+                    if (!targetReference.isEmpty() && !valueReference.isEmpty()) {
+                        Bool targetKnown = aliases.contains(targetReference);
+                        Bool valueKnown = aliases.contains(valueReference);
+
+                        if (targetKnown && !valueKnown) {
+                            aliases.add(valueReference);
+                            changed = true;
+                        }
+
+                        if (valueKnown && !targetKnown) {
+                            aliases.add(targetReference);
+                            changed = true;
+                        }
+                    }
+                }
+
+                index = index + 1;
+            }
+        }
+
+    }
+
+    private Void scanStatements(Int startIndex, List<Statement> statements, List<String> viewAliases, List<String> containerAliases, HyperAllocFlowContainerViewState state, SyntaxProgram program) {
+        Int index = startIndex;
+
+        while (index < statements.length() && state.active() && !state.unsafe()) {
+            Statement statement = statements.get(index);
+
+            if (state.invalidated() && this.statementDirectlyUsesAny(statement, viewAliases, program)) {
+                state.reject();
+                return;
+            }
+
+            if (statement.isIf()) {
+                HyperAllocFlowContainerViewState body = state.copy();
+                HyperAllocFlowContainerViewState otherwise = state.copy();
+                List<String> bodyViews = List();
+
+                this.copyNamesInto(viewAliases, bodyViews);
+                List<String> bodyContainers = List();
+
+                this.copyNamesInto(containerAliases, bodyContainers);
+                List<String> elseViews = List();
+
+                this.copyNamesInto(viewAliases, elseViews);
+                List<String> elseContainers = List();
+
+                this.copyNamesInto(containerAliases, elseContainers);
+                this.scanStatements(0, statement.bodyStatements(), bodyViews, bodyContainers, body, program);
+                this.scanStatements(0, statement.elseStatements(), elseViews, elseContainers, otherwise, program);
+                state.merge(body, otherwise);
+                this.mergeNames(viewAliases, bodyViews, elseViews);
+                this.mergeNames(containerAliases, bodyContainers, elseContainers);
+            }
+
+            if (statement.isWhile() || statement.isFor()) {
+                HyperAllocFlowContainerViewState body = state.copy();
+                List<String> bodyViews = List();
+
+                this.copyNamesInto(viewAliases, bodyViews);
+                List<String> bodyContainers = List();
+
+                this.copyNamesInto(containerAliases, bodyContainers);
+                this.scanStatements(0, statement.bodyStatements(), bodyViews, bodyContainers, body, program);
+
+                if (body.invalidated() && this.statementsUseAny(statement.bodyStatements(), bodyViews, program)) {
+                    body.reject();
+                }
+
+                HyperAllocFlowContainerViewState otherwise = state.copy();
+                List<String> elseViews = List();
+
+                this.copyNamesInto(viewAliases, elseViews);
+                List<String> elseContainers = List();
+
+                this.copyNamesInto(containerAliases, elseContainers);
+                this.scanStatements(0, statement.elseStatements(), elseViews, elseContainers, otherwise, program);
+                state.merge(body, otherwise);
+                this.mergeNames(viewAliases, bodyViews, elseViews);
+                this.mergeNames(containerAliases, bodyContainers, elseContainers);
+            }
+
+            if (this.statementInvalidatesContainer(statement, containerAliases, program)) {
+                state.invalidate();
+            }
+
+            this.trackAliases(statement, viewAliases, containerAliases, state, program);
+            index = index + 1;
+        }
+    }
+
+    private Void trackAliases(Statement statement, List<String> viewAliases, List<String> containerAliases, HyperAllocFlowContainerViewState state, SyntaxProgram program) {
+        if (!statement.isVariable() && !statement.isAssign() && !statement.isFieldAssign()) {
+            return;
+        }
+
+        String target = this.statementTargetReference(statement, program);
+        Expression value = program.expression(statement.expressionIndex());
+        String valueReference = this.containerReference(value, program);
+        Bool viewAlias = value.kind() == "name" && viewAliases.contains(value.text());
+        Bool containerAlias = !valueReference.isEmpty() && containerAliases.contains(valueReference);
+
+        if (viewAliases.contains(target) && !viewAlias) {
+            this.removeName(viewAliases, target);
+        }
+
+        if (containerAliases.contains(target) && !containerAlias) {
+            this.removeName(containerAliases, target);
+        }
+
+        if (viewAlias && !viewAliases.contains(target)) {
+            viewAliases.add(target);
+        }
+
+        if (containerAlias && !containerAliases.contains(target)) {
+            containerAliases.add(target);
+        }
+
+        if (viewAliases.length() == 0) {
+            state.deactivate();
+        }
+    }
+
+    private Bool statementInvalidatesContainer(Statement statement, List<String> containerAliases, SyntaxProgram program) {
+        String targetReference = this.statementTargetReference(statement, program);
+
+        if (!targetReference.isEmpty() && containerAliases.contains(targetReference) && (statement.isAssign() || statement.isFieldAssign())) {
+            return true;
+        }
+
+        return this.expressionInvalidatesContainer(statement.expressionIndex(), containerAliases, program);
+    }
+
+    private Bool expressionInvalidatesContainer(Int expressionIndex, List<String> containerAliases, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "methodcall") {
+            Expression receiver = program.expression(expression.leftIndex());
+            String receiverReference = this.containerReference(receiver, program);
+            Bool receiverKnown = !receiverReference.isEmpty() && containerAliases.contains(receiverReference);
+
+            if (receiverKnown && this.isInvalidatingOperation(expression.text())) {
+                return true;
+            }
+        }
+
+        if (expression.kind() == "call" || expression.kind() == "methodcall" || expression.kind() == "staticcall") {
+            Int argumentIndex = 0;
+
+            while (argumentIndex < expression.argumentIndexes().length()) {
+                Int valueIndex = expression.argumentIndexes().get(argumentIndex);
+
+                if (this.expressionUsesAny(valueIndex, containerAliases, program) && this.escapes.callArgumentMayMutate(expression, argumentIndex, program)) {
+                    return true;
+                }
+
+                argumentIndex = argumentIndex + 1;
+            }
+        }
+
+        if (this.expressionInvalidatesContainer(expression.leftIndex(), containerAliases, program) || this.expressionInvalidatesContainer(expression.rightIndex(), containerAliases, program)) {
+            return true;
+        }
+
+        Int index = 0;
+
+        while (index < expression.argumentIndexes().length()) {
+            if (this.expressionInvalidatesContainer(expression.argumentIndexes().get(index), containerAliases, program)) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    private Bool argumentsContainAny(Expression expression, List<String> names, SyntaxProgram program) {
+        Int index = 0;
+
+        while (index < expression.argumentIndexes().length()) {
+            if (this.expressionUsesAny(expression.argumentIndexes().get(index), names, program)) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    private Bool isInvalidatingOperation(String name) {
+        return name == "clear" || name == "set" || name == "remove" || name == "removeAt";
+    }
+
+    private Bool statementsUseAny(List<Statement> statements, List<String> names, SyntaxProgram program) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (this.statementDirectlyUsesAny(statement, names, program) || this.statementsUseAny(statement.bodyStatements(), names, program) || this.statementsUseAny(statement.elseStatements(), names, program)) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    private Bool statementDirectlyUsesAny(Statement statement, List<String> names, SyntaxProgram program) {
+        return this.expressionUsesAny(statement.expressionIndex(), names, program) || this.expressionUsesAny(statement.targetIndex(), names, program);
+    }
+
+    private Bool expressionUsesAny(Int expressionIndex, List<String> names, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+        String reference = this.containerReference(expression, program);
+
+        if (!reference.isEmpty() && names.contains(reference)) {
+            return true;
+        }
+
+        if (this.expressionUsesAny(expression.leftIndex(), names, program) || this.expressionUsesAny(expression.rightIndex(), names, program)) {
+            return true;
+        }
+
+        Int index = 0;
+        while (index < expression.argumentIndexes().length()) {
+            if (this.expressionUsesAny(expression.argumentIndexes().get(index), names, program)) {
+                return true;
+            }
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+
+    private String statementTargetReference(Statement statement, SyntaxProgram program) {
+        if (statement.isVariable() || statement.isAssign()) {
+            return statement.name();
+        }
+
+        if (statement.isFieldAssign()) {
+            return this.containerReference(program.expression(statement.targetIndex()), program);
+        }
+
+        return "";
+    }
+
+    private String containerReference(Expression expression, SyntaxProgram program) {
+        if (expression.kind() == "name") {
+            return expression.text();
+        }
+
+        if (expression.kind() == "field") {
+            String ownerReference = this.containerReference(program.expression(expression.leftIndex()), program);
+
+            if (!ownerReference.isEmpty()) {
+                return ownerReference + "." + expression.text();
+            }
+
+            return "";
+        }
+
+        if (expression.kind() == "methodcall" && expression.argumentIndexes().length() == 0 && this.isStableContainerAccessor(expression, program)) {
+            String ownerReference = this.containerReference(program.expression(expression.leftIndex()), program);
+
+            if (!ownerReference.isEmpty()) {
+                return ownerReference + "." + expression.text() + "()";
+            }
+        }
+
+        return "";
+    }
+
+    private Bool isStableContainerAccessor(Expression expression, SyntaxProgram program) {
+        if (!expression.hasResolvedMethod() || expression.resolvedMethodStatic() || expression.resolvedMethodParameterTypes().length() != 0) {
+            return false;
+        }
+
+        // An override may return something other than the declared field.
+        if (this.escapes.callIsVirtual(expression)) {
+            return false;
+        }
+
+        Int classIndex = 0;
+
+        while (classIndex < program.classes().length()) {
+            ClassDeclaration declaration = program.classes().get(classIndex);
+            Bool ownerMatches = declaration.name() == expression.resolvedMethodOwner() || declaration.fullName() == expression.resolvedMethodOwner();
+
+            if (ownerMatches) {
+                Int methodIndex = 0;
+
+                while (methodIndex < declaration.methods().length()) {
+                    MethodDeclaration method = declaration.methods().get(methodIndex);
+
+                    if (!method.isConstructor() && !method.isStatic() && method.name() == expression.text() && method.parameters().length() == 0) {
+                        return this.methodReturnsReceiverField(method, program);
+                    }
+
+                    methodIndex = methodIndex + 1;
+                }
+            }
+
+            classIndex = classIndex + 1;
+        }
+
+        return false;
+    }
+
+    private Bool methodReturnsReceiverField(MethodDeclaration method, SyntaxProgram program) {
+        if (method.statements().length() != 1) {
+            return false;
+        }
+
+        Statement statement = method.statements().get(0);
+
+        if (!statement.isReturn() || statement.expressionIndex() == 0) {
+            return false;
+        }
+
+        Int returnedIndex = statement.expressionIndex();
+
+        while (program.expression(returnedIndex).kind() == "field") {
+            returnedIndex = program.expression(returnedIndex).leftIndex();
+        }
+
+        Expression returned = program.expression(returnedIndex);
+        return returned.kind() == "name" && returned.text() == "this";
+    }
+
+    private String referenceRoot(String reference) {
+        Int fieldSeparator = reference.indexOf(".");
+
+        if (fieldSeparator < 0) {
+            return reference;
+        }
+
+        return reference.substring(0, fieldSeparator);
+    }
+
+    private Void copyNamesInto(List<String> names, List<String> copy) {
+        Int index = 0;
+
+        while (index < names.length()) {
+            copy.add(names.get(index));
+            index = index + 1;
+        }
+    }
+
+    private Void mergeNames(List<String> target, List<String> left, List<String> right) {
+        Int index = 0;
+
+        while (index < left.length()) {
+            if (!target.contains(left.get(index))) {
+                target.add(left.get(index));
+            }
+            index = index + 1;
+        }
+
+        index = 0;
+        while (index < right.length()) {
+            if (!target.contains(right.get(index))) {
+                target.add(right.get(index));
+            }
+            index = index + 1;
+        }
+    }
+
+    private Void removeName(List<String> names, String name) {
+        Int index = 0;
+
+        while (index < names.length()) {
+            if (names.get(index) == name) {
+                names.removeAt(index);
+                return;
+            }
+
+            index = index + 1;
+        }
+    }
+}

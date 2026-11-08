@@ -1,0 +1,59 @@
+namespace emerald::compiler::hyperallocflow;
+
+public class ParameterHyperAllocFlowEffect {
+    private Int indexValue;
+    private String nameValue;
+    private Bool escapesValue;
+    private Bool mutatesValue;
+    private String reasonValue;
+
+    public ParameterHyperAllocFlowEffect(Int index, String name, Bool escapes, String reason) {
+        this.indexValue = index;
+        this.nameValue = name;
+        this.escapesValue = escapes;
+        this.mutatesValue = false;
+        this.reasonValue = reason;
+    }
+
+    public ParameterHyperAllocFlowEffect(Int index, String name, Bool escapes, Bool mutates, String reason) {
+        this.indexValue = index;
+        this.nameValue = name;
+        this.escapesValue = escapes;
+        this.mutatesValue = mutates;
+        this.reasonValue = reason;
+    }
+
+    public Int index() {
+        return this.indexValue;
+    }
+
+    public String name() {
+        return this.nameValue + "";
+    }
+
+    public Bool escapes() {
+        return this.escapesValue;
+    }
+
+    public Bool mutates() {
+        return this.mutatesValue;
+    }
+
+    public Bool isView() {
+        return !this.escapesValue;
+    }
+
+    public Bool updateEffects(Bool escapes, Bool mutates) {
+        if (this.escapesValue == escapes && this.mutatesValue == mutates) {
+            return false;
+        }
+
+        this.escapesValue = escapes;
+        this.mutatesValue = mutates;
+        return true;
+    }
+
+    public String reason() {
+        return this.reasonValue;
+    }
+}

@@ -1,0 +1,8 @@
+main() {
+    List<String> values = List();
+    String first = 4.toString();
+    String second = 2.toString();
+    values.add(first);
+    values.add(second);
+    println((values.get(0) + values.get(1)));
+}

@@ -1,0 +1,17 @@
+public class HyperAllocFlowV1AliasRemoveBox {
+    public Int value;
+
+    public HyperAllocFlowV1AliasRemoveBox(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1AliasRemoveBox> values = List();
+    HyperAllocFlowV1AliasRemoveBox owned = HyperAllocFlowV1AliasRemoveBox(42);
+    values.add(owned);
+    HyperAllocFlowV1AliasRemoveBox view = values.get(0);
+    List<HyperAllocFlowV1AliasRemoveBox> mirror = values;
+    mirror.remove(owned);
+    println(view.value.toString());
+}

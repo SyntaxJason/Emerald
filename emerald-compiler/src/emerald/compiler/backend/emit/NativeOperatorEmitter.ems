@@ -1,0 +1,278 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Collections::ArrayList;
+use Std::Llvm::LlvmBasicBlock;
+use Std::Llvm::LlvmFunction;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmValue;
+
+public class NativeOperatorEmitter {
+    private NativeEmitContext context;
+    private NativeLookup lookup;
+    private NativeExpressionTyper typer;
+    private NativeExpressionEmitter expressions;
+
+    public NativeOperatorEmitter(NativeEmitContext emitContext, NativeExpressionTyper expressionTyper, NativeExpressionEmitter expressionEmitter) {
+        this.context = emitContext;
+        this.lookup = NativeLookup();
+        this.typer = expressionTyper;
+        this.expressions = expressionEmitter;
+    }
+
+    public LlvmValue emitUnary(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        LlvmValue right = this.expressions.emit(expression.leftIndex(), program, backend, locals);
+
+        if (expression.text() == "-" && this.typer.typeOf(expression.leftIndex(), program, locals, backend) == "Float") {
+            return backend.floatOperation(12, right, right, "float_neg_" + this.context.nextTemp().toString());
+        }
+        if (expression.text() == "-") {
+            return backend.checkedInteger("neg", right, backend.int64(0), "neg_" + this.context.nextTemp().toString());
+        }
+
+        return backend.builder().intEqual(right, backend.boolValue(false), "not_" + this.context.nextTemp().toString());
+    }
+
+    public LlvmValue emitBinary(Int expressionIndex, Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        String leftType = this.typer.typeOf(expression.leftIndex(), program, locals, backend);
+        String rightType = this.typer.typeOf(expression.rightIndex(), program, locals, backend);
+        String op = expression.text();
+
+        if (op == "&&" || op == "||") {
+            return this.emitShortCircuit(op, expression, program, backend, locals);
+        }
+
+        LlvmValue left = this.expressions.emit(expression.leftIndex(), program, backend, locals);
+        LlvmValue right = this.expressions.emit(expression.rightIndex(), program, backend, locals);
+
+        if (op == "+" && (leftType == "String" || rightType == "String")) {
+            LlvmValue leftText = this.toStringValue(left, leftType, program, backend);
+            LlvmValue rightText = this.toStringValue(right, rightType, program, backend);
+            LlvmValue result = backend.concatStrings(leftText, rightText, "concat_" + this.context.nextTemp().toString());
+            this.releaseTemporaryText(expression.leftIndex(), leftType, leftText, program, backend, locals);
+            this.releaseTemporaryText(expression.rightIndex(), rightType, rightText, program, backend, locals);
+
+            if (this.context.hyperAllocFlowReport().hasExpression(expressionIndex) && this.context.hyperAllocFlowReport().kindForExpression(expressionIndex).isBond()) {
+                ArrayList<LlvmValue> promoteArgs = ArrayList();
+                promoteArgs.add(LlvmValue(result.handle()));
+                this.context.hyperAllocFlowReport().recordLowering(expressionIndex, "hyperalloc_flow_bond_promote", "dynamic concatenated String is promoted after Flow proves multiple owners");
+                return backend.callRuntime(backend.runtimeDeclarations().bondPromote(), promoteArgs, "concat_bond_" + this.context.nextTemp().toString());
+            }
+
+            if (this.context.hyperAllocFlowReport().hasExpression(expressionIndex)) {
+                this.context.hyperAllocFlowReport().recordLowering(expressionIndex, "owned runtime result", "String concatenation creates one uniquely owned Root result");
+            }
+
+            return result;
+        }
+
+        LlvmValue result = this.emitNativeBinary(op, leftType, rightType, left, right, program, backend);
+
+        if (leftType == "String" && rightType == "String") {
+            this.expressions.releaseOwnedStringTemporary(expression.leftIndex(), left, program, backend, locals);
+            this.expressions.releaseOwnedStringTemporary(expression.rightIndex(), right, program, backend, locals);
+        }
+
+        return result;
+    }
+
+    public LlvmValue toStringValue(LlvmValue value, String typeName, SyntaxProgram program, LlvmNativeBackend backend) {
+        if (typeName == "String") {
+            return value;
+        }
+
+        if (typeName == "Bool") {
+            LlvmValue trueText = backend.runtimeStaticString("true", "bool_true_" + this.context.nextTemp().toString());
+            LlvmValue falseText = backend.runtimeStaticString("false", "bool_false_" + this.context.nextTemp().toString());
+            return backend.builder().select(value, trueText, falseText, "bool_text_" + this.context.nextTemp().toString());
+        }
+
+        if (typeName == "Float") { return backend.floatToString(value, "float_text_" + this.context.nextTemp().toString()); }
+        if (typeName == "Int") {
+            return backend.intToString(value, "int_text_" + this.context.nextTemp().toString());
+        }
+        if (typeName == "Char") { return backend.charToString(value, "char_text_" + this.context.nextTemp().toString()); }
+
+        MethodDeclaration method = this.lookup.findMethod(program, typeName, "toString", 0);
+
+        if (!method.isMissing()) {
+            ArrayList<LlvmValue> args = ArrayList();
+            args.add(LlvmValue(value.handle()));
+            NativeVirtualDispatchEmitter virtualCalls = NativeVirtualDispatchEmitter(this.context);
+            return backend.builder().callFunction(this.context.typeMapper().methodType(method, backend), virtualCalls.target(typeName, method, program, backend), args, "to_string_" + this.context.nextTemp().toString());
+        }
+
+        return backend.runtimeStaticString("<object>", "object_text_" + this.context.nextTemp().toString());
+    }
+
+    private Void releaseTemporaryText(Int expressionIndex, String typeName, LlvmValue value, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Bool temporary = typeName == "Int" || typeName == "Float" || typeName == "Char";
+
+        if (typeName == "String") {
+            temporary = this.expressions.createsOwnedStringTemporary(expressionIndex, program, backend, locals);
+        }
+
+        if (typeName != "Int" && typeName != "Float" && typeName != "Char" && typeName != "Bool" && typeName != "String") {
+            temporary = this.context.hyperAllocFlowReport().methodCallReturnsOwnedString(this.lookup.findMethod(program, typeName, "toString", 0));
+        }
+
+        if (!temporary) {
+            return;
+        }
+
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        backend.callRuntime(backend.runtimeDeclarations().rootRelease(), args, "");
+        this.context.hyperAllocFlowReport().recordTemporaryStringRelease();
+    }
+
+    private LlvmValue emitNativeBinary(String op, String leftType, String rightType, LlvmValue left, LlvmValue right, SyntaxProgram program, LlvmNativeBackend backend) {
+        if (leftType == "Float" || rightType == "Float") {
+            LlvmValue floatLeft = backend.asFloat(left, "float_left_" + this.context.nextTemp().toString());
+            LlvmValue floatRight = backend.asFloat(right, "float_right_" + this.context.nextTemp().toString());
+            Int operation = 0;
+            if (op == "-") { operation = 1; }
+            if (op == "*") { operation = 2; }
+            if (op == "/") { operation = 3; }
+            if (op == "%") { operation = 4; }
+            if (op == "<") { operation = 5; }
+            if (op == "<=") { operation = 6; }
+            if (op == ">") { operation = 7; }
+            if (op == ">=") { operation = 8; }
+            if (op == "==") { operation = 9; }
+            if (op == "!=") { operation = 10; }
+            return backend.floatOperation(operation, floatLeft, floatRight, "float_op_" + this.context.nextTemp().toString());
+        }
+        if (op == "+") {
+            return backend.checkedInteger("add", left, right, "add_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "-") {
+            return backend.checkedInteger("sub", left, right, "sub_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "*") {
+            return backend.checkedInteger("mul", left, right, "mul_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "/") {
+            return backend.checkedInteger("div", left, right, "div_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "%") {
+            return backend.checkedInteger("rem", left, right, "rem_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "&&") {
+            return backend.builder().bitAnd(left, right, "and_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "||") {
+            return backend.builder().bitOr(left, right, "or_" + this.context.nextTemp().toString());
+        }
+
+        return this.emitComparison(op, leftType, rightType, left, right, program, backend);
+    }
+
+    private LlvmValue emitShortCircuit(String op, Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Int id = this.context.nextTemp();
+        LlvmValue left = this.expressions.emit(expression.leftIndex(), program, backend, locals);
+        LlvmFunction currentFunction = this.context.currentFunction();
+        LlvmBasicBlock rhsBlock = currentFunction.appendBlock("sc_rhs_" + id.toString());
+        LlvmBasicBlock mergeBlock = currentFunction.appendBlock("sc_merge_" + id.toString());
+        LlvmBasicBlock leftBlock = backend.builder().currentBlock();
+
+        if (op == "&&") {
+            backend.builder().conditionalBranch(left, rhsBlock, mergeBlock);
+        }
+
+        if (op == "||") {
+            backend.builder().conditionalBranch(left, mergeBlock, rhsBlock);
+        }
+
+        backend.builder().positionAtEnd(rhsBlock);
+        LlvmValue right = this.expressions.emit(expression.rightIndex(), program, backend, locals);
+        LlvmBasicBlock rhsEndBlock = backend.builder().currentBlock();
+        backend.builder().branch(mergeBlock);
+        backend.builder().positionAtEnd(mergeBlock);
+        LlvmValue result = backend.builder().phi(backend.context().boolType(), "sc_" + id.toString());
+        backend.builder().addPhiIncoming(result, left, leftBlock);
+        backend.builder().addPhiIncoming(result, right, rhsEndBlock);
+        return result;
+    }
+
+    private LlvmValue emitComparison(String op, String leftType, String rightType, LlvmValue left, LlvmValue right, SyntaxProgram program, LlvmNativeBackend backend) {
+        if (leftType == "String" && rightType == "String") {
+            return this.emitStringComparison(op, left, right, backend);
+        }
+
+        if (this.canUseEquals(leftType, rightType, program) && (op == "==" || op == "!=")) {
+            return this.emitObjectComparison(op, leftType, left, right, program, backend);
+        }
+
+        if (op == "==") {
+            return backend.builder().intEqual(left, right, "eq_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "!=") {
+            return backend.builder().intNotEqual(left, right, "ne_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "<") {
+            return backend.builder().intSignedLessThan(left, right, "lt_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "<=") {
+            return backend.builder().intSignedLessOrEqual(left, right, "le_" + this.context.nextTemp().toString());
+        }
+
+        if (op == ">") {
+            return backend.builder().intSignedGreaterThan(left, right, "gt_" + this.context.nextTemp().toString());
+        }
+
+        if (op == ">=") {
+            return backend.builder().intSignedGreaterOrEqual(left, right, "ge_" + this.context.nextTemp().toString());
+        }
+
+        return backend.int32(0);
+    }
+
+    private LlvmValue emitObjectComparison(String op, String typeName, LlvmValue left, LlvmValue right, SyntaxProgram program, LlvmNativeBackend backend) {
+        MethodDeclaration method = this.lookup.findMethod(program, typeName, "equals", 1);
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(left.handle()));
+        args.add(LlvmValue(right.handle()));
+        NativeVirtualDispatchEmitter virtualCalls = NativeVirtualDispatchEmitter(this.context);
+        LlvmValue result = backend.builder().callFunction(this.context.typeMapper().methodType(method, backend), virtualCalls.target(typeName, method, program, backend), args, "obj_eq_" + this.context.nextTemp().toString());
+
+        if (op == "==") {
+            return result;
+        }
+
+        return backend.builder().intEqual(result, backend.boolValue(false), "obj_ne_" + this.context.nextTemp().toString());
+    }
+
+    private Bool canUseEquals(String leftType, String rightType, SyntaxProgram program) {
+        if (leftType != rightType) {
+            return false;
+        }
+
+        if (leftType == "Int" || leftType == "Bool" || leftType == "String") {
+            return false;
+        }
+
+        return !this.lookup.findMethod(program, leftType, "equals", 1).isMissing();
+    }
+
+    private LlvmValue emitStringComparison(String op, LlvmValue left, LlvmValue right, LlvmNativeBackend backend) {
+        if (op == "==") {
+            LlvmValue stringEqualValue = backend.stringsEqual(left, right, "str_eq_i32_" + this.context.nextTemp().toString());
+            return backend.builder().intNotEqual(stringEqualValue, backend.int32(0), "str_eq_" + this.context.nextTemp().toString());
+        }
+
+        LlvmValue stringNotEqualValue = backend.stringsEqual(left, right, "str_ne_i32_" + this.context.nextTemp().toString());
+        return backend.builder().intEqual(stringNotEqualValue, backend.int32(0), "str_ne_" + this.context.nextTemp().toString());
+    }
+}

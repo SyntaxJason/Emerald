@@ -1,0 +1,25 @@
+namespace emerald::compiler::source;
+
+public class SourceUse {
+    private String qualifiedNameValue;
+    private Int lineValue;
+    private Int columnValue;
+
+    public SourceUse(String qualifiedName, Int line, Int column) {
+        this.qualifiedNameValue = qualifiedName;
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public String qualifiedName() {
+        return this.qualifiedNameValue + "";
+    }
+
+    public Int line() {
+        return this.lineValue;
+    }
+
+    public Int column() {
+        return this.columnValue;
+    }
+}

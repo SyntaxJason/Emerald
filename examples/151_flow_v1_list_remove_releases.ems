@@ -1,0 +1,15 @@
+public class HyperAllocFlowV1DropBox {
+    public Int value;
+
+    public HyperAllocFlowV1DropBox(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1DropBox> boxes = List();
+    HyperAllocFlowV1DropBox value = HyperAllocFlowV1DropBox(42);
+    boxes.add(value);
+    boxes.remove(value);
+    println((boxes.length() + 42).toString());
+}

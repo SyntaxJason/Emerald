@@ -1,0 +1,20 @@
+public class HyperAllocFlowV1PoolOwner {
+    public String text;
+
+    public HyperAllocFlowV1PoolOwner(Int value) {
+        this.text = value.toString();
+    }
+}
+
+main() {
+    Int index = 0;
+    Int total = 0;
+
+    while (index < 2) {
+        HyperAllocFlowV1PoolOwner owner = HyperAllocFlowV1PoolOwner(index + 40);
+        total = total + owner.text.length() + 19;
+        index = index + 1;
+    }
+
+    println(total.toString());
+}

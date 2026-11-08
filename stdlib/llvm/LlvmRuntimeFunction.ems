@@ -1,0 +1,23 @@
+namespace Std::Llvm;
+
+public class LlvmRuntimeFunction {
+    private LlvmType functionType;
+    private LlvmFunction functionValue;
+
+    public LlvmRuntimeFunction(LlvmType type, LlvmFunction value) {
+        this.functionType = LlvmType(type.handle());
+        this.functionValue = LlvmFunction(value.handle(), value.context());
+    }
+
+    public LlvmType type() {
+        return LlvmType(this.functionType.handle());
+    }
+
+    public LlvmFunction function() {
+        return LlvmFunction(this.functionValue.handle(), this.functionValue.context());
+    }
+
+    public Bool isNull() {
+        return this.functionValue.isNull();
+    }
+}

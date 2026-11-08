@@ -1,0 +1,61 @@
+namespace emerald::compiler::syntax;
+
+public class Annotation {
+    private String nameValue;
+    private List<Int> argumentIndexItems;
+    private Int lineValue;
+    private Int columnValue;
+
+    public Annotation(String name, List<Int> argumentIndexes, Int line, Int column) {
+        this.nameValue = name;
+        this.argumentIndexItems = List();
+        this.copyArgumentIndexes(argumentIndexes);
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public String name() {
+        return this.nameValue + "";
+    }
+
+    public List<Int> argumentIndexes() {
+        return this.argumentIndexItems;
+    }
+
+    public Int line() {
+        return this.lineValue;
+    }
+
+    public Int column() {
+        return this.columnValue;
+    }
+
+    public Annotation shifted(Int offset) {
+        List<Int> shiftedArguments = List();
+        Int index = 0;
+
+        while (index < this.argumentIndexItems.length()) {
+            shiftedArguments.add(this.shiftIndex(this.argumentIndexItems.get(index), offset));
+            index = index + 1;
+        }
+
+        return Annotation(this.nameValue + "", shiftedArguments, this.lineValue, this.columnValue);
+    }
+
+    private Void copyArgumentIndexes(List<Int> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            this.argumentIndexItems.add(source.get(index));
+            index = index + 1;
+        }
+    }
+
+    private Int shiftIndex(Int value, Int offset) {
+        if (value == 0) {
+            return 0;
+        }
+
+        return value + offset;
+    }
+}

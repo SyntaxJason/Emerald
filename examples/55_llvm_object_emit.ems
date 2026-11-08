@@ -1,0 +1,64 @@
+use Std::Collections::ArrayList;
+use Std::Llvm::Llvm;
+use Std::Llvm::LlvmContext;
+use Std::Llvm::LlvmModule;
+use Std::Llvm::LlvmBuilder;
+use Std::Llvm::LlvmType;
+use Std::Llvm::LlvmValue;
+use Std::Llvm::LlvmFunction;
+use Std::Llvm::LlvmBasicBlock;
+use Std::Llvm::LlvmNativeLinker;
+
+main() {
+    if (!Llvm.initializeNativeTarget()) {
+        println(Llvm.lastError());
+        return;
+    }
+
+    String triple = Llvm.defaultTargetTriple();
+    String objectPath = "emerald-native-step-one" + Llvm.nativeObjectExtension();
+    String executablePath = "emerald-native-step-one" + Llvm.nativeExecutableExtension();
+
+    LlvmContext context = Llvm.createContext();
+    LlvmModule llvmModule = context.createModule("emerald_native_step_one");
+    LlvmBuilder builder = context.createBuilder();
+
+    llvmModule.setTarget(triple);
+
+    LlvmType int32 = context.int32Type();
+    LlvmType mainType = context.functionType(int32);
+    LlvmFunction mainFunction = llvmModule.addFunction("main", mainType);
+    LlvmBasicBlock entry = mainFunction.appendBlock("entry");
+
+    builder.positionAtEnd(entry);
+    builder.returnValue(Llvm.constInt(int32, 0));
+
+    if (!llvmModule.verify()) {
+        println(llvmModule.verifyMessage());
+        return;
+    }
+
+    if (!llvmModule.emitObjectFileFor(triple, objectPath)) {
+        println(Llvm.lastError());
+        return;
+    }
+
+    ArrayList<String> objects = ArrayList();
+    objects.add(objectPath);
+
+    LlvmNativeLinker linker = LlvmNativeLinker();
+
+    if (!linker.linkExecutable(executablePath, objects)) {
+        println(linker.lastCommand());
+        println(linker.lastOutput());
+        println(linker.lastError());
+        return;
+    }
+
+    println("Wrote " + objectPath);
+    println("Linked " + executablePath);
+
+    builder.dispose();
+    llvmModule.dispose();
+    context.dispose();
+}

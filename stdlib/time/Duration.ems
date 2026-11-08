@@ -7,6 +7,12 @@ public class Duration {
         this.millis = millis;
     }
 
+    public static Duration millis(Int count) { return Duration(count); }
+    public static Duration seconds(Int count) { return Duration(count * 1000); }
+    public static Duration minutes(Int count) { return Duration(count * 60000); }
+    public static Duration hours(Int count) { return Duration(count * 3600000); }
+    public static Duration days(Int count) { return Duration(count * 86400000); }
+
     public Int toMillis() {
         return this.millis;
     }

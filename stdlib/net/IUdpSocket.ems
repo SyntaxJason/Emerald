@@ -1,0 +1,33 @@
+namespace Std::Net;
+
+use Std::Net::IEndpoint;
+use Std::Result::IResult;
+public interface IUdpSocket {
+    public IEndpoint endpoint();
+
+    public Int handle();
+
+    public Bool isOpen();
+
+    public Int localPort();
+
+    public Bool sendText(String host, Int port, String text);
+
+    public Bool sendTextTo(IEndpoint endpoint, String text);
+
+    public Std::Result::IResult<Bool, String> trySendText(String host, Int port, String text);
+
+    public Std::Result::IResult<Bool, String> trySendTextTo(IEndpoint endpoint, String text);
+
+    public String receiveText();
+
+    public Std::Result::IResult<String, String> tryReceiveText();
+
+    public IEndpoint lastSender();
+
+    public Bool close();
+
+    public Bool closeIfOpen();
+
+    public Std::Result::IResult<Bool, String> tryClose();
+}

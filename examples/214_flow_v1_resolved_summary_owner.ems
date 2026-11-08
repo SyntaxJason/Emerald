@@ -1,0 +1,32 @@
+public class HyperAllocFlowV1ResolvedSummaryItem {
+    public Int value;
+
+    public HyperAllocFlowV1ResolvedSummaryItem(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1ResolvedSummaryReader {
+    public static Int inspect(HyperAllocFlowV1ResolvedSummaryItem item) {
+        return item.value;
+    }
+}
+
+public class HyperAllocFlowV1ResolvedSummaryStore {
+    private HyperAllocFlowV1ResolvedSummaryItem stored;
+
+    public HyperAllocFlowV1ResolvedSummaryStore() {
+        this.stored = HyperAllocFlowV1ResolvedSummaryItem(0);
+    }
+
+    public Void inspect(HyperAllocFlowV1ResolvedSummaryItem item) {
+        this.stored = item;
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1ResolvedSummaryItem> items = List();
+    items.add(HyperAllocFlowV1ResolvedSummaryItem(42));
+    HyperAllocFlowV1ResolvedSummaryItem view = items.get(0);
+    println(HyperAllocFlowV1ResolvedSummaryReader.inspect(view).toString());
+}

@@ -1,6 +1,142 @@
 namespace Std::Net;
 
+use Std::Net::Endpoint;
+use Std::Net::IEndpoint;
+use Std::Net::ITcpConnection;
+use Std::Net::ITcpListener;
+use Std::Net::TcpConnection;
+use Std::Net::TcpListener;
+use Std::Native::NativeTcp;
+use Std::Result::Failure;
+use Std::Result::BoolSuccess;
+use Std::Result::IResult;
+use Std::Result::Success;
+
 public class Tcp {
     public Tcp() {
+    }
+
+    public static IResult<ITcpConnection, String> connect(String host, Int port) {
+        Int handle = NativeTcp.connect(host, port);
+
+        if (handle < 0) {
+            return Failure("Could not connect to " + host + ":" + port.toString());
+        }
+
+        return Success(TcpConnection(handle, Endpoint(host, port)));
+    }
+
+    public static IResult<ITcpListener, String> listen(String host, Int port) {
+        Int handle = NativeTcp.listen(host, port);
+
+        if (handle < 0) {
+            return Failure("Could not listen on " + host + ":" + port.toString());
+        }
+
+        Int actualPort = NativeTcp.listenerPort(handle);
+        return Success(TcpListener(handle, Endpoint(host, actualPort)));
+    }
+
+
+    public static Int connectHandle(String host, Int port) {
+        return NativeTcp.connect(host, port);
+    }
+
+    public static Int listenHandle(String host, Int port) {
+        return NativeTcp.listen(host, port);
+    }
+
+    public static Bool isOpen(Int handle) {
+        return NativeTcp.isOpen(handle);
+    }
+
+    public static Bool listenerIsOpen(Int handle) {
+        return NativeTcp.listenerIsOpen(handle);
+    }
+
+    public static Int listenerPort(Int handle) {
+        return NativeTcp.listenerPort(handle);
+    }
+
+    public static String readText(Int handle) {
+        return NativeTcp.readText(handle);
+    }
+
+    public static IResult<String, String> tryReadText(Int handle) {
+        if (!Tcp.isOpen(handle)) {
+            return Failure("TCP connection is closed");
+        }
+
+        return Success(Tcp.readText(handle));
+    }
+
+    public static String readLine(Int handle) {
+        return NativeTcp.readLine(handle);
+    }
+
+    public static IResult<String, String> tryReadLine(Int handle) {
+        if (!Tcp.isOpen(handle)) {
+            return Failure("TCP connection is closed");
+        }
+
+        return Success(Tcp.readLine(handle));
+    }
+
+    public static Bool writeText(Int handle, String text) {
+        return NativeTcp.writeText(handle, text);
+    }
+
+    public static IResult<Bool, String> tryWriteText(Int handle, String text) {
+        if (!Tcp.isOpen(handle)) {
+            return Failure("TCP connection is closed");
+        }
+
+        if (!Tcp.writeText(handle, text)) {
+            return Failure("Could not write to TCP connection");
+        }
+
+        return BoolSuccess(true);
+    }
+
+    public static Bool close(Int handle) {
+        return NativeTcp.close(handle);
+    }
+
+    public static IResult<Bool, String> tryClose(Int handle) {
+        if (!Tcp.isOpen(handle)) {
+            return BoolSuccess(true);
+        }
+
+        if (!Tcp.close(handle)) {
+            return Failure("Could not close TCP connection");
+        }
+
+        return BoolSuccess(true);
+    }
+
+    public static IResult<ITcpConnection, String> accept(Int handle) {
+        Int socket = NativeTcp.accept(handle);
+
+        if (socket < 0) {
+            return Failure("Could not accept TCP connection");
+        }
+
+        return Success(TcpConnection(socket, Endpoint("accepted", 0)));
+    }
+
+    public static Bool closeListener(Int handle) {
+        return NativeTcp.closeListener(handle);
+    }
+
+    public static IResult<Bool, String> tryCloseListener(Int handle) {
+        if (!Tcp.listenerIsOpen(handle)) {
+            return BoolSuccess(true);
+        }
+
+        if (!Tcp.closeListener(handle)) {
+            return Failure("Could not close TCP listener");
+        }
+
+        return BoolSuccess(true);
     }
 }

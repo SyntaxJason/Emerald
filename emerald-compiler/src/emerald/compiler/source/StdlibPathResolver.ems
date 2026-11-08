@@ -1,0 +1,157 @@
+namespace emerald::compiler::source;
+
+use Std::Io::File;
+use Std::Io::Path;
+
+public class StdlibPathResolver {
+    private String stdlibDirectory;
+    private List<String> resolvedNames;
+    private List<String> resolvedPaths;
+    private List<String> missingNames;
+
+    public StdlibPathResolver(String rootDirectory) {
+        this.stdlibDirectory = this.findStdlibDirectory(rootDirectory);
+        this.resolvedNames = List();
+        this.resolvedPaths = List();
+        this.missingNames = List();
+    }
+
+    public String resolve(String qualifiedName) {
+        String cached = this.cachedResolved(qualifiedName);
+
+        if (!cached.isEmpty()) {
+            return cached;
+        }
+
+        if (this.cachedMissing(qualifiedName)) {
+            return "";
+        }
+
+        if (this.stdlibDirectory.isEmpty()) {
+            this.rememberMissing(qualifiedName);
+            return "";
+        }
+
+        String relative = this.qualifiedToPath(qualifiedName);
+
+        if (relative.isEmpty()) {
+            this.rememberMissing(qualifiedName);
+            return "";
+        }
+
+        String path = Path(this.stdlibDirectory).join(relative).value();
+
+        if (File(path).exists()) {
+            this.rememberResolved(qualifiedName, path);
+            return path;
+        }
+
+        this.rememberMissing(qualifiedName);
+        return "";
+    }
+
+    private String cachedResolved(String qualifiedName) {
+        Int index = 0;
+
+        while (index < this.resolvedNames.length()) {
+            if (this.resolvedNames.get(index) == qualifiedName) {
+                return this.resolvedPaths.get(index) + "";
+            }
+
+            index = index + 1;
+        }
+
+        return "";
+    }
+
+    private Bool cachedMissing(String qualifiedName) {
+        Int index = 0;
+
+        while (index < this.missingNames.length()) {
+            if (this.missingNames.get(index) == qualifiedName) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    private Void rememberResolved(String qualifiedName, String path) {
+        this.resolvedNames.add(qualifiedName + "");
+        this.resolvedPaths.add(path + "");
+    }
+
+    private Void rememberMissing(String qualifiedName) {
+        if (this.cachedMissing(qualifiedName)) {
+            return;
+        }
+
+        this.missingNames.add(qualifiedName + "");
+    }
+
+    private String findStdlibDirectory(String startDirectory) {
+        String current = startDirectory;
+        Int depth = 0;
+
+        while (depth < 12) {
+            String candidate = Path(current).join("stdlib").value();
+
+            if (File(candidate).exists()) {
+                return candidate;
+            }
+
+            String parent = Path(current).parent().value();
+
+            if (parent == current) {
+                return "";
+            }
+
+            current = parent + "";
+            depth = depth + 1;
+        }
+
+        return "";
+    }
+
+    private String qualifiedToPath(String qualifiedName) {
+        String normalized = qualifiedName.replace(".", "::");
+
+        if (!normalized.startsWith("Std::")) {
+            return "";
+        }
+
+        List<String> parts = normalized.split("::");
+
+        if (parts.length() < 2) {
+            return "";
+        }
+
+        String result = "";
+        Int index = 1;
+
+        while (index < parts.length()) {
+            String part = parts.get(index);
+
+            if (index < parts.length() - 1) {
+                part = part.toLowerCase();
+            }
+
+            if (result.isEmpty()) {
+                result = part + "";
+                index = index + 1;
+                continue;
+            }
+
+            result = result + "/" + part;
+            index = index + 1;
+        }
+
+        if (result.isEmpty()) {
+            return "";
+        }
+
+        return result + ".ems";
+    }
+}

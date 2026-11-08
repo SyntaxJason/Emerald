@@ -1,0 +1,15 @@
+public data class HyperAllocFlowV1NestedRemovePair(Int left, Int right) {
+}
+
+public class HyperAllocFlowV1NestedRemoveMath {
+    public static Int combine(HyperAllocFlowV1NestedRemovePair first, HyperAllocFlowV1NestedRemovePair second) {
+        return first.left + second.right;
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1NestedRemovePair> values = List();
+    values.add(HyperAllocFlowV1NestedRemovePair(20, 1));
+    values.add(HyperAllocFlowV1NestedRemovePair(19, 22));
+    println(HyperAllocFlowV1NestedRemoveMath.combine(values.removeAt(0), values.removeAt(0)).toString());
+}

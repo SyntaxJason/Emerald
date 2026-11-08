@@ -1,5 +1,16 @@
 namespace Std::Io;
 
+use Std::Collections::ArrayList;
+use Std::Collections::IList;
+use Std::Io::IClosable;
+use Std::Io::IPath;
+use Std::Io::ITextReader;
+use Std::Io::Path;
+use Std::Native::NativeFile;
+use Std::Result::Failure;
+use Std::Result::IResult;
+use Std::Result::Success;
+
 public class TextReader implements ITextReader, IClosable {
     private Path readerPath;
 
@@ -20,23 +31,31 @@ public class TextReader implements ITextReader, IClosable {
     }
 
     public Bool exists() {
-        return File.exists(this.readerPath.value());
+        return NativeFile.exists(this.readerPath.value());
     }
 
     public String readText() {
-        return File.readText(this.readerPath.value());
+        return NativeFile.readText(this.readerPath.value());
     }
 
     public String readOr(String fallback) {
-        return this.tryReadText().unwrapOr(fallback);
+        if (!this.exists()) {
+            return fallback;
+        }
+
+        return this.readText();
     }
 
-    public Std::Collections::IList<String> readLines() {
-        return Std::Collections::ArrayList(File.readLines(this.readerPath.value()));
+    public IList<String> readLines() {
+        return ArrayList(NativeFile.readLines(this.readerPath.value()));
     }
 
-    public Std::Result::IResult<String, String> tryReadText() {
-        return File.tryReadText(this.readerPath.value());
+    public IResult<String, String> tryReadText() {
+        if (!this.exists()) {
+            return Failure("File does not exist: " + this.readerPath.value());
+        }
+
+        return Success(this.readText());
     }
 
     public Void close() {

@@ -1,0 +1,33 @@
+namespace Std::Llvm;
+
+public class LlvmTarget {
+    private Int targetHandle;
+
+    public LlvmTarget(Int handle) {
+        this.targetHandle = handle;
+    }
+
+    public Int handle() {
+        return this.targetHandle;
+    }
+
+    public Bool isNull() {
+        return this.targetHandle == 0;
+    }
+
+    public String name() {
+        return LlvmNative.targetName(this.targetHandle);
+    }
+
+    public String description() {
+        return LlvmNative.targetDescription(this.targetHandle);
+    }
+
+    public LlvmTargetMachine createMachine(String triple) {
+        return LlvmTargetMachine(LlvmNative.createTargetMachine(this.targetHandle, triple, "generic", "", 2));
+    }
+
+    public LlvmTargetMachine createMachineWith(String triple, String cpu, String features, Int optimizationLevel) {
+        return LlvmTargetMachine(LlvmNative.createTargetMachine(this.targetHandle, triple, cpu, features, optimizationLevel));
+    }
+}

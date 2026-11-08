@@ -1,0 +1,28 @@
+macro AddQuotedField on Class {
+    ExpressionAST initial = Expr::str("field from " + class.name);
+
+    FieldAST field = quote field {
+        public String generatedField = $(initial);
+    };
+
+    MethodAST method = quote method {
+        public String readGeneratedField() {
+            return this.generatedField;
+        }
+    };
+
+    class.addField(field);
+    class.addMethod(method);
+}
+
+@AddQuotedField
+public class QuoteFieldProbe {
+    public QuoteFieldProbe() {
+    }
+}
+
+main() {
+    QuoteFieldProbe probe = QuoteFieldProbe();
+
+    println(probe.readGeneratedField());
+}

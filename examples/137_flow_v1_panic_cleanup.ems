@@ -1,0 +1,12 @@
+public class HyperAllocFlowV1PanicValue {
+    public String message;
+
+    public HyperAllocFlowV1PanicValue(String message) {
+        this.message = message;
+    }
+}
+
+main() {
+    HyperAllocFlowV1PanicValue value = HyperAllocFlowV1PanicValue("flow panic cleanup");
+    panic(value.message);
+}

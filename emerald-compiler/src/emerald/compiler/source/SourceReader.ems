@@ -1,0 +1,20 @@
+namespace emerald::compiler::source;
+
+use emerald::compiler::diagnostic::DiagnosticBag;
+use Std::Io::File;
+
+public class SourceReader {
+    public SourceReader() {
+    }
+
+    public SourceFile read(String path, DiagnosticBag diagnostics) {
+        File file = File(path);
+
+        if (!file.exists()) {
+            diagnostics.errorIn(path, "Source file does not exist: " + path, 1, 1);
+            return SourceFile(path, "");
+        }
+
+        return SourceFile(path, file.readText());
+    }
+}

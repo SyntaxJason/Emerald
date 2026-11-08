@@ -1,0 +1,103 @@
+namespace LeakProbe;
+
+use Std::Io::File;
+
+class Node {
+    private String label;
+    private List<Int> values;
+    private Node child;
+    private Bool hasChild;
+
+    public Node(String label) {
+        this.label = label;
+        this.values = List();
+        this.hasChild = false;
+    }
+
+    public Void fill(Int count) {
+        Int i = 0;
+
+        while (i < count) {
+            this.values.add(i * i);
+            i = i + 1;
+        }
+
+        return;
+    }
+
+    public Void attachChild(Node node) {
+        this.child = node;
+        this.hasChild = true;
+        return;
+    }
+
+    public Int sum() {
+        Int total = 0;
+        Int i = 0;
+
+        while (i < this.values.length()) {
+            total = total + this.values.get(i);
+            i = i + 1;
+        }
+
+        if (this.hasChild) {
+            total = total + this.child.sum();
+        }
+
+        return total;
+    }
+}
+
+class MemoryProbe {
+    public MemoryProbe() {
+    }
+
+    public static Int rssKb() {
+        File status = File("/proc/self/status");
+        String content = status.readOr("");
+        List<String> lines = content.split("\n");
+        Int index = 0;
+
+        while (index < lines.length()) {
+            String line = lines.get(index);
+
+            if (line.startsWith("VmRSS:")) {
+                String rest = line.replace("VmRSS:", "").replace("kB", "").trim();
+                return rest.toInt();
+            }
+
+            index = index + 1;
+        }
+
+        return -1;
+    }
+}
+
+main() {
+    Int total = 200000;
+    Int i = 0;
+    Int startRss = 0;
+    Int warmup = 5000;
+
+    while (i < total) {
+        Node root = Node("root-" + i.toString());
+        root.fill(300);
+
+        Node inner = Node("inner-" + i.toString());
+        inner.fill(150);
+        root.attachChild(inner);
+
+        Int sum = root.sum();
+
+        if (i == warmup) {
+            startRss = MemoryProbe.rssKb();
+            println("warmup done, sum sample=" + sum.toString() + " startRss=" + startRss.toString());
+        }
+
+        i = i + 1;
+    }
+
+    Int endRss = MemoryProbe.rssKb();
+    println("start=" + startRss.toString() + " end=" + endRss.toString() + " delta=" + (endRss - startRss).toString() + " iters=" + (total - warmup).toString());
+    return 0;
+}

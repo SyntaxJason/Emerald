@@ -1,0 +1,39 @@
+macro AddDynamicLog on Method {
+    ExpressionAST message = Expr::str("dynamic " + method.name);
+
+    StatementAST entry = quote stmt {
+        println($(message));
+    };
+
+    method.body.prepend(entry);
+}
+
+macro AddDynamicMethod on Class {
+    ExpressionAST result = Expr::str("hello from " + class.name);
+
+    BlockAST body = quote block {
+        return $(result);
+    };
+
+    MethodAST method = MethodAST::create("dynamicName", "String", [], body);
+
+    class.addMethod(method);
+}
+
+@AddDynamicMethod
+public class UnquoteProbe {
+    public UnquoteProbe() {
+    }
+
+    @AddDynamicLog
+    public Void run() {
+        println("body");
+    }
+}
+
+main() {
+    UnquoteProbe probe = UnquoteProbe();
+
+    probe.run();
+    println(probe.dynamicName());
+}

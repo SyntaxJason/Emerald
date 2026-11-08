@@ -1,0 +1,39 @@
+namespace Std::Native;
+
+public class NativeFile {
+    public NativeFile() {
+    }
+
+    public static Bool exists(String path) {
+        return false;
+    }
+
+    public static Bool isFile(String path) {
+        return false;
+    }
+
+    public static String readText(String path) {
+        return "";
+    }
+
+    public static List<String> readLines(String path) {
+        List<String> lines = List();
+        return lines;
+    }
+
+    public static Int writeText(String path, String text) {
+        return 0;
+    }
+
+    public static Int appendText(String path, String text) {
+        return 0;
+    }
+
+    public static Bool delete(String path) {
+        return false;
+    }
+
+    public static Int size(String path) {
+        return 0;
+    }
+}

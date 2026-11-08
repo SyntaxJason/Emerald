@@ -1,0 +1,157 @@
+namespace emerald::compiler::syntax;
+
+public class Statement {
+    private String kindValue;
+    private String nameValue;
+    private String typeValue;
+    private Int expressionIndexValue;
+    private Int targetIndexValue;
+    private List<Statement> bodyStatementItems;
+    private List<Statement> elseStatementItems;
+    private Int lineValue;
+    private Int columnValue;
+
+    public Statement(String kind, String name, String typeName, Int expressionIndex, Int targetIndex, List<Statement> bodyStatements, List<Statement> elseStatements, Int line, Int column) {
+        this.kindValue = kind;
+        this.nameValue = name;
+        this.typeValue = typeName;
+        this.expressionIndexValue = expressionIndex;
+        this.targetIndexValue = targetIndex;
+        this.bodyStatementItems = List();
+        this.elseStatementItems = List();
+        this.copyBodyStatements(bodyStatements);
+        this.copyElseStatements(elseStatements);
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public String kind() {
+        return this.kindValue + "";
+    }
+
+    public String name() {
+        return this.nameValue + "";
+    }
+
+    public String typeName() {
+        return this.typeValue + "";
+    }
+
+    public Int expressionIndex() {
+        return this.expressionIndexValue;
+    }
+
+    public Int targetIndex() {
+        return this.targetIndexValue;
+    }
+
+    public List<Statement> bodyStatements() {
+        return this.bodyStatementItems;
+    }
+
+    public List<Statement> elseStatements() {
+        return this.elseStatementItems;
+    }
+
+    public Int line() {
+        return this.lineValue;
+    }
+
+    public Int column() {
+        return this.columnValue;
+    }
+
+    public Statement shifted(Int offset) {
+        return Statement(this.kindValue + "", this.nameValue + "", this.typeValue + "", this.shiftIndex(this.expressionIndexValue, offset), this.shiftIndex(this.targetIndexValue, offset), this.shiftStatements(this.bodyStatementItems, offset), this.shiftStatements(this.elseStatementItems, offset), this.lineValue, this.columnValue);
+    }
+
+    public Bool isPrintln() {
+        return this.kindValue == "println";
+    }
+
+    public Bool isReturn() {
+        return this.kindValue == "return";
+    }
+
+    public Bool isVariable() {
+        return this.kindValue == "variable";
+    }
+
+    public Bool isAssign() {
+        return this.kindValue == "assign";
+    }
+
+    public Bool isFieldAssign() {
+        return this.kindValue == "fieldassign";
+    }
+
+    public Bool isIf() {
+        return this.kindValue == "if";
+    }
+
+    public Bool isWhile() {
+        return this.kindValue == "while";
+    }
+
+    public Bool isFor() {
+        return this.kindValue == "for";
+    }
+
+    public Bool isExpression() {
+        return this.kindValue == "expression";
+    }
+
+    public Bool isBreak() {
+        return this.kindValue == "break";
+    }
+
+    public Bool isContinue() {
+        return this.kindValue == "continue";
+    }
+
+    public Bool isPanic() {
+        return this.kindValue == "panic";
+    }
+
+    public Bool isMissing() {
+        return this.kindValue == "missing";
+    }
+
+    private Void copyBodyStatements(List<Statement> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            this.bodyStatementItems.add(source.get(index).shifted(0));
+            index = index + 1;
+        }
+    }
+
+    private Void copyElseStatements(List<Statement> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            this.elseStatementItems.add(source.get(index).shifted(0));
+            index = index + 1;
+        }
+    }
+
+    private Int shiftIndex(Int value, Int offset) {
+        if (value == 0) {
+            return 0;
+        }
+
+        return value + offset;
+    }
+
+    private List<Statement> shiftStatements(List<Statement> statements, Int offset) {
+        List<Statement> shiftedItems = List();
+        Int index = 0;
+
+        while (index < statements.length()) {
+            shiftedItems.add(statements.get(index).shifted(offset));
+            index = index + 1;
+        }
+
+        return shiftedItems;
+    }
+}

@@ -1,0 +1,30 @@
+public class HyperAllocFlowSession {
+    private String name;
+
+    public HyperAllocFlowSession(String name) {
+        this.name = name;
+    }
+
+    public String label() {
+        return this.name;
+    }
+}
+
+public class HyperAllocFlowSessionBox {
+    private HyperAllocFlowSession session;
+
+    public HyperAllocFlowSessionBox(HyperAllocFlowSession session) {
+        this.session = session;
+    }
+
+    public String label() {
+        return this.session.label();
+    }
+}
+
+main() {
+    HyperAllocFlowSession session = HyperAllocFlowSession("root");
+    HyperAllocFlowSessionBox box = HyperAllocFlowSessionBox(session);
+
+    println(box.label());
+}

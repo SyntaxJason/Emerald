@@ -1,0 +1,19 @@
+macro AddEntryLog on Method {
+    StatementAST entry = Stmt::expr(
+        Expr::call("println", [Expr::str("enter " + method.name)])
+    );
+
+    method.body.prepend(entry);
+}
+
+public class NestedCallProbe {
+    @AddEntryLog
+    public Void run() {
+        println("body");
+    }
+}
+
+main() {
+    NestedCallProbe probe = NestedCallProbe();
+    probe.run();
+}

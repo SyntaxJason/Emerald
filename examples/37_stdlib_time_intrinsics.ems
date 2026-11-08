@@ -1,0 +1,20 @@
+use Std::Time::Duration;
+use Std::Time::OffsetDateTime;
+
+main() {
+    Duration ninety = Duration.seconds(90);
+    Duration twoMinutes = Duration.minutes(2);
+    Duration total = ninety.plus(twoMinutes);
+
+    OffsetDateTime local = OffsetDateTime.now();
+    OffsetDateTime utc = OffsetDateTime.utcNow();
+    OffsetDateTime fixed = OffsetDateTime.of(2026, 5, 14, 2, 20, 0, 120);
+
+    println(ninety.toMillis().toString());
+    println(total.toString());
+    println(twoMinutes.isGreaterThan(ninety).toString());
+    println(fixed.toString());
+    println(fixed.withOffsetMinutes(0).toString());
+    println(utc.isUtc().toString());
+    println(local.toDateString());
+}

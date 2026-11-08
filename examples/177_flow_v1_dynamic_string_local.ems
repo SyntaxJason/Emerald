@@ -1,0 +1,4 @@
+main() {
+    String value = (40 + 2).toString();
+    println(value);
+}

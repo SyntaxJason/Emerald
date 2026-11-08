@@ -1,0 +1,327 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::syntax::Annotation;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+use emerald::compiler::syntax::UseDeclaration;
+use Std::Llvm::LlvmNativeBackend;
+
+public class NativeLookup {
+    public NativeLookup() {
+    }
+
+    public NativeLocal findLocal(String name, List<NativeLocal> locals, LlvmNativeBackend backend) {
+        Int index = 0;
+
+        while (index < locals.length()) {
+            NativeLocal local = locals.get(index);
+
+            if (local.name() == name) {
+                return local.stableCopy();
+            }
+
+            index = index + 1;
+        }
+
+        return NativeLocal();
+    }
+
+    public ClassDeclaration findClass(SyntaxProgram program, String name) {
+        if (this.hasGenericArguments(name)) {
+            ClassDeclaration concrete = this.findClassDirect(program, name);
+            if (!concrete.isMissing()) { return concrete; }
+            String base = this.genericBaseType(name);
+            String importedBase = this.resolveImport(program, base);
+            if (!importedBase.isEmpty()) {
+                ClassDeclaration importedConcrete = this.findClassDirect(program, importedBase + name.substring(base.length(), name.length()));
+                if (!importedConcrete.isMissing()) { return importedConcrete; }
+            }
+            return this.findClass(program, base);
+        }
+
+        ClassDeclaration direct = this.findClassDirect(program, name);
+
+        if (!direct.isMissing()) {
+            return direct;
+        }
+
+        String imported = this.resolveImport(program, name);
+
+        if (!imported.isEmpty()) {
+            return this.findClassDirect(program, imported);
+        }
+
+        return this.missingClass();
+    }
+
+    public MethodDeclaration findConstructor(SyntaxProgram program, String className, Int parameterCount) {
+        ClassDeclaration declaration = this.findClass(program, className);
+        Int index = 0;
+
+        while (index < declaration.methodCount()) {
+            MethodDeclaration method = declaration.methodAt(index);
+
+            if (method.isConstructor() && method.parameterCount() == parameterCount) {
+                return method.signatureCopy();
+            }
+
+            index = index + 1;
+        }
+
+        return this.missingMethod();
+    }
+
+    public MethodDeclaration findMethod(SyntaxProgram program, String className, String methodName, Int parameterCount) {
+        return this.findMethodWithStatic(program, className, methodName, parameterCount, false);
+    }
+
+    public MethodDeclaration findStaticMethod(SyntaxProgram program, String className, String methodName, Int parameterCount) {
+        return this.findMethodWithStatic(program, className, methodName, parameterCount, true);
+    }
+
+    private MethodDeclaration findMethodWithStatic(SyntaxProgram program, String className, String methodName, Int parameterCount, Bool staticMethod) {
+        String dispatchName = this.dispatchClassName(program, className);
+        ClassDeclaration declaration = this.findClass(program, dispatchName);
+        Int index = 0;
+
+        while (index < declaration.methodCount()) {
+            MethodDeclaration method = declaration.methodAt(index);
+
+            if (!method.isConstructor() && method.isStatic() == staticMethod && method.name() == methodName && method.parameterCount() == parameterCount) {
+                if (this.isTemplate(declaration) && this.hasGenericArguments(dispatchName)) {
+                    return this.specializedSignature(method, declaration, dispatchName);
+                }
+
+                return method.signatureCopy();
+            }
+
+            index = index + 1;
+        }
+
+        if (!declaration.parentName().isEmpty()) {
+            MethodDeclaration parentMethod = this.findMethodWithStatic(program, declaration.parentName(), methodName, parameterCount, staticMethod);
+            if (!parentMethod.isMissing()) { return parentMethod; }
+        }
+        Int interfaceIndex = 0;
+        while (interfaceIndex < declaration.implementedInterfaces().length()) {
+            MethodDeclaration inherited = this.findMethodWithStatic(program, declaration.implementedInterfaces().get(interfaceIndex), methodName, parameterCount, staticMethod);
+            if (!inherited.isMissing()) { return inherited; }
+            interfaceIndex = interfaceIndex + 1;
+        }
+        return this.missingMethod();
+    }
+
+    public String dispatchClassName(SyntaxProgram program, String className) {
+        ClassDeclaration declaration = this.findClass(program, className);
+
+        if (!declaration.isInterface()) {
+            return className;
+        }
+
+        String implementorName = "";
+        Int index = 0;
+
+        while (index < program.classCount()) {
+            ClassDeclaration candidate = program.classAt(index);
+
+            if (!this.isTemplate(candidate) && this.classImplementsInterface(candidate, declaration, program)) {
+                if (!implementorName.isEmpty()) {
+                    return className;
+                }
+
+                implementorName = candidate.name() + "";
+            }
+
+            index = index + 1;
+        }
+
+        if (implementorName.isEmpty()) {
+            return className;
+        }
+
+        return implementorName;
+    }
+
+    // Generic declarations whose type parameters are still unbound (the raw
+    // ArrayList, or ArrayList<K> inside a raw HashMap<K,V>) are only templates
+    // for specialization; they are never instantiated, emitted or dispatched to.
+    public Bool isTemplate(ClassDeclaration declaration) {
+        return declaration.genericParameters().length() > 0;
+    }
+
+    // True when `candidate` is `ancestor` or inherits from it through `extends`.
+    public Bool extendsClass(ClassDeclaration candidate, ClassDeclaration ancestor, SyntaxProgram program) {
+        ClassDeclaration current = candidate;
+        Int depth = 0;
+
+        while (!current.isMissing() && depth < 64) {
+            if (current.fullName() == ancestor.fullName()) {
+                return true;
+            }
+
+            if (current.parentName().isEmpty()) {
+                return false;
+            }
+
+            current = this.findClass(program, current.parentName());
+            depth = depth + 1;
+        }
+
+        return false;
+    }
+
+    public Bool classImplementsInterface(ClassDeclaration candidate, ClassDeclaration interfaceDeclaration, SyntaxProgram program) {
+        if (candidate.isInterface()) { return false; }
+        List<String> visited = List();
+        return this.inheritsInterface(candidate, interfaceDeclaration, program, visited);
+    }
+
+    private Bool inheritsInterface(ClassDeclaration candidate, ClassDeclaration target, SyntaxProgram program, List<String> visited) {
+        if (candidate.isMissing() || visited.contains(candidate.fullName())) { return false; }
+        visited.add(candidate.fullName());
+        if (candidate.fullName() == target.fullName()) { return true; }
+        Int index = 0;
+        while (index < candidate.implementedInterfaces().length()) {
+            ClassDeclaration parent = this.findClass(program, candidate.implementedInterfaces().get(index));
+            if (this.inheritsInterface(parent, target, program, visited)) { return true; }
+            index = index + 1;
+        }
+        if (!candidate.parentName().isEmpty()) { return this.inheritsInterface(this.findClass(program, candidate.parentName()), target, program, visited); }
+        return false;
+    }
+
+    // Super-interfaces of a specialization (ICollection<Int> behind
+    // IList<Int>) are not specialized classes themselves; lookups reach the
+    // raw template. Its signature is rewritten for the requested arguments so
+    // callers see Int instead of T and never bind to the unemitted template.
+    private MethodDeclaration specializedSignature(MethodDeclaration method, ClassDeclaration template, String requested) {
+        List<String> arguments = this.typeArguments(requested);
+        List<String> names = template.genericParameters();
+
+        if (arguments.length() != names.length()) {
+            return method.signatureCopy();
+        }
+
+        List<Annotation> annotations = List();
+        List<Parameter> parameters = List();
+        Int index = 0;
+
+        while (index < method.parameterCount()) {
+            Parameter parameter = method.parameterAt(index);
+            parameters.add(Parameter(parameter.name() + "", this.replaceTypeNames(parameter.typeName(), names, arguments), parameter.line(), parameter.column()));
+            index = index + 1;
+        }
+
+        String owner = template.name() + requested.substring(requested.indexOf("<"), requested.length());
+
+        if (!template.namespaceName().isEmpty()) {
+            owner = template.namespaceName() + "::" + owner;
+        }
+
+        List<Statement> statements = List();
+        return MethodDeclaration(owner, method.name() + "", this.replaceTypeNames(method.returnTypeName(), names, arguments), annotations, parameters, statements, method.isConstructor(), method.isStatic(), method.isGenerated(), method.line(), method.column());
+    }
+
+    private List<String> typeArguments(String typeName) {
+        List<String> result = List();
+        Int start = typeName.indexOf("<") + 1;
+        if (start <= 0 || !typeName.endsWith(">")) { return result; }
+        Int depth = 0;
+        Int index = start;
+        while (index < typeName.length() - 1) {
+            String symbol = typeName.substring(index, index + 1);
+            if (symbol == "<") { depth = depth + 1; }
+            if (symbol == ">") { depth = depth - 1; }
+            if (symbol == "," && depth == 0) {
+                result.add(typeName.substring(start, index).trim());
+                start = index + 1;
+            }
+            index = index + 1;
+        }
+        result.add(typeName.substring(start, typeName.length() - 1).trim());
+        return result;
+    }
+
+    private String replaceTypeNames(String text, List<String> names, List<String> values) {
+        String result = "";
+        Int index = 0;
+        while (index < text.length()) {
+            if (text.charAt(index).isLetter() || text.substring(index, index + 1) == "_") {
+                Int end = index + 1;
+                while (end < text.length() && (text.charAt(end).isLetter() || text.charAt(end).isDigit() || text.substring(end, end + 1) == "_")) { end = end + 1; }
+                String token = text.substring(index, end);
+                Int parameter = names.indexOf(token);
+                if (parameter >= 0) { token = values.get(parameter) + ""; }
+                result = result + token;
+                index = end;
+            } else {
+                result = result + text.substring(index, index + 1);
+                index = index + 1;
+            }
+        }
+        return result;
+    }
+
+    private Bool hasGenericArguments(String value) {
+        return value.indexOf("<") > 0 && value.endsWith(">");
+    }
+
+    private String genericBaseType(String value) {
+        Int index = value.indexOf("<");
+
+        if (index < 0) {
+            return value;
+        }
+
+        return value.substring(0, index);
+    }
+
+    private ClassDeclaration findClassDirect(SyntaxProgram program, String name) {
+        String normalizedName = name.replace(".", "::");
+        Int index = 0;
+
+        while (index < program.classCount()) {
+            ClassDeclaration declaration = program.classAt(index);
+
+            if (declaration.name() == name || declaration.hasFullName(name) || declaration.hasFullName(normalizedName)) {
+                return declaration.headerCopy();
+            }
+
+            index = index + 1;
+        }
+
+        return this.missingClass();
+    }
+
+    private String resolveImport(SyntaxProgram program, String name) {
+        Int index = 0;
+
+        while (index < program.uses().length()) {
+            UseDeclaration useItem = program.uses().get(index);
+
+            if (useItem.matchesName(name)) {
+                return useItem.qualifiedName() + "";
+            }
+
+            index = index + 1;
+        }
+
+        return "";
+    }
+
+    private ClassDeclaration missingClass() {
+        List<FieldDeclaration> fields = List();
+        List<MethodDeclaration> methods = List();
+        return ClassDeclaration("", fields, methods, 1, 1);
+    }
+
+    private MethodDeclaration missingMethod() {
+        List<Parameter> parameters = List();
+        List<Statement> statements = List();
+        return MethodDeclaration("", "", "", parameters, statements, false, false, 1, 1);
+    }
+}

@@ -1,0 +1,19 @@
+namespace emerald::compiler::binding;
+
+public class VariableSymbol {
+    private String nameValue;
+    private String typeValue;
+
+    public VariableSymbol(String name, String typeName) {
+        this.nameValue = name;
+        this.typeValue = typeName;
+    }
+
+    public String name() {
+        return this.nameValue + "";
+    }
+
+    public String typeName() {
+        return this.typeValue + "";
+    }
+}

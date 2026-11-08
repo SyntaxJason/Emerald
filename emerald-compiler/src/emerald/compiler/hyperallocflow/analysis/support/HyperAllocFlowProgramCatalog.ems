@@ -1,0 +1,272 @@
+namespace emerald::compiler::hyperallocflow::analysis::support;
+
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class HyperAllocFlowProgramCatalog {
+    private List<Int> classShortHeadItems;
+    private List<Int> classShortNextItems;
+    private List<Int> classFullHeadItems;
+    private List<Int> classFullNextItems;
+    private Int indexedClassCount;
+    private List<Int> inferredValueItems;
+
+    public HyperAllocFlowProgramCatalog() {
+        this.classShortHeadItems = List();
+        this.classShortNextItems = List();
+        this.classFullHeadItems = List();
+        this.classFullNextItems = List();
+        this.indexedClassCount = -1;
+        this.inferredValueItems = List();
+    }
+
+    public MethodDeclaration findConstructor(Expression expression, SyntaxProgram program) {
+        ClassDeclaration declaration = this.findClass(expression.text(), program);
+        Int resolvedIndex = expression.resolvedConstructorIndex();
+
+        if (resolvedIndex >= 0 && resolvedIndex < declaration.methodCount()) {
+            return declaration.methodAt(resolvedIndex).bodyViewCopy();
+        }
+
+        Int index = 0;
+
+        while (index < declaration.methodCount()) {
+            MethodDeclaration method = declaration.methodAt(index);
+
+            if (method.isConstructor() && method.parameterCount() == expression.argumentCount()) {
+                return method.bodyViewCopy();
+            }
+
+            index = index + 1;
+        }
+
+        List<Parameter> parameters = List();
+        List<Statement> statements = List();
+        return MethodDeclaration("", "", "Void", parameters, statements, false, false, 1, 1);
+    }
+
+    public MethodDeclaration findStaticMethod(String ownerName, String name, Int parameterCount, SyntaxProgram program) {
+        ClassDeclaration declaration = this.findClass(ownerName, program);
+        Int index = 0;
+
+        while (index < declaration.methodCount()) {
+            MethodDeclaration method = declaration.methodAt(index);
+
+            if (!method.isConstructor() && method.isStatic() && method.name() == name && method.parameterCount() == parameterCount) {
+                return method.bodyViewCopy();
+            }
+
+            index = index + 1;
+        }
+
+        List<Parameter> parameters = List();
+        List<Statement> statements = List();
+        return MethodDeclaration("", "", "Void", parameters, statements, false, false, 1, 1);
+    }
+
+    public MethodDeclaration findMethod(String ownerName, String name, Int parameterCount, SyntaxProgram program) {
+        ClassDeclaration declaration = this.findClass(ownerName, program);
+        Int index = 0;
+
+        while (index < declaration.methodCount()) {
+            MethodDeclaration method = declaration.methodAt(index);
+
+            if (!method.isConstructor() && !method.isStatic() && method.name() == name && method.parameterCount() == parameterCount) {
+                return method.bodyViewCopy();
+            }
+
+            index = index + 1;
+        }
+
+        List<Parameter> parameters = List();
+        List<Statement> statements = List();
+        return MethodDeclaration("", "", "Void", parameters, statements, false, false, 1, 1);
+    }
+
+    // `C(a, b)` with `this.fieldA = a; this.fieldB = b;` in declaration order:
+    // the object is fully described by its constructor arguments.
+    public Bool constructorStoresParametersInOrder(MethodDeclaration constructor, ClassDeclaration declaration, SyntaxProgram program) {
+        if (constructor.isMissing() || constructor.parameters().length() != declaration.fields().length() || constructor.statements().length() != declaration.fields().length()) {
+            return false;
+        }
+
+        Int index = 0;
+
+        while (index < declaration.fields().length()) {
+            Statement statement = constructor.statements().get(index);
+            FieldDeclaration field = declaration.fields().get(index);
+            Parameter parameter = constructor.parameters().get(index);
+
+            if (!statement.isFieldAssign()) {
+                return false;
+            }
+
+            Expression target = program.expression(statement.targetIndex());
+            Expression receiver = program.expression(target.leftIndex());
+            Expression value = program.expression(statement.expressionIndex());
+
+            if (target.kind() != "field" || target.text() != field.name()) {
+                return false;
+            }
+
+            if (receiver.kind() != "name" || receiver.text() != "this") {
+                return false;
+            }
+
+            if (value.kind() != "name" || value.text() != parameter.name() || parameter.typeName() != field.typeName()) {
+                return false;
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+
+    public Bool isObjectCreation(Expression expression, SyntaxProgram program) {
+        if (!expression.kindIs("call")) {
+            return false;
+        }
+
+        if (expression.textIs("List")) {
+            return true;
+        }
+
+        return this.hasClass(expression.text(), program);
+    }
+
+    public Bool hasClass(String name, SyntaxProgram program) {
+        this.ensureClassIndex(program);
+        return this.indexedClass(name, program) >= 0 || this.indexedClass(this.genericBaseType(name), program) >= 0;
+    }
+
+    public ClassDeclaration findClass(String name, SyntaxProgram program) {
+        String lookupName = this.genericBaseType(name);
+        this.ensureClassIndex(program);
+        Int index = this.indexedClass(name, program);
+        if (index < 0) { index = this.indexedClass(lookupName, program); }
+
+        if (index >= 0) {
+            return program.classAt(index).headerCopy();
+        }
+
+        return this.missingClass();
+    }
+
+    // Program class index for a (possibly generic) type name, or -1. Exact
+    // specialized names win over the generic base name.
+    public Int classIndex(String name, SyntaxProgram program) {
+        this.ensureClassIndex(program);
+        Int index = this.indexedClass(name, program);
+
+        if (index < 0) {
+            index = this.indexedClass(this.genericBaseType(name), program);
+        }
+
+        return index;
+    }
+
+    public Int inferredValue(String name, SyntaxProgram program) {
+        Int index = this.classIndex(name, program);
+        if (index < 0) { return 0; }
+        return this.inferredValueItems.get(index);
+    }
+
+    public Void cacheInferredValue(String name, SyntaxProgram program, Bool eligible) {
+        Int index = this.classIndex(name, program);
+        if (index >= 0) {
+            if (eligible) { this.inferredValueItems.set(index, 1); }
+            else { this.inferredValueItems.set(index, 0); }
+        }
+    }
+
+    public String baseTypeName(String name) {
+        return this.genericBaseType(name);
+    }
+
+    private Int indexedClass(String name, SyntaxProgram program) {
+        Int length = name.length();
+
+        if (length < this.classShortHeadItems.length()) {
+            Int index = this.classShortHeadItems.get(length);
+
+            while (index >= 0) {
+                if (program.classAt(index).hasName(name)) {
+                    return index;
+                }
+
+                index = this.classShortNextItems.get(index);
+            }
+        }
+
+        if (length < this.classFullHeadItems.length()) {
+            Int index = this.classFullHeadItems.get(length);
+
+            while (index >= 0) {
+                if (program.classAt(index).hasFullName(name)) {
+                    return index;
+                }
+
+                index = this.classFullNextItems.get(index);
+            }
+        }
+
+        return -1;
+    }
+
+    private Void ensureClassIndex(SyntaxProgram program) {
+        if (this.indexedClassCount == program.classCount()) {
+            return;
+        }
+
+        this.classShortHeadItems = List();
+        this.classShortNextItems = List();
+        this.classFullHeadItems = List();
+        this.classFullNextItems = List();
+        this.inferredValueItems = List();
+        Int index = 0;
+
+        while (index < program.classCount()) {
+            this.inferredValueItems.add(-1);
+            ClassDeclaration declaration = program.classAt(index);
+            String shortName = declaration.name();
+            String fullName = declaration.fullName();
+            this.ensureHeadLength(this.classShortHeadItems, shortName.length());
+            this.ensureHeadLength(this.classFullHeadItems, fullName.length());
+            this.classShortNextItems.add(this.classShortHeadItems.get(shortName.length()));
+            this.classFullNextItems.add(this.classFullHeadItems.get(fullName.length()));
+            this.classShortHeadItems.set(shortName.length(), index);
+            this.classFullHeadItems.set(fullName.length(), index);
+            index = index + 1;
+        }
+
+        this.indexedClassCount = program.classCount();
+    }
+
+    private Void ensureHeadLength(List<Int> heads, Int length) {
+        while (heads.length() <= length) {
+            heads.add(-1);
+        }
+    }
+
+    private String genericBaseType(String value) {
+        Int index = value.indexOf("<");
+
+        if (index < 0) {
+            return value;
+        }
+
+        return value.substring(0, index);
+    }
+
+    public ClassDeclaration missingClass() {
+        List<FieldDeclaration> fields = List();
+        List<MethodDeclaration> methods = List();
+        return ClassDeclaration("", fields, methods, 1, 1);
+    }
+}

@@ -1,0 +1,1148 @@
+namespace emerald::compiler::hyperallocflow;
+
+use emerald::compiler::hyperallocflow::analysis::support::HyperAllocFlowProgramCatalog;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::MethodDeclaration;
+
+public class HyperAllocFlowReport {
+    private List<HyperAllocFlowDecision> decisionItems;
+    private List<Int> decisionIndexItems;
+    private List<FunctionSummary> summaryItems;
+    private List<Int> virtualSlotItems;
+    private List<FunctionSummary> virtualSummaryItems;
+    private List<Int> virtualMemberStartItems;
+    private List<Int> virtualMemberItems;
+    private Int foldedMethodInlineCountValue;
+    private Int inlineCopyCountValue;
+    private Int inlineBoundaryCallCountValue;
+    private Int inlineReturnCountValue;
+    private Int containerOwnedOperationCountValue;
+    private Int shardCleanupCountValue;
+    private Int poolResetCountValue;
+    private Int temporaryStringReleaseCountValue;
+    private List<Int> stringOwnershipSlotItems;
+    private List<Int> stringOwnershipCopyItems;
+    private List<Int> returnTransferIndexItems;
+    private List<String> returnTransferNameItems;
+    private List<Int> returnTransferHeadItems;
+    private List<Int> returnTransferNextItems;
+    private List<Int> returnCopyFlagItems;
+    private Int returnCopyCountValue;
+    private HyperAllocFlowProgramCatalog catalogValue;
+    private List<Int> argumentFlagHeadItems;
+    private List<Int> argumentFlagKeyItems;
+    private List<Int> argumentFlagValueItems;
+    private List<Int> argumentFlagNextItems;
+
+    public HyperAllocFlowReport() {
+        this.decisionItems = List();
+        this.decisionIndexItems = List();
+        this.summaryItems = List();
+        this.virtualSlotItems = List();
+        this.virtualSummaryItems = List();
+        this.virtualMemberStartItems = List();
+        this.virtualMemberItems = List();
+        this.foldedMethodInlineCountValue = 0;
+        this.inlineCopyCountValue = 0;
+        this.inlineBoundaryCallCountValue = 0;
+        this.inlineReturnCountValue = 0;
+        this.containerOwnedOperationCountValue = 0;
+        this.shardCleanupCountValue = 0;
+        this.poolResetCountValue = 0;
+        this.temporaryStringReleaseCountValue = 0;
+        this.stringOwnershipSlotItems = List();
+        this.stringOwnershipCopyItems = List();
+        this.returnTransferIndexItems = List();
+        this.returnTransferNameItems = List();
+        this.returnTransferHeadItems = List();
+        this.returnTransferNextItems = List();
+        this.returnCopyFlagItems = List();
+        this.returnCopyCountValue = 0;
+        this.catalogValue = HyperAllocFlowProgramCatalog();
+        this.argumentFlagHeadItems = List();
+        this.argumentFlagKeyItems = List();
+        this.argumentFlagValueItems = List();
+        this.argumentFlagNextItems = List();
+    }
+
+    // A constructor argument whose parameter the constructor only reads: an
+    // owned temporary passed there is released right after construction.
+    public Void markConstructorArgumentRelease(Int argumentExpressionIndex) {
+        this.markArgumentFlag(argumentExpressionIndex, 1);
+    }
+
+    public Bool releasesConstructorArgument(Int argumentExpressionIndex) {
+        Int flags = this.argumentFlags(argumentExpressionIndex);
+        return flags == 1 || flags == 3;
+    }
+
+    // A borrowed reference handed to a call that may take ownership while the
+    // current method keeps using it; the emitter shares an unparented Root
+    // there so a short-lived adopting owner cannot free it.
+    public Void markSharedArgument(Int argumentExpressionIndex) {
+        this.markArgumentFlag(argumentExpressionIndex, 2);
+    }
+
+    public Bool sharesArgument(Int argumentExpressionIndex) {
+        return this.argumentFlags(argumentExpressionIndex) >= 2;
+    }
+
+    // Flagged argument expressions are few, but the emitter asks about every
+    // expression, so the flags live in a small hash keyed by expression index
+    // instead of a list as long as the program: 1 releases a constructor
+    // temporary, 2 shares a borrowed reference, 3 both.
+    private Void markArgumentFlag(Int argumentExpressionIndex, Int flag) {
+        if (argumentExpressionIndex <= 0) {
+            return;
+        }
+
+        Int entry = this.argumentFlagEntry(argumentExpressionIndex);
+
+        if (entry >= 0) {
+            Int current = this.argumentFlagValueItems.get(entry);
+
+            if (current != flag && current != 3) {
+                this.argumentFlagValueItems.set(entry, current + flag);
+            }
+
+            return;
+        }
+
+        if (this.argumentFlagHeadItems.length() == 0) {
+            Int bucket = 0;
+
+            while (bucket < 1024) {
+                this.argumentFlagHeadItems.add(-1);
+                bucket = bucket + 1;
+            }
+        }
+
+        Int bucketIndex = argumentExpressionIndex % 1024;
+        this.argumentFlagKeyItems.add(argumentExpressionIndex);
+        this.argumentFlagValueItems.add(flag);
+        this.argumentFlagNextItems.add(this.argumentFlagHeadItems.get(bucketIndex));
+        this.argumentFlagHeadItems.set(bucketIndex, this.argumentFlagKeyItems.length() - 1);
+    }
+
+    private Int argumentFlags(Int argumentExpressionIndex) {
+        Int entry = this.argumentFlagEntry(argumentExpressionIndex);
+
+        if (entry < 0) {
+            return 0;
+        }
+
+        return this.argumentFlagValueItems.get(entry);
+    }
+
+    private Int argumentFlagEntry(Int argumentExpressionIndex) {
+        if (argumentExpressionIndex <= 0 || this.argumentFlagHeadItems.length() == 0) {
+            return -1;
+        }
+
+        Int entry = this.argumentFlagHeadItems.get(argumentExpressionIndex % 1024);
+
+        while (entry >= 0) {
+            if (this.argumentFlagKeyItems.get(entry) == argumentExpressionIndex) {
+                return entry;
+            }
+
+            entry = this.argumentFlagNextItems.get(entry);
+        }
+
+        return -1;
+    }
+
+    // One class index for every Flow query made during emission; building a
+    // fresh catalog per emitted call re-indexed every class each time.
+    public HyperAllocFlowProgramCatalog programCatalog() {
+        return this.catalogValue;
+    }
+
+    public Void add(HyperAllocFlowDecision decision) {
+        Int decisionIndex = this.decisionItems.length();
+        this.decisionItems.add(decision);
+        this.indexDecision(decision.expressionIndex(), decisionIndex);
+    }
+
+    public Void setFunctionSummaries(List<FunctionSummary> summaries) {
+        this.summaryItems = List();
+        Int index = 0;
+
+        while (index < summaries.length()) {
+            this.summaryItems.add(summaries.get(index));
+            index = index + 1;
+        }
+    }
+
+    // Merged summaries of overridden methods (see HyperAllocFlowEscapeAnalyzer); call
+    // summary indexes past the real summaries address them.
+    public Void setVirtualSummaries(List<Int> slots, List<FunctionSummary> summaries, List<Int> memberStarts, List<Int> members) {
+        this.virtualSlotItems = slots;
+        this.virtualSummaryItems = summaries;
+        this.virtualMemberStartItems = memberStarts;
+        this.virtualMemberItems = members;
+    }
+
+    private FunctionSummary callSummaryAt(Int index) {
+        if (index < this.summaryItems.length()) {
+            return this.summaryItems.get(index);
+        }
+
+        return this.virtualSummaryItems.get(index - this.summaryItems.length());
+    }
+
+    private Int callSummaryIndexFor(Int index) {
+        if (index < 0 || index >= this.virtualSlotItems.length() || this.virtualSlotItems.get(index) < 0) {
+            return index;
+        }
+
+        return this.summaryItems.length() + this.virtualSlotItems.get(index);
+    }
+
+    private Int methodSummaryIndex(MethodDeclaration method) {
+        List<String> parameterTypes = List();
+        Int index = 0;
+
+        while (index < method.parameterCount()) {
+            parameterTypes.add(method.parameterAt(index).typeName());
+            index = index + 1;
+        }
+
+        index = 0;
+
+        while (index < this.summaryItems.length()) {
+            if (this.summaryItems.get(index).matchesResolved(method.ownerName(), method.name(), parameterTypes, method.isStatic())) {
+                return index;
+            }
+
+            index = index + 1;
+        }
+
+        return -1;
+    }
+
+    // True when calls to `method` may run an override and therefore must go
+    // through a dispatcher that honours the merged call summary.
+    public Bool methodHasOverrides(MethodDeclaration method) {
+        if (this.virtualSummaryItems.length() == 0) {
+            return false;
+        }
+
+        Int index = this.methodSummaryIndex(method);
+        return index >= 0 && this.callSummaryIndexFor(index) != index;
+    }
+
+    public Bool methodOverrides(MethodDeclaration method, MethodDeclaration implementation) {
+        Int index = this.methodSummaryIndex(method);
+        Int implementationIndex = this.methodSummaryIndex(implementation);
+
+        if (index < 0 || implementationIndex < 0 || index >= this.virtualSlotItems.length() || this.virtualSlotItems.get(index) < 0) {
+            return false;
+        }
+
+        Int slot = this.virtualSlotItems.get(index);
+        Int position = this.virtualMemberStartItems.get(slot);
+        Int end = this.virtualMemberItems.length();
+
+        if (slot + 1 < this.virtualMemberStartItems.length()) {
+            end = this.virtualMemberStartItems.get(slot + 1);
+        }
+
+        while (position < end) {
+            if (this.virtualMemberItems.get(position) == implementationIndex) {
+                return true;
+            }
+
+            position = position + 1;
+        }
+
+        return false;
+    }
+
+    // Ownership of the method body's own result.
+    public Bool methodReturnsOwned(MethodDeclaration method) {
+        Int index = this.methodSummaryIndex(method);
+        return index >= 0 && this.summaryItems.get(index).returnsOwned();
+    }
+
+    // Ownership a call to `method` hands to its caller (merged over overrides).
+    public Bool methodCallReturnsOwned(MethodDeclaration method) {
+        Int index = this.methodSummaryIndex(method);
+        return index >= 0 && this.callSummaryAt(this.callSummaryIndexFor(index)).returnsOwned();
+    }
+
+    public Bool methodCallReturnsOwnedString(MethodDeclaration method) {
+        return method.returnTypeName() == "String" && this.methodCallReturnsOwned(method);
+    }
+
+    public Int callSummaryIndex(Expression expression) {
+        return this.resolvedCallSummaryIndex(expression);
+    }
+
+    public FunctionSummary callSummary(Int index) {
+        return this.callSummaryAt(index);
+    }
+
+    public List<HyperAllocFlowDecision> decisions() {
+        return this.decisionItems;
+    }
+
+    public List<FunctionSummary> functionSummaries() {
+        return this.summaryItems;
+    }
+
+    private Int resolvedCallSummaryIndex(Expression expression) {
+        if (!expression.hasResolvedMethod()) {
+            return -1;
+        }
+
+        Int cached = expression.hyperAllocFlowSummaryIndex();
+
+        if (cached >= 0 && cached < this.summaryItems.length() + this.virtualSummaryItems.length()) {
+            return cached;
+        }
+
+        if (cached == -2) {
+            return -1;
+        }
+
+        Int index = 0;
+
+        while (index < this.summaryItems.length()) {
+            FunctionSummary summary = this.summaryItems.get(index);
+
+            if (summary.matchesResolved(expression.resolvedMethodOwner(), expression.text(), expression.resolvedMethodParameterTypes(), expression.resolvedMethodStatic())) {
+                Int callIndex = this.callSummaryIndexFor(index);
+                expression.setFlowSummaryIndex(callIndex);
+                return callIndex;
+            }
+
+            index = index + 1;
+        }
+
+        // Summaries are final once the report exists; remember the miss so
+        // emission does not rescan every summary for each builtin call.
+        expression.setFlowSummaryIndex(-2);
+        return -1;
+    }
+
+    public Bool callReturnsOwnedString(Expression expression) {
+        Int index = this.resolvedCallSummaryIndex(expression);
+
+        if (index < 0) {
+            return false;
+        }
+
+        FunctionSummary summary = this.callSummaryAt(index);
+        return summary.returnsOwned() && summary.returnTypeMatches("String");
+    }
+
+    public Bool callReturnsOwnedReference(Expression expression) {
+        // String.split builds a fresh List that owns its parts.
+        if (expression.kindIs("methodcall") && expression.hasResolvedMethod() && expression.resolvedMethodOwner() == "String" && expression.textIs("split")) {
+            return true;
+        }
+
+        Int index = this.resolvedCallSummaryIndex(expression);
+        if (index < 0) { return false; }
+        FunctionSummary summary = this.callSummaryAt(index);
+        return summary.returnsOwned() && !this.summaryHasPrimitiveReturn(summary);
+    }
+
+    public Bool callReceiverIsView(Expression expression) {
+        Int index = this.resolvedCallSummaryIndex(expression);
+        if (index < 0) { return false; }
+        return this.callSummaryAt(index).receiverIsView();
+    }
+
+    public Bool callArgumentIsView(Expression expression, Int argumentIndex) {
+        Int index = this.resolvedCallSummaryIndex(expression);
+        if (index < 0) { return false; }
+        return this.callSummaryAt(index).parameterIsView(argumentIndex);
+    }
+
+    public Bool isReleasableTemporary(Int expressionIndex) {
+        Int decisionIndex = this.decisionIndexForExpression(expressionIndex);
+
+        if (decisionIndex >= 0) {
+            return this.decisionItems.get(decisionIndex).temporaryReleaseAllowed();
+        }
+
+        return false;
+    }
+
+    public Bool callArgumentIsIndependentView(Expression expression, Int argumentIndex) {
+        Int index = this.resolvedCallSummaryIndex(expression);
+        if (index < 0) { return false; }
+        FunctionSummary summary = this.callSummaryAt(index);
+        return summary.parameterIsView(argumentIndex) && (this.summaryHasPrimitiveReturn(summary) || (summary.returnsOwned() && !summary.returnBorrowsParameter(argumentIndex)));
+    }
+
+    public Bool callReceiverIsIndependentView(Expression expression) {
+        Int index = this.resolvedCallSummaryIndex(expression);
+        if (index < 0) { return false; }
+        FunctionSummary summary = this.callSummaryAt(index);
+        // Primitive results copy their value; they cannot borrow the receiver's
+        // storage even when a field-access return was conservatively marked so.
+        return summary.receiverIsView() && (this.summaryHasPrimitiveReturn(summary) || (summary.returnsOwned() && !summary.returnBorrowsReceiver()));
+    }
+
+    private Bool summaryHasPrimitiveReturn(FunctionSummary summary) {
+        return summary.returnTypeMatches("Void") || summary.returnTypeMatches("Int") || summary.returnTypeMatches("Bool") || summary.returnTypeMatches("Float") || summary.returnTypeMatches("Char");
+    }
+
+    public Bool callStringArgumentIsIndependentView(Expression expression, MethodDeclaration method, Int argumentIndex) {
+        Int index = this.resolvedCallSummaryIndex(expression);
+
+        if (index < 0) {
+            return false;
+        }
+
+        FunctionSummary summary = this.callSummaryAt(index);
+
+        // An unresolved String return may alias an input. Keep its lifetime
+        // unless the complete return summary proves an independently owned value.
+        if (summary.returnTypeMatches("String") && !summary.returnsOwned()) {
+            return false;
+        }
+
+        List<String> parameterTypes = List();
+        Int parameterIndex = 0;
+
+        while (parameterIndex < method.parameterCount()) {
+            parameterTypes.add(method.parameterAt(parameterIndex).typeName());
+            parameterIndex = parameterIndex + 1;
+        }
+
+        return summary.matchesResolved(method.ownerName(), method.name(), parameterTypes, method.isStatic()) && summary.parameterIsView(argumentIndex) && !summary.returnBorrowsParameter(argumentIndex);
+    }
+
+    public Bool methodReturnsOwnedString(MethodDeclaration method) {
+        List<String> parameterTypes = List();
+        Int index = 0;
+
+        while (index < method.parameterCount()) {
+            parameterTypes.add(method.parameterAt(index).typeName());
+            index = index + 1;
+        }
+
+        index = 0;
+
+        while (index < this.summaryItems.length()) {
+            FunctionSummary summary = this.summaryItems.get(index);
+
+            if (summary.matchesResolved(method.ownerName(), method.name(), parameterTypes, method.isStatic())) {
+                return summary.returnsOwned() && summary.returnTypeMatches("String");
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    public Bool hasExpression(Int expressionIndex) {
+        return this.decisionIndexForExpression(expressionIndex) >= 0;
+    }
+
+    public AllocationKind kindForExpression(Int expressionIndex) {
+        Int decisionIndex = this.decisionIndexForExpression(expressionIndex);
+
+        if (decisionIndex >= 0) {
+            return this.decisionItems.get(decisionIndex).kind();
+        }
+
+        return AllocationKind("Root");
+    }
+
+    public Bool isAllocation(Int expressionIndex) {
+        Int decisionIndex = this.decisionIndexForExpression(expressionIndex);
+
+        if (decisionIndex >= 0) {
+            return this.decisionItems.get(decisionIndex).isAllocation();
+        }
+
+        return false;
+    }
+
+    public Bool isOwnershipTransfer(Int expressionIndex) {
+        Int decisionIndex = this.decisionIndexForExpression(expressionIndex);
+
+        if (decisionIndex >= 0) {
+            return this.decisionItems.get(decisionIndex).isOwnershipTransfer();
+        }
+
+        return false;
+    }
+
+    public Bool scopeCleanupAllowed(Int expressionIndex) {
+        Int decisionIndex = this.decisionIndexForExpression(expressionIndex);
+
+        if (decisionIndex >= 0) {
+            return this.decisionItems.get(decisionIndex).scopeCleanupAllowed();
+        }
+
+        return false;
+    }
+
+    public String reasonForExpression(Int expressionIndex) {
+        Int decisionIndex = this.decisionIndexForExpression(expressionIndex);
+
+        if (decisionIndex >= 0) {
+            return this.decisionItems.get(decisionIndex).reason();
+        }
+
+        return "default root allocation";
+    }
+
+    public Void recordLowering(Int expressionIndex, String name, String reason) {
+        Int decisionIndex = this.decisionIndexForExpression(expressionIndex);
+
+        if (decisionIndex >= 0) {
+            this.decisionItems.get(decisionIndex).markLowering(name, reason);
+        }
+    }
+
+    public Void markStringOwnershipSlot(Int expressionIndex, Bool borrowedInitializer, Int line, Int column) {
+        if (!this.stringOwnershipSlotItems.contains(expressionIndex)) {
+            this.stringOwnershipSlotItems.add(expressionIndex);
+        }
+
+        if (borrowedInitializer && !this.stringOwnershipCopyItems.contains(expressionIndex)) {
+            this.stringOwnershipCopyItems.add(expressionIndex);
+        }
+
+        if (!borrowedInitializer || this.hasExpression(expressionIndex)) {
+            return;
+        }
+
+        HyperAllocFlowDecision decision = HyperAllocFlowDecision(expressionIndex, "String", AllocationKind("Root"), "mutable String ownership slot copies its borrowed initializer into unique storage", line, column);
+        decision.setEstimatedBytes(24);
+        decision.allowScopeCleanup();
+        this.add(decision);
+    }
+
+    // A local whose ownership leaves the method through a return expression
+    // that is not the bare name, e.g. `return this.unpack(value);` where the
+    // callee summary proves that the result borrows `value`. The emitter must
+    // not release such a local on that return path.
+    public Void recordReturnTransfer(Int returnExpressionIndex, String name) {
+        if (this.returnTransfersName(returnExpressionIndex, name)) {
+            return;
+        }
+
+        if (returnExpressionIndex < 0) {
+            return;
+        }
+
+        while (this.returnTransferHeadItems.length() <= returnExpressionIndex) {
+            this.returnTransferHeadItems.add(-1);
+        }
+
+        this.returnTransferIndexItems.add(returnExpressionIndex);
+        this.returnTransferNameItems.add(name + "");
+        this.returnTransferNextItems.add(this.returnTransferHeadItems.get(returnExpressionIndex));
+        this.returnTransferHeadItems.set(returnExpressionIndex, this.returnTransferIndexItems.length() - 1);
+    }
+
+    public Bool returnTransfersName(Int returnExpressionIndex, String name) {
+        if (returnExpressionIndex < 0 || returnExpressionIndex >= this.returnTransferHeadItems.length()) {
+            return false;
+        }
+
+        Int index = this.returnTransferHeadItems.get(returnExpressionIndex);
+
+        while (index >= 0) {
+            if (this.returnTransferNameItems.get(index) == name) {
+                return true;
+            }
+
+            index = this.returnTransferNextItems.get(index);
+        }
+
+        return false;
+    }
+
+    // A literal or borrowed `return` inside a method whose String result is
+    // owned on another path; the emitter returns a fresh copy instead.
+    public Void markReturnCopy(Int returnExpressionIndex) {
+        if (returnExpressionIndex <= 0) {
+            return;
+        }
+
+        while (this.returnCopyFlagItems.length() <= returnExpressionIndex) {
+            this.returnCopyFlagItems.add(0);
+        }
+
+        if (this.returnCopyFlagItems.get(returnExpressionIndex) == 0) {
+            this.returnCopyFlagItems.set(returnExpressionIndex, 1);
+            this.returnCopyCountValue = this.returnCopyCountValue + 1;
+        }
+    }
+
+    public Bool requiresReturnCopy(Int returnExpressionIndex) {
+        return returnExpressionIndex > 0 && returnExpressionIndex < this.returnCopyFlagItems.length() && this.returnCopyFlagItems.get(returnExpressionIndex) == 1;
+    }
+
+    public Bool isStringOwnershipSlot(Int expressionIndex) {
+        return this.stringOwnershipSlotItems.contains(expressionIndex);
+    }
+
+    public Void markStringOwnershipCopy(Int expressionIndex) {
+        if (!this.stringOwnershipCopyItems.contains(expressionIndex)) {
+            this.stringOwnershipCopyItems.add(expressionIndex);
+        }
+    }
+
+    public Bool requiresStringOwnershipCopy(Int expressionIndex) {
+        return this.stringOwnershipCopyItems.contains(expressionIndex);
+    }
+
+    public Void markSafetyIssue(Int expressionIndex, String typeName, String reason, Int line, Int column) {
+        Int decisionIndex = this.decisionIndexForExpression(expressionIndex);
+
+        if (decisionIndex >= 0) {
+            this.decisionItems.get(decisionIndex).markSafetyIssue(reason);
+            return;
+        }
+
+        HyperAllocFlowDecision decision = HyperAllocFlowDecision(expressionIndex, typeName, AllocationKind("Root"), "assignment safety validation", line, column);
+        decision.setEstimatedBytes(0);
+        decision.markNonAllocation();
+        decision.markSafetyIssue(reason);
+        this.add(decision);
+    }
+
+    public Void recordCleanup(Int expressionIndex, String name, String reason) {
+        Int decisionIndex = this.decisionIndexForExpression(expressionIndex);
+
+        if (decisionIndex >= 0) {
+            this.decisionItems.get(decisionIndex).markCleanup(name, reason);
+        }
+    }
+
+    public String loweringForExpression(Int expressionIndex) {
+        Int decisionIndex = this.decisionIndexForExpression(expressionIndex);
+
+        if (decisionIndex >= 0) {
+            return this.decisionItems.get(decisionIndex).loweringName();
+        }
+
+        return "pending";
+    }
+
+    private Int decisionIndexForExpression(Int expressionIndex) {
+        if (expressionIndex < 0 || expressionIndex >= this.decisionIndexItems.length()) {
+            return -1;
+        }
+
+        Int indexed = this.decisionIndexItems.get(expressionIndex);
+
+        if (indexed <= 0) {
+            return -1;
+        }
+
+        return indexed - 1;
+    }
+
+    private Void indexDecision(Int expressionIndex, Int decisionIndex) {
+        if (expressionIndex < 0) {
+            return;
+        }
+
+        while (this.decisionIndexItems.length() <= expressionIndex) {
+            this.decisionIndexItems.add(0);
+        }
+
+        if (this.decisionIndexItems.get(expressionIndex) == 0) {
+            this.decisionIndexItems.set(expressionIndex, decisionIndex + 1);
+        }
+    }
+
+
+    public Bool statementsUseKind(List<Statement> statements, String kindName) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.expressionIndex() != 0 && this.kindForExpression(statement.expressionIndex()).name() == kindName) {
+                return true;
+            }
+
+            if (this.statementsUseKind(statement.bodyStatements(), kindName)) {
+                return true;
+            }
+
+            if (this.statementsUseKind(statement.elseStatements(), kindName)) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    public Void recordFoldedMethodInline() {
+        this.foldedMethodInlineCountValue = this.foldedMethodInlineCountValue + 1;
+    }
+
+    public Int foldedMethodInlineCount() {
+        return this.foldedMethodInlineCountValue;
+    }
+
+    public Void recordInlineCopy() {
+        this.inlineCopyCountValue = this.inlineCopyCountValue + 1;
+    }
+
+    public Int inlineCopyCount() {
+        return this.inlineCopyCountValue;
+    }
+
+    public Void recordInlineBoundaryCall() {
+        this.inlineBoundaryCallCountValue = this.inlineBoundaryCallCountValue + 1;
+    }
+
+    public Void recordInlineReturn() {
+        this.inlineReturnCountValue = this.inlineReturnCountValue + 1;
+    }
+
+    public Void recordContainerOwnedOperation() {
+        this.containerOwnedOperationCountValue = this.containerOwnedOperationCountValue + 1;
+    }
+
+    public Void recordShardCleanup() {
+        this.shardCleanupCountValue = this.shardCleanupCountValue + 1;
+    }
+
+    public Void recordPoolReset() {
+        this.poolResetCountValue = this.poolResetCountValue + 1;
+    }
+
+    public Void recordTemporaryStringRelease() {
+        this.temporaryStringReleaseCountValue = this.temporaryStringReleaseCountValue + 1;
+    }
+
+    public Void print() {
+        println("HyperAlloc Flow Report");
+        println("  Folded: " + this.count("Folded").toString());
+        println("  Local:  " + this.count("Local").toString());
+        println("  Inline: " + this.count("Inline").toString());
+        println("  Shard:  " + this.count("Shard").toString());
+        println("  Pool:   " + this.count("Pool").toString());
+        println("  Root:   " + this.count("Root").toString());
+        println("  Scope-owned Roots: " + this.countScopeOwnedRoots().toString());
+        println("  Scope-owned Bonds: " + this.countScopeOwnedBonds().toString());
+        println("  Owned-return methods: " + this.countOwnedReturningMethods().toString());
+        println("  Owned return transfers: " + this.countOwnershipTransfers().toString());
+        println("  Bond:   " + this.count("Bond").toString());
+
+        if (this.count("Bond") > 0 || this.countLowering("hyperalloc_flow_bond_promote") > 0) {
+            println("  Bond cycle protection: automatic trial collapse");
+        }
+
+        println("  Static: " + this.count("Static").toString());
+        println("  View parameters: " + this.countViewParameters().toString());
+        println("  Escaping parameters: " + this.countEscapingParameters().toString());
+        println("  View receivers: " + this.countViewReceivers().toString());
+        println("  Escaping receivers: " + this.countEscapingReceivers().toString());
+        println("  Lowered as scalar replacement: " + this.countLowering("scalar replacement").toString());
+        println("  Folded method calls inlined: " + this.foldedMethodInlineCountValue.toString());
+        println("  Lowered as inline aggregate: " + this.countLowering("inline aggregate").toString());
+        println("  Inline value copies: " + this.inlineCopyCountValue.toString());
+        println("  Inline boundary calls: " + this.inlineBoundaryCallCountValue.toString());
+        println("  Inline returns materialized: " + this.inlineReturnCountValue.toString());
+        println("  Container owned operations: " + this.containerOwnedOperationCountValue.toString());
+        println("  Shard scope cleanups: " + this.shardCleanupCountValue.toString());
+        println("  Pool owner resets: " + this.poolResetCountValue.toString());
+        println("  Temporary String releases: " + this.temporaryStringReleaseCountValue.toString());
+        println("  Mutable String ownership slots: " + this.stringOwnershipSlotItems.length().toString());
+        println("  Owned String return copies: " + this.returnCopyCountValue.toString());
+        println("  Lowered as alloca: " + this.countLowering("alloca").toString());
+        println("  Lowered as hyperalloc_flow_pool_acquire: " + this.countLowering("hyperalloc_flow_pool_acquire").toString());
+        println("  Lowered as hyperalloc_flow_shard_alloc: " + this.countLowering("hyperalloc_flow_shard_alloc").toString());
+        println("  Lowered as hyperalloc_flow_bond_alloc: " + this.countLowering("hyperalloc_flow_bond_alloc").toString());
+        println("  Lowered as hyperalloc_flow_bond_promote: " + this.countLowering("hyperalloc_flow_bond_promote").toString());
+        println("  Lowered as hyperalloc_flow_alloc: " + this.countLowering("hyperalloc_flow_alloc").toString());
+        println("  Cleaned with hyperalloc_flow_owner_leave: " + this.countCleanup("hyperalloc_flow_owner_leave").toString());
+        println("  Cleaned with hyperalloc_flow_owner_reset: " + this.countCleanup("hyperalloc_flow_owner_reset").toString());
+        println("  Cleaned with hyperalloc_flow_root_release: " + this.countCleanup("hyperalloc_flow_root_release").toString());
+        println("  Cleaned with hyperalloc_flow_bond_release: " + this.countCleanup("hyperalloc_flow_bond_release").toString());
+        println("  Estimated eliminated object bytes: " + this.sumEstimatedBytesForKind("Folded").toString());
+        println("  Estimated Inline value bytes: " + this.sumEstimatedBytesForKind("Inline").toString());
+        println("  Estimated Local stack bytes: " + this.sumEstimatedBytesForKind("Local").toString());
+        println("  Estimated Pool reusable slot bytes: " + this.sumEstimatedBytesForKind("Pool").toString());
+        println("  Estimated Shard bytes per repeated scope: " + this.sumEstimatedBytesForKind("Shard").toString());
+        println("  Estimated Root heap bytes: " + this.sumEstimatedBytesForKind("Root").toString());
+        println("  Estimated Bond heap bytes: " + this.sumEstimatedBytesForKind("Bond").toString());
+        println("  Estimated owned return bytes: " + this.sumOwnershipTransferBytes().toString());
+        println("  Estimated escaped heap bytes avoided by Local: " + this.sumEstimatedBytesForLowering("alloca").toString());
+        println("  Safety violations: " + this.countSafetyIssues().toString());
+        println("  Strict unresolved allocations: " + this.countStrictIssues().toString());
+
+        if (this.decisionItems.length() == 0) {
+            println("  No object allocations recorded.");
+            return;
+        }
+
+        println("");
+        println("Flow decisions:");
+        Int index = 0;
+
+        while (index < this.decisionItems.length()) {
+            HyperAllocFlowDecision decision = this.decisionItems.get(index);
+            String strictSuffix = "";
+
+            if (decision.isStrictIssue()) {
+                strictSuffix = " [strict unresolved: " + decision.strictReason() + "]";
+            }
+
+            if (decision.isSafetyIssue()) {
+                strictSuffix = strictSuffix + " [safety violation: " + decision.safetyReason() + "]";
+            }
+
+            String cleanupSuffix = "";
+            String ownershipSuffix = "";
+
+            if (decision.isOwnershipTransfer()) {
+                ownershipSuffix = " [owned return transfer]";
+            } else if (decision.scopeCleanupAllowed()) {
+                ownershipSuffix = " [scope-owned]";
+            }
+
+            if (decision.hasCleanup()) {
+                cleanupSuffix = " cleanup via " + decision.cleanupName() + " (" + decision.cleanupReason() + ")";
+            }
+
+            if (decision.hasLowering()) {
+                println("  " + decision.line().toString() + ":" + decision.column().toString() + " " + decision.typeName() + " -> " + decision.kind().name() + " ~" + decision.estimatedBytes().toString() + " B (" + decision.reason() + ") lowered as " + decision.loweringName() + " (" + decision.loweringReason() + ")" + ownershipSuffix + cleanupSuffix + strictSuffix);
+            } else {
+                println("  " + decision.line().toString() + ":" + decision.column().toString() + " " + decision.typeName() + " -> " + decision.kind().name() + " ~" + decision.estimatedBytes().toString() + " B (" + decision.reason() + ")" + ownershipSuffix + cleanupSuffix + strictSuffix);
+            }
+            index = index + 1;
+        }
+    }
+
+
+    public Int safetyIssueCount() {
+        return this.countSafetyIssues();
+    }
+
+    public Int strictIssueCount() {
+        return this.countStrictIssues();
+    }
+
+    public Int allocationCountForKind(String kindName) {
+        return this.count(kindName);
+    }
+
+    public Int estimatedBytesForKind(String kindName) {
+        return this.sumEstimatedBytesForKind(kindName);
+    }
+
+    public Int estimatedOwnedReturnBytes() {
+        return this.sumOwnershipTransferBytes();
+    }
+
+    private Int countSafetyIssues() {
+        Int total = 0;
+        Int index = 0;
+
+        while (index < this.decisionItems.length()) {
+            if (this.decisionItems.get(index).isSafetyIssue()) {
+                total = total + 1;
+            }
+
+            index = index + 1;
+        }
+
+        return total;
+    }
+
+    private Int countStrictIssues() {
+        Int total = 0;
+        Int index = 0;
+
+        while (index < this.decisionItems.length()) {
+            if (this.decisionItems.get(index).isStrictIssue()) {
+                total = total + 1;
+            }
+
+            index = index + 1;
+        }
+
+        return total;
+    }
+
+    private Int count(String kindName) {
+        Int total = 0;
+        Int index = 0;
+
+        while (index < this.decisionItems.length()) {
+            HyperAllocFlowDecision decision = this.decisionItems.get(index);
+
+            if (decision.isAllocation() && decision.kind().name() == kindName) {
+                total = total + 1;
+            }
+
+            index = index + 1;
+        }
+
+        return total;
+    }
+
+    private Int countScopeOwnedRoots() {
+        Int total = 0;
+        Int index = 0;
+
+        while (index < this.decisionItems.length()) {
+            HyperAllocFlowDecision decision = this.decisionItems.get(index);
+
+            if (decision.isAllocation() && decision.kind().name() == "Root" && decision.scopeCleanupAllowed()) {
+                total = total + 1;
+            }
+
+            index = index + 1;
+        }
+
+        return total;
+    }
+
+    private Int countScopeOwnedBonds() {
+        Int total = 0;
+        Int index = 0;
+
+        while (index < this.decisionItems.length()) {
+            HyperAllocFlowDecision decision = this.decisionItems.get(index);
+
+            if (decision.isAllocation() && decision.kind().name() == "Bond" && decision.scopeCleanupAllowed()) {
+                total = total + 1;
+            }
+
+            index = index + 1;
+        }
+
+        return total;
+    }
+
+    private Int countCleanup(String cleanupName) {
+        Int total = 0;
+        Int index = 0;
+
+        while (index < this.decisionItems.length()) {
+            HyperAllocFlowDecision decision = this.decisionItems.get(index);
+
+            if (decision.cleanupName() == cleanupName) {
+                total = total + 1;
+            }
+
+            index = index + 1;
+        }
+
+        return total;
+    }
+
+    private Int countLowering(String loweringName) {
+        Int total = 0;
+        Int index = 0;
+
+        while (index < this.decisionItems.length()) {
+            HyperAllocFlowDecision decision = this.decisionItems.get(index);
+
+            if (decision.loweringName() == loweringName) {
+                total = total + 1;
+            }
+
+            index = index + 1;
+        }
+
+        return total;
+    }
+
+
+    private Int sumEstimatedBytesForKind(String kindName) {
+        Int total = 0;
+        Int index = 0;
+
+        while (index < this.decisionItems.length()) {
+            HyperAllocFlowDecision decision = this.decisionItems.get(index);
+
+            if (decision.isAllocation() && decision.kind().name() == kindName) {
+                total = total + decision.estimatedBytes();
+            }
+
+            index = index + 1;
+        }
+
+        return total;
+    }
+
+    private Int sumEstimatedBytesForLowering(String loweringName) {
+        Int total = 0;
+        Int index = 0;
+
+        while (index < this.decisionItems.length()) {
+            HyperAllocFlowDecision decision = this.decisionItems.get(index);
+
+            if (decision.loweringName() == loweringName) {
+                total = total + decision.estimatedBytes();
+            }
+
+            index = index + 1;
+        }
+
+        return total;
+    }
+
+
+    private Int countOwnedReturningMethods() {
+        Int total = 0;
+        Int index = 0;
+
+        while (index < this.summaryItems.length()) {
+            FunctionSummary summary = this.summaryItems.get(index);
+
+            if (!summary.isGenerated() && summary.returnsOwned()) {
+                total = total + 1;
+            }
+
+            index = index + 1;
+        }
+
+        return total;
+    }
+
+    private Int countOwnershipTransfers() {
+        Int total = 0;
+        Int index = 0;
+
+        while (index < this.decisionItems.length()) {
+            if (this.decisionItems.get(index).isOwnershipTransfer()) {
+                total = total + 1;
+            }
+
+            index = index + 1;
+        }
+
+        return total;
+    }
+
+    private Int sumOwnershipTransferBytes() {
+        Int total = 0;
+        Int index = 0;
+
+        while (index < this.decisionItems.length()) {
+            HyperAllocFlowDecision decision = this.decisionItems.get(index);
+
+            if (decision.isOwnershipTransfer()) {
+                total = total + decision.estimatedBytes();
+            }
+
+            index = index + 1;
+        }
+
+        return total;
+    }
+
+    private Int countViewParameters() {
+        Int total = 0;
+        Int summaryIndex = 0;
+
+        while (summaryIndex < this.summaryItems.length()) {
+            FunctionSummary summary = this.summaryItems.get(summaryIndex);
+
+            if (summary.isGenerated()) {
+                summaryIndex = summaryIndex + 1;
+                continue;
+            }
+
+            Int effectIndex = 0;
+
+            while (effectIndex < summary.parameterEffects().length()) {
+                if (summary.parameterEffects().get(effectIndex).isView()) {
+                    total = total + 1;
+                }
+
+                effectIndex = effectIndex + 1;
+            }
+
+            summaryIndex = summaryIndex + 1;
+        }
+
+        return total;
+    }
+
+    private Int countEscapingParameters() {
+        Int total = 0;
+        Int summaryIndex = 0;
+
+        while (summaryIndex < this.summaryItems.length()) {
+            FunctionSummary summary = this.summaryItems.get(summaryIndex);
+
+            if (summary.isGenerated()) {
+                summaryIndex = summaryIndex + 1;
+                continue;
+            }
+
+            Int effectIndex = 0;
+
+            while (effectIndex < summary.parameterEffects().length()) {
+                if (summary.parameterEffects().get(effectIndex).escapes()) {
+                    total = total + 1;
+                }
+
+                effectIndex = effectIndex + 1;
+            }
+
+            summaryIndex = summaryIndex + 1;
+        }
+
+        return total;
+    }
+
+    private Int countViewReceivers() {
+        Int total = 0;
+        Int summaryIndex = 0;
+
+        while (summaryIndex < this.summaryItems.length()) {
+            FunctionSummary summary = this.summaryItems.get(summaryIndex);
+
+            if (summary.isGenerated()) {
+                summaryIndex = summaryIndex + 1;
+                continue;
+            }
+
+            if (!summary.isStatic() && summary.receiverIsView()) {
+                total = total + 1;
+            }
+
+            summaryIndex = summaryIndex + 1;
+        }
+
+        return total;
+    }
+
+    private Int countEscapingReceivers() {
+        Int total = 0;
+        Int summaryIndex = 0;
+
+        while (summaryIndex < this.summaryItems.length()) {
+            FunctionSummary summary = this.summaryItems.get(summaryIndex);
+
+            if (summary.isGenerated()) {
+                summaryIndex = summaryIndex + 1;
+                continue;
+            }
+
+            if (!summary.isStatic() && summary.receiverEscapes()) {
+                total = total + 1;
+            }
+
+            summaryIndex = summaryIndex + 1;
+        }
+
+        return total;
+    }
+}

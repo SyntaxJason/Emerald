@@ -1,0 +1,15 @@
+public class HyperAllocFlowV1SafeViewBox {
+    public Int value;
+
+    public HyperAllocFlowV1SafeViewBox(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1SafeViewBox> values = List();
+    HyperAllocFlowV1SafeViewBox owned = HyperAllocFlowV1SafeViewBox(42);
+    values.add(owned);
+    HyperAllocFlowV1SafeViewBox view = values.get(0);
+    println(view.value.toString());
+}

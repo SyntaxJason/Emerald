@@ -1,0 +1,94 @@
+use Std::Process::Process;
+
+public class HyperAllocFlowMemoryNumber {
+    private Int number;
+
+    public HyperAllocFlowMemoryNumber(Int value) { this.number = value; }
+    public Int value() { return this.number; }
+    public HyperAllocFlowMemoryNumber copy() { return HyperAllocFlowMemoryNumber(this.number); }
+    public static HyperAllocFlowMemoryNumber make() { return HyperAllocFlowMemoryNumber(42); }
+    public static Bool matches(HyperAllocFlowMemoryNumber value) { return value.value() == 42; }
+}
+
+public class HyperAllocFlowMemoryText {
+    private String value;
+
+    public HyperAllocFlowMemoryText(String text) {
+        this.value = text;
+    }
+
+    public String borrowed() {
+        return this.value;
+    }
+
+    public String owned() {
+        return this.value + " ";
+    }
+
+    public String toString() {
+        return this.value;
+    }
+
+    public static String identity(String text) {
+        return text;
+    }
+
+    public static String identityThroughToString(String text) {
+        return text.toString();
+    }
+
+    public static Bool singleOwnerScope() {
+        String unique = "4" + "2";
+        HyperAllocFlowMemoryText only = HyperAllocFlowMemoryText(unique);
+        return only.borrowed() == "42";
+    }
+
+    public static Bool matches(String text) {
+        return text == "42";
+    }
+}
+
+main() {
+    String shared = "4" + "2";
+    List<String> owner = List();
+    owner.add(shared);
+    HyperAllocFlowMemoryText text = HyperAllocFlowMemoryText(shared);
+    String borrowedIdentity = shared.toString();
+    Int index = 0;
+
+    while (index < 2000) {
+        if (HyperAllocFlowMemoryNumber.make().copy().value() != 42 || !HyperAllocFlowMemoryNumber.matches(HyperAllocFlowMemoryNumber.make())) { Process.exit(7); }
+        String floatText = 2.5.toString();
+        if (floatText != "2.5" || ("float=" + 2.5) != "float=2.5") { Process.exit(4); }
+        if (text.owned().trim() != "42" || text.borrowed().toString() != "42" || HyperAllocFlowMemoryText.identity(shared) != "42" || HyperAllocFlowMemoryText.identityThroughToString(shared) != "42" || borrowedIdentity != "42") {
+            Process.exit(1);
+        }
+
+        if (!text.borrowed().equals("4" + "2") || !text.borrowed().startsWith(("4" + " ").trim()) || !text.borrowed().endsWith(2.toString())) {
+            Process.exit(2);
+        }
+
+        if (text.owned().replace(("4" + " ").trim(), 4.toString()).trim().toLowerCase().toUpperCase() != "42") {
+            Process.exit(3);
+        }
+
+        if (text.owned().substring(0, 2).toInt() != 42 || text.owned().indexOf(2.toString()) != 1 || (" " + " ").trim().length() != 0) {
+            Process.exit(4);
+        }
+
+        if (true.toString() != "true" || false.toString() != "false" || !("4" + "2").contains(2.toString())) {
+            Process.exit(5);
+        }
+
+        if (!HyperAllocFlowMemoryText.singleOwnerScope() || !HyperAllocFlowMemoryText.matches(text.owned().trim()) || owner.get(0) != "42" || text.borrowed().charAt(0).toString() != "4") {
+            Process.exit(6);
+        }
+
+        index = index + 1;
+    }
+
+    println(text); // Borrowed custom toString must preserve the shared String.
+    println(text.borrowed());
+    println(owner.get(0));
+    println("flow-memory-ok");
+}

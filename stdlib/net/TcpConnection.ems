@@ -1,5 +1,14 @@
 namespace Std::Net;
 
+use Std::Native::NativeTcp;
+use Std::Net::Endpoint;
+use Std::Net::IEndpoint;
+use Std::Net::ITcpConnection;
+use Std::Result::Failure;
+use Std::Result::BoolSuccess;
+use Std::Result::IResult;
+use Std::Result::Success;
+
 public class TcpConnection implements ITcpConnection {
     private Int socketHandle;
     private Endpoint remoteEndpoint;
@@ -18,51 +27,75 @@ public class TcpConnection implements ITcpConnection {
     }
 
     public Bool isOpen() {
-        return Tcp.isOpen(this.socketHandle);
+        return NativeTcp.isOpen(this.socketHandle);
     }
 
     public String readText() {
-        return Tcp.readText(this.socketHandle);
+        return NativeTcp.readText(this.socketHandle);
     }
 
     public String readLine() {
-        return Tcp.readLine(this.socketHandle);
+        return NativeTcp.readLine(this.socketHandle);
     }
 
     public String readOr(String fallback) {
-        return this.tryReadText().unwrapOr(fallback);
+        if (!this.isOpen()) {
+            return fallback;
+        }
+
+        return this.readText();
     }
 
     public String readLineOr(String fallback) {
-        return this.tryReadLine().unwrapOr(fallback);
+        if (!this.isOpen()) {
+            return fallback;
+        }
+
+        return this.readLine();
     }
 
-    public Std::Result::IResult<String, String> tryReadText() {
-        return Tcp.tryReadText(this.socketHandle);
+    public IResult<String, String> tryReadText() {
+        if (!this.isOpen()) {
+            return Failure("TCP connection is closed");
+        }
+
+        return Success(this.readText());
     }
 
-    public Std::Result::IResult<String, String> tryReadLine() {
-        return Tcp.tryReadLine(this.socketHandle);
+    public IResult<String, String> tryReadLine() {
+        if (!this.isOpen()) {
+            return Failure("TCP connection is closed");
+        }
+
+        return Success(this.readLine());
     }
 
     public Bool writeText(String text) {
-        return Tcp.writeText(this.socketHandle, text);
+        return NativeTcp.writeText(this.socketHandle, text);
     }
 
     public Bool writeLine(String text) {
         return this.writeText(text + "\n");
     }
 
-    public Std::Result::IResult<Bool, String> tryWriteText(String text) {
-        return Tcp.tryWriteText(this.socketHandle, text);
+    public IResult<Bool, String> tryWriteText(String text) {
+        if (!this.isOpen()) {
+            return Failure("TCP connection is closed");
+        }
+
+        if (!this.writeText(text)) {
+            return Failure("Could not write to TCP connection");
+        }
+
+        return BoolSuccess(true);
     }
 
-    public Std::Result::IResult<Bool, String> tryWriteLine(String text) {
+    public IResult<Bool, String> tryWriteLine(String text) {
         return this.tryWriteText(text + "\n");
     }
 
     public Bool close() {
-        return Tcp.close(this.socketHandle);
+        return NativeTcp.close(this.socketHandle);
     }
 
     public Bool closeIfOpen() {
@@ -73,7 +106,15 @@ public class TcpConnection implements ITcpConnection {
         return this.close();
     }
 
-    public Std::Result::IResult<Bool, String> tryClose() {
-        return Tcp.tryClose(this.socketHandle);
+    public IResult<Bool, String> tryClose() {
+        if (!this.isOpen()) {
+            return BoolSuccess(true);
+        }
+
+        if (!this.close()) {
+            return Failure("Could not close TCP connection");
+        }
+
+        return BoolSuccess(true);
     }
 }

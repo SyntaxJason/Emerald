@@ -1,0 +1,102 @@
+namespace emerald::compiler::hyperallocflow::analysis::decision;
+
+use emerald::compiler::hyperallocflow::AllocationKind;
+use emerald::compiler::hyperallocflow::HyperAllocFlowBudget;
+use emerald::compiler::hyperallocflow::HyperAllocFlowDecision;
+use emerald::compiler::hyperallocflow::HyperAllocFlowReport;
+use emerald::compiler::hyperallocflow::analysis::support::HyperAllocFlowProgramCatalog;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class HyperAllocFlowDecisionWriter {
+    private HyperAllocFlowProgramCatalog catalog;
+    private HyperAllocFlowBudget budget;
+
+    public HyperAllocFlowDecisionWriter(HyperAllocFlowProgramCatalog programCatalog, HyperAllocFlowBudget hyperAllocFlowBudget) {
+        this.catalog = programCatalog;
+        this.budget = hyperAllocFlowBudget;
+    }
+
+    public Void markExpressionTreeRoot(Int expressionIndex, String reason, SyntaxProgram program, HyperAllocFlowReport report) {
+        if (expressionIndex == 0) {
+            return;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (this.catalog.isObjectCreation(expression, program) && !report.hasExpression(expressionIndex)) {
+            report.add(this.rootDecision(expressionIndex, expression, reason, program));
+        }
+
+        this.markExpressionTreeRoot(expression.leftIndex(), reason, program, report);
+        this.markExpressionTreeRoot(expression.rightIndex(), reason, program, report);
+
+        Int index = 0;
+
+        while (index < expression.argumentIndexes().length()) {
+            this.markExpressionTreeRoot(expression.argumentIndexes().get(index), reason, program, report);
+            index = index + 1;
+        }
+    }
+
+    public Void markExpressionTreeStrictRoot(Int expressionIndex, String reason, SyntaxProgram program, HyperAllocFlowReport report) {
+        if (expressionIndex == 0) {
+            return;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (this.catalog.isObjectCreation(expression, program) && !report.hasExpression(expressionIndex)) {
+            report.add(this.strictRootDecision(expressionIndex, expression, reason, program));
+        }
+
+        this.markExpressionTreeStrictRoot(expression.leftIndex(), reason, program, report);
+        this.markExpressionTreeStrictRoot(expression.rightIndex(), reason, program, report);
+
+        Int index = 0;
+
+        while (index < expression.argumentIndexes().length()) {
+            this.markExpressionTreeStrictRoot(expression.argumentIndexes().get(index), reason, program, report);
+            index = index + 1;
+        }
+    }
+
+    public Void addRootDefaults(SyntaxProgram program, HyperAllocFlowReport report) {
+        Int index = 1;
+
+        while (index < program.expressions().length()) {
+            Expression expression = program.expression(index);
+
+            if (!expression.isGenerated() && this.catalog.isObjectCreation(expression, program) && !report.hasExpression(index)) {
+                report.add(this.strictRootDecision(index, expression, this.defaultStrictReason(expression), program));
+            }
+
+            index = index + 1;
+        }
+    }
+
+    public HyperAllocFlowDecision rootDecision(Int expressionIndex, Expression expression, String reason, SyntaxProgram program) {
+        HyperAllocFlowDecision decision = HyperAllocFlowDecision(expressionIndex, expression.text(), AllocationKind("Root"), reason, expression.line(), expression.column());
+        decision.setEstimatedBytes(this.budget.estimateObjectBytes(expression.text(), program));
+        return decision;
+    }
+
+    public HyperAllocFlowDecision strictRootDecision(Int expressionIndex, Expression expression, String strictReason, SyntaxProgram program) {
+        HyperAllocFlowDecision decision = this.rootDecision(expressionIndex, expression, "safe Root fallback while Flow analysis remains unresolved", program);
+        decision.markStrictIssue(strictReason);
+        return decision;
+    }
+
+    public String defaultStrictReason(Expression expression) {
+        if (expression.text() == "List") {
+            return "runtime List still requires Pool/Shard classification";
+        }
+
+        return "allocation reached the safe Root default without a precise Flow classification";
+    }
+}

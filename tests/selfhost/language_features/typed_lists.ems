@@ -1,0 +1,43 @@
+public class Numbers {
+    public static List<Int> empty() { return List(); }
+    public static List<Float> emptyFloats() { return List(); }
+    public static Int total(List<Int> values) {
+        Int sum = 0;
+        Int index = 0;
+        while (index < values.length()) {
+            sum = sum + values.get(index);
+            index = index + 1;
+        }
+        return sum;
+    }
+}
+
+main() {
+    List<Int> values = Numbers.empty();
+    values.add(4000000000);
+    values.add(-3);
+    values.set(1, 7);
+    println(Numbers.total(values));
+    println(Numbers.total(List()));
+    List<Float> floats = Numbers.emptyFloats();
+    floats.add(2.5);
+    floats.set(0, floats.get(0) * 2.0);
+    println(floats.get(0));
+    List<List<Int>> nested = List();
+    nested.add(List());
+    nested.get(0).add(9);
+    println(nested.get(0).get(0));
+    List<Int> fresh = Numbers.empty();
+    println(fresh.isEmpty().toString());
+    fresh.add(1);
+    println(fresh.isEmpty().toString());
+    String text = "Emerald";
+    println(text.length());
+    println(text.charAt(1).toString());
+    println(text.charAt(99) == text.charAt(-1));
+    println("".isEmpty().toString());
+    List<String> words = List();
+    words.add("a" + "b");
+    words.set(0, "cd");
+    println(words.get(0));
+}

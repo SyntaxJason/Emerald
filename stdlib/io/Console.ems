@@ -1,50 +1,88 @@
 namespace Std::Io;
 
+use Std::Io::Consoles;
+use Std::Io::IConsole;
+use Std::Result::IResult;
+
 public class Console implements IConsole {
     public Console() {
     }
 
     public Void write(String text) {
-        Console.write(text);
+        Consoles.write(text);
     }
 
     public Void writeLine(String text) {
-        Console.writeLine(text);
+        Consoles.writeLine(text);
     }
 
     public Void errorLine(String text) {
-        Console.errorLine(text);
+        Consoles.errorLine(text);
     }
 
     public Void blankLine() {
-        Console.blankLine();
+        Consoles.blankLine();
     }
 
     public String readLine() {
-        return Console.readLine();
+        return Consoles.readLine();
     }
 
     public String readLineOr(String fallback) {
-        return Console.readLineOr(fallback);
+        return Consoles.readLineOr(fallback);
     }
 
-    public Std::Result::IResult<String, String> tryReadLine() {
-        return Console.tryReadLine();
+    public IResult<String, String> tryReadLine() {
+        return Consoles.tryReadLine();
     }
 
     public String prompt(String message) {
-        return Console.prompt(message);
+        this.write(message);
+        return this.readLine();
     }
 
     public String promptOr(String message, String fallback) {
-        return Console.promptOr(message, fallback);
+        this.write(message);
+        return this.readLineOr(fallback);
     }
 
     public Bool confirm(String question) {
-        return Console.confirm(question);
+        return this.confirmOr(question, false);
     }
 
     public Bool confirmOr(String question, Bool fallback) {
-        return Console.confirmOr(question, fallback);
+        this.write(question);
+        String answer = this.readLine();
+        String normalized = answer.toLowerCase();
+
+        if (normalized.equals("y")) {
+            return true;
+        }
+
+        if (normalized.equals("yes")) {
+            return true;
+        }
+
+        if (normalized.equals("j")) {
+            return true;
+        }
+
+        if (normalized.equals("ja")) {
+            return true;
+        }
+
+        if (normalized.equals("n")) {
+            return false;
+        }
+
+        if (normalized.equals("no")) {
+            return false;
+        }
+
+        if (normalized.equals("nein")) {
+            return false;
+        }
+
+        return fallback;
     }
 }

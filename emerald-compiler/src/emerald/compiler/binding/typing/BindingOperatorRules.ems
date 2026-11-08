@@ -1,0 +1,58 @@
+namespace emerald::compiler::binding;
+
+public class BindingOperatorRules {
+    public BindingOperatorRules() {
+    }
+
+    public Bool isArithmetic(String op) {
+        if (op == "+") {
+            return true;
+        }
+
+        if (op == "-") {
+            return true;
+        }
+
+        if (op == "*") {
+            return true;
+        }
+
+        if (op == "/") {
+            return true;
+        }
+
+        return op == "%";
+    }
+
+    public Bool isIntComparison(String op) {
+        if (op == "<") {
+            return true;
+        }
+
+        if (op == "<=") {
+            return true;
+        }
+
+        if (op == ">") {
+            return true;
+        }
+
+        return op == ">=";
+    }
+
+    public Bool isEquality(String op) {
+        if (op == "==") {
+            return true;
+        }
+
+        return op == "!=";
+    }
+
+    public Bool isBoolOperator(String op) {
+        if (op == "&&") {
+            return true;
+        }
+
+        return op == "||";
+    }
+}

@@ -1,0 +1,39 @@
+namespace emerald::compiler::source;
+
+use emerald::compiler::diagnostic::DiagnosticBag;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class ProjectImportValidator {
+    public ProjectImportValidator() {
+    }
+
+    public Void validate(ProjectSource source, SyntaxProgram program, DiagnosticBag diagnostics) {
+        if (source.requestedName().isEmpty()) {
+            return;
+        }
+
+        if (this.containsClass(program, source.requestedName())) {
+            return;
+        }
+
+        diagnostics.errorIn(source.source().path(), "Use " + source.requestedName() + " does not resolve to a class in this file", source.requestLine(), source.requestColumn());
+    }
+
+    private Bool containsClass(SyntaxProgram program, String name) {
+        String normalized = name.replace(".", "::");
+        Int index = 0;
+
+        while (index < program.classes().length()) {
+            ClassDeclaration declaration = program.classes().get(index);
+
+            if (declaration.fullName() == normalized) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+}

@@ -1,0 +1,256 @@
+namespace emerald::compiler::syntax;
+
+public class MethodDeclaration {
+    private String ownerNameValue;
+    private String nameValue;
+    private String returnTypeValue;
+    private List<Annotation> annotationItems;
+    private List<Parameter> parameterItems;
+    private List<Statement> statementItems;
+    private Bool constructorValue;
+    private Bool staticValue;
+    private Bool generatedValue;
+    private Int lineValue;
+    private Int columnValue;
+
+    public MethodDeclaration(String ownerName, String name, String returnType, List<Parameter> parameters, List<Statement> statements, Bool constructor, Int line, Int column) {
+        this.ownerNameValue = ownerName;
+        this.nameValue = name;
+        this.returnTypeValue = returnType;
+        this.annotationItems = List();
+        this.parameterItems = List();
+        this.statementItems = List();
+        this.copyParameters(parameters);
+        this.copyStatements(statements);
+        this.constructorValue = constructor;
+        this.staticValue = false;
+        this.generatedValue = false;
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public MethodDeclaration(String ownerName, String name, String returnType, List<Parameter> parameters, List<Statement> statements, Bool constructor, Bool staticMethod, Int line, Int column) {
+        this.ownerNameValue = ownerName;
+        this.nameValue = name;
+        this.returnTypeValue = returnType;
+        this.annotationItems = List();
+        this.parameterItems = List();
+        this.statementItems = List();
+        this.copyParameters(parameters);
+        this.copyStatements(statements);
+        this.constructorValue = constructor;
+        this.staticValue = staticMethod;
+        this.generatedValue = false;
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public MethodDeclaration(String ownerName, String name, String returnType, List<Parameter> parameters, List<Statement> statements, Bool constructor, Bool staticMethod, Bool generated, Int line, Int column) {
+        this.ownerNameValue = ownerName;
+        this.nameValue = name;
+        this.returnTypeValue = returnType;
+        this.annotationItems = List();
+        this.parameterItems = List();
+        this.statementItems = List();
+        this.copyParameters(parameters);
+        this.copyStatements(statements);
+        this.constructorValue = constructor;
+        this.staticValue = staticMethod;
+        this.generatedValue = generated;
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+
+    public MethodDeclaration(String ownerName, String name, String returnType, List<Annotation> annotations, List<Parameter> parameters, List<Statement> statements, Bool constructor, Bool staticMethod, Int line, Int column) {
+        this.ownerNameValue = ownerName;
+        this.nameValue = name;
+        this.returnTypeValue = returnType;
+        this.annotationItems = List();
+        this.parameterItems = List();
+        this.statementItems = List();
+        this.copyAnnotations(annotations);
+        this.copyParameters(parameters);
+        this.copyStatements(statements);
+        this.constructorValue = constructor;
+        this.staticValue = staticMethod;
+        this.generatedValue = false;
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public MethodDeclaration(String ownerName, String name, String returnType, List<Annotation> annotations, List<Parameter> parameters, List<Statement> statements, Bool constructor, Bool staticMethod, Bool generated, Int line, Int column) {
+        this.ownerNameValue = ownerName;
+        this.nameValue = name;
+        this.returnTypeValue = returnType;
+        this.annotationItems = List();
+        this.parameterItems = List();
+        this.statementItems = List();
+        this.copyAnnotations(annotations);
+        this.copyParameters(parameters);
+        this.copyStatements(statements);
+        this.constructorValue = constructor;
+        this.staticValue = staticMethod;
+        this.generatedValue = generated;
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public String ownerName() {
+        return this.ownerNameValue + "";
+    }
+
+    public String name() {
+        return this.nameValue + "";
+    }
+
+    public Bool hasName(String name) {
+        return this.nameValue == name;
+    }
+
+    public String returnTypeName() {
+        return this.returnTypeValue + "";
+    }
+
+    public List<Parameter> parameters() {
+        return this.parameterItems;
+    }
+
+    public Int parameterCount() {
+        return this.parameterItems.length();
+    }
+
+    public Parameter parameterAt(Int index) {
+        return this.parameterItems.get(index);
+    }
+
+    public List<Annotation> annotations() {
+        return this.annotationItems;
+    }
+
+    public List<Statement> statements() {
+        return this.statementItems;
+    }
+
+    public Int statementCount() {
+        return this.statementItems.length();
+    }
+
+    public Statement statementAt(Int index) {
+        return this.statementItems.get(index);
+    }
+
+    public Bool isConstructor() {
+        return this.constructorValue;
+    }
+
+    public Bool isStatic() {
+        return this.staticValue;
+    }
+
+    public Bool isGenerated() {
+        return this.generatedValue;
+    }
+
+    public Int line() {
+        return this.lineValue;
+    }
+
+    public Int column() {
+        return this.columnValue;
+    }
+
+    public MethodDeclaration shifted(Int offset) {
+        List<Statement> shiftedStatements = List();
+        Int index = 0;
+
+        while (index < this.statementItems.length()) {
+            shiftedStatements.add(this.statementItems.get(index).shifted(offset));
+            index = index + 1;
+        }
+
+        List<Annotation> shiftedAnnotations = List();
+        Int annotationIndex = 0;
+
+        while (annotationIndex < this.annotationItems.length()) {
+            shiftedAnnotations.add(this.annotationItems.get(annotationIndex).shifted(offset));
+            annotationIndex = annotationIndex + 1;
+        }
+
+        List<Parameter> shiftedParameters = List();
+        Int parameterIndex = 0;
+
+        while (parameterIndex < this.parameterItems.length()) {
+            Parameter parameter = this.parameterItems.get(parameterIndex);
+            shiftedParameters.add(Parameter(parameter.name() + "", parameter.typeName() + "", parameter.line(), parameter.column()));
+            parameterIndex = parameterIndex + 1;
+        }
+
+        return MethodDeclaration(this.ownerNameValue + "", this.nameValue + "", this.returnTypeValue + "", shiftedAnnotations, shiftedParameters, shiftedStatements, this.constructorValue, this.staticValue, this.generatedValue, this.lineValue, this.columnValue);
+    }
+
+    public MethodDeclaration bodyViewCopy() {
+        List<Annotation> annotations = List();
+        List<Parameter> parameters = List();
+        List<Statement> statements = List();
+        MethodDeclaration copy = MethodDeclaration(this.ownerNameValue + "", this.nameValue + "", this.returnTypeValue + "", annotations, parameters, statements, this.constructorValue, this.staticValue, this.generatedValue, this.lineValue, this.columnValue);
+        copy.annotationItems = this.annotationItems;
+        copy.parameterItems = this.parameterItems;
+        copy.statementItems = this.statementItems;
+        return copy;
+    }
+
+    public MethodDeclaration signatureCopy() {
+        List<Annotation> annotations = List();
+        Int annotationIndex = 0;
+
+        while (annotationIndex < this.annotationItems.length()) {
+            annotations.add(this.annotationItems.get(annotationIndex).shifted(0));
+            annotationIndex = annotationIndex + 1;
+        }
+
+        List<Parameter> parameters = List();
+        Int parameterIndex = 0;
+
+        while (parameterIndex < this.parameterItems.length()) {
+            Parameter parameter = this.parameterItems.get(parameterIndex);
+            parameters.add(Parameter(parameter.name() + "", parameter.typeName() + "", parameter.line(), parameter.column()));
+            parameterIndex = parameterIndex + 1;
+        }
+
+        List<Statement> statements = List();
+        return MethodDeclaration(this.ownerNameValue + "", this.nameValue + "", this.returnTypeValue + "", annotations, parameters, statements, this.constructorValue, this.staticValue, this.generatedValue, this.lineValue, this.columnValue);
+    }
+
+    public Bool isMissing() {
+        return this.nameValue.isEmpty();
+    }
+
+    private Void copyAnnotations(List<Annotation> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            this.annotationItems.add(source.get(index).shifted(0));
+            index = index + 1;
+        }
+    }
+
+    private Void copyParameters(List<Parameter> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            Parameter parameter = source.get(index);
+            this.parameterItems.add(Parameter(parameter.name() + "", parameter.typeName() + "", parameter.line(), parameter.column()));
+            index = index + 1;
+        }
+    }
+
+    private Void copyStatements(List<Statement> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            this.statementItems.add(source.get(index).shifted(0));
+            index = index + 1;
+        }
+    }
+}

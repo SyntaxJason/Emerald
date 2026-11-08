@@ -1,0 +1,16 @@
+public class HyperAllocFlowV1ReboundItem {
+    public Int value;
+
+    public HyperAllocFlowV1ReboundItem(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1ReboundItem> items = List();
+    HyperAllocFlowV1ReboundItem stored = HyperAllocFlowV1ReboundItem(20);
+    items.add(stored);
+    HyperAllocFlowV1ReboundItem view = items.get(0);
+    view = HyperAllocFlowV1ReboundItem(22);
+    println(42.toString());
+}

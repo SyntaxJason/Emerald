@@ -1,0 +1,30 @@
+use Std::Compare::IEquatable;
+use Std::Compare::IComparable;
+
+public class ValueBox implements IEquatable<ValueBox>, IComparable<ValueBox> {
+    private Int value;
+
+    public ValueBox(Int value) {
+        this.value = value;
+    }
+
+    public Bool equals(ValueBox other) {
+        return this.value == other.getValue();
+    }
+
+    public Int compareTo(ValueBox other) {
+        return this.value - other.getValue();
+    }
+
+    public Int getValue() {
+        return this.value;
+    }
+}
+
+main() {
+    ValueBox left = ValueBox(10);
+    ValueBox right = ValueBox(20);
+
+    println(left.equals(right).toString());
+    println(left.compareTo(right).toString());
+}

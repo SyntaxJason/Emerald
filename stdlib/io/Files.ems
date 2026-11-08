@@ -1,0 +1,78 @@
+namespace Std::Io;
+
+use Std::Collections::ArrayList;
+use Std::Collections::IList;
+use Std::Native::NativeFile;
+use Std::Result::Failure;
+use Std::Result::BoolSuccess;
+use Std::Result::IResult;
+use Std::Result::Success;
+
+public class Files {
+    public Files() {
+    }
+
+    public static Bool exists(String path) {
+        return NativeFile.exists(path);
+    }
+
+    public static Bool isFile(String path) {
+        return NativeFile.isFile(path);
+    }
+
+    public static String readText(String path) {
+        return NativeFile.readText(path);
+    }
+
+    public static IList<String> readLines(String path) {
+        return ArrayList(NativeFile.readLines(path));
+    }
+
+    public static IResult<String, String> tryReadText(String path) {
+        if (!Files.exists(path)) {
+            return Failure("File does not exist: " + path);
+        }
+
+        if (!Files.isFile(path)) {
+            return Failure("Path is not a file: " + path);
+        }
+
+        return Success(Files.readText(path));
+    }
+
+    public static Void writeText(String path, String text) {
+        NativeFile.writeText(path, text);
+    }
+
+    public static IResult<Bool, String> tryWriteText(String path, String text) {
+        NativeFile.writeText(path, text);
+
+        if (!Files.exists(path)) {
+            return Failure("Could not write file: " + path);
+        }
+
+        return BoolSuccess(true);
+    }
+
+    public static Void appendText(String path, String text) {
+        NativeFile.appendText(path, text);
+    }
+
+    public static IResult<Bool, String> tryAppendText(String path, String text) {
+        NativeFile.appendText(path, text);
+
+        if (!Files.exists(path)) {
+            return Failure("Could not append file: " + path);
+        }
+
+        return BoolSuccess(true);
+    }
+
+    public static Bool delete(String path) {
+        return NativeFile.delete(path);
+    }
+
+    public static Int size(String path) {
+        return NativeFile.size(path);
+    }
+}

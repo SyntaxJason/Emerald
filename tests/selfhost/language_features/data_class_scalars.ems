@@ -1,0 +1,16 @@
+public data class Point(Float x, Float y)
+public data class Letter(Char value, Int count)
+
+main() {
+    Point a = Point(1.5, 2.0);
+    Point b = Point(1.5, 2.0);
+    Point c = Point(1.5, -2.0);
+    println(a == b);
+    println(a == c);
+    Letter l = Letter("q".charAt(0), 3);
+    Letter m = Letter("q".charAt(0), 3);
+    Letter n = Letter("r".charAt(0), 3);
+    println(l == m);
+    println(l == n);
+    println(l.toString());
+}

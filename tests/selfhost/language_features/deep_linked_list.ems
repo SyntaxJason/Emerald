@@ -1,0 +1,39 @@
+public class Node {
+    public Int value;
+    public Node next;
+
+    public Node(Int value) {
+        this.value = value;
+    }
+}
+
+public class Chains {
+    // Tail appends to a long Root chain must stay linear, and releasing the
+    // chain at the end of the call must not recurse once per node.
+    public static Int build(Int n) {
+        Node head = Node(0);
+        Node tail = head;
+        Int i = 1;
+        while (i < n) {
+            Node x = Node(i);
+            tail.next = x;
+            tail = x;
+            i = i + 1;
+        }
+        Int sum = 0;
+        Node cur = head;
+        Int k = 1;
+        while (k < n) {
+            sum = sum + cur.value;
+            cur = cur.next;
+            k = k + 1;
+        }
+        return sum + cur.value;
+    }
+}
+
+main() {
+    println(Chains.build(300000).toString());
+    println(Chains.build(300000).toString());
+    return 0;
+}

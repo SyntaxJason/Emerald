@@ -1,0 +1,2 @@
+use Std::Collections::HashMap;
+main() { HashMap<String> invalid = HashMap(); }

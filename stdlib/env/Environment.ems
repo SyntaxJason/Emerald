@@ -1,26 +1,29 @@
 namespace Std::Env;
 
+use Std::Env::IEnvironment;
+use Std::Native::NativeEnv;
+
 public class Environment implements IEnvironment {
     public Environment() {
     }
 
     public String get(String name) {
-        return Env.get(name);
+        return NativeEnv.get(name);
     }
 
     public String getOr(String name, String fallback) {
-        return Env.getOr(name, fallback);
+        return NativeEnv.getOr(name, fallback);
     }
 
     public Bool has(String name) {
-        return Env.has(name);
+        return NativeEnv.has(name);
     }
 
     public List<String> args() {
-        return Env.args();
+        return NativeEnv.args();
     }
 
     public String currentDirectory() {
-        return Env.currentDirectory();
+        return NativeEnv.currentDirectory();
     }
 }

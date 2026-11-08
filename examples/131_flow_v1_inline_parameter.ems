@@ -1,0 +1,13 @@
+public data class HyperAllocFlowV1ParameterPoint(Int x, Int y) {
+}
+
+public class HyperAllocFlowV1ParameterMath {
+    public static Int sum(HyperAllocFlowV1ParameterPoint point, Int offset) {
+        return point.x + point.y + offset;
+    }
+}
+
+main() {
+    HyperAllocFlowV1ParameterPoint point = HyperAllocFlowV1ParameterPoint(10, 20);
+    println(HyperAllocFlowV1ParameterMath.sum(point, 12).toString());
+}

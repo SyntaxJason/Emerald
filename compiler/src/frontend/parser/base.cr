@@ -99,6 +99,10 @@ module Emerald
 
     def expect(type : TokenType) : Token
       tok = consume
+      if type == TokenType::Identifier && tok.type == TokenType::KwMain
+        return tok
+      end
+
       unless tok.type == type
         raise ParseError.new("Expected #{type}, got #{tok.type} ('#{tok.value}')", tok.line, tok.col)
       end

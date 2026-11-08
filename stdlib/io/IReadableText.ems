@@ -1,5 +1,7 @@
 namespace Std::Io;
 
+use Std::Collections::IList;
+use Std::Result::IResult;
 public interface IReadableText {
     public String readText();
 

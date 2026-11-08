@@ -1,0 +1,26 @@
+namespace Std::Io;
+
+use Std::Collections::ArrayList;
+use Std::Collections::IList;
+use Std::Native::NativeDirectory;
+
+public class Directories {
+    public Directories() {
+    }
+
+    public static Bool exists(String path) {
+        return NativeDirectory.exists(path);
+    }
+
+    public static Bool create(String path) {
+        return NativeDirectory.create(path);
+    }
+
+    public static Bool delete(String path) {
+        return NativeDirectory.delete(path);
+    }
+
+    public static IList<String> list(String path) {
+        return ArrayList(NativeDirectory.list(path));
+    }
+}

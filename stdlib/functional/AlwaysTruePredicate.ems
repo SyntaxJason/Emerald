@@ -1,5 +1,7 @@
 namespace Std::Functional;
 
+use Std::Functional::IPredicate;
+
 public class AlwaysTruePredicate<T> implements IPredicate<T> {
     public AlwaysTruePredicate() {
     }

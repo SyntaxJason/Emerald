@@ -1,0 +1,27 @@
+namespace Std::Native;
+
+public class NativeEnv {
+    public NativeEnv() {
+    }
+
+    public static String get(String name) {
+        return "";
+    }
+
+    public static String getOr(String name, String fallback) {
+        return fallback;
+    }
+
+    public static Bool has(String name) {
+        return false;
+    }
+
+    public static List<String> args() {
+        List<String> values = List();
+        return values;
+    }
+
+    public static String currentDirectory() {
+        return "";
+    }
+}

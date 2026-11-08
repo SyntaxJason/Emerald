@@ -1,0 +1,23 @@
+public data class HyperAllocFlowV1RamPair(Int left, Int right) {
+    public Int sum() {
+        return this.left + this.right;
+    }
+}
+
+public class HyperAllocFlowV1RamRoot {
+    public String text;
+
+    public HyperAllocFlowV1RamRoot(String text) {
+        this.text = text;
+    }
+}
+
+main() {
+    HyperAllocFlowV1RamPair folded = HyperAllocFlowV1RamPair(20, 22);
+    HyperAllocFlowV1RamPair inlineValue = HyperAllocFlowV1RamPair(19, 23);
+    HyperAllocFlowV1RamPair inlineCopy = inlineValue;
+    List<HyperAllocFlowV1RamRoot> roots = List();
+    HyperAllocFlowV1RamRoot root = HyperAllocFlowV1RamRoot("42");
+    roots.add(root);
+    println((folded.sum() + inlineCopy.left - 19).toString());
+}

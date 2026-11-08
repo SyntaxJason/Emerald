@@ -98,13 +98,15 @@ public class JsonObject implements IJsonValue {
 
     public String toJson() {
         String output = "{";
+        IList<String> keys = this.values.keys();
         Int index = 0;
 
-        for (key in this.values.keys()) {
+        while (index < keys.size()) {
             if (index > 0) {
                 output = output + ",";
             }
 
+            String key = keys.get(index);
             output = output + "\"" + key + "\":" + this.values.get(key).toJson();
             index = index + 1;
         }

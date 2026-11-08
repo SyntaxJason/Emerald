@@ -1,0 +1,17 @@
+namespace Std::Native;
+
+// Compiler bridge to IEEE double operations and the platform math library.
+public class NativeMath {
+    public static Float sqrt(Float value) { return 0.0; }
+    public static Float absFloat(Float value) { return 0.0; }
+    public static Float floor(Float value) { return 0.0; }
+    public static Float ceil(Float value) { return 0.0; }
+    public static Float round(Float value) { return 0.0; }
+    public static Float sin(Float value) { return 0.0; }
+    public static Float cos(Float value) { return 0.0; }
+    public static Float tan(Float value) { return 0.0; }
+    public static Float log(Float value) { return 0.0; }
+    public static Float log10(Float value) { return 0.0; }
+    public static Float exp(Float value) { return 0.0; }
+    public static Float pow(Float base, Float exponent) { return 0.0; }
+}

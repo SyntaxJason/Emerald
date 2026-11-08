@@ -1,0 +1,24 @@
+public class HyperAllocFlowReturnedValue {
+    private Int number;
+
+    public HyperAllocFlowReturnedValue(Int number) {
+        this.number = number;
+    }
+
+    public Int value() {
+        return this.number;
+    }
+}
+
+public class HyperAllocFlowReturnedFactory {
+    public HyperAllocFlowReturnedValue buildReturnedValue(Int number) {
+        HyperAllocFlowReturnedValue result = HyperAllocFlowReturnedValue(number);
+        return result;
+    }
+}
+
+main() {
+    HyperAllocFlowReturnedFactory factory = HyperAllocFlowReturnedFactory();
+    HyperAllocFlowReturnedValue result = factory.buildReturnedValue(42);
+    println(result.value().toString());
+}

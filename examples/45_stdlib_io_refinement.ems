@@ -1,0 +1,38 @@
+use Std::Io::FileSystem;
+use Std::Io::IPath;
+use Std::Io::IDirectory;
+use Std::Io::IFile;
+use Std::Io::IFileInfo;
+use Std::Io::ITextReader;
+use Std::Io::ITextWriter;
+use Std::Result::IResult;
+use Std::Collections::IList;
+
+main() {
+    FileSystem fs = FileSystem();
+    IPath current = fs.currentPath();
+    IDirectory working = fs.directoryAt(current);
+    IFile file = working.file("emerald_io_refined.txt");
+    ITextWriter writer = file.writer();
+
+    IResult<Bool, String> written = writer.tryWriteText("alpha");
+    println(written.isSuccess().toString());
+
+    writer.appendText("\nbeta");
+
+    ITextReader reader = file.reader();
+    IResult<String, String> readResult = reader.tryReadText();
+    IList<String> lines = file.readLines();
+
+    println(readResult.unwrapOr("missing").contains("alpha").toString());
+    println(lines.size().toString());
+
+    IFileInfo info = file.info();
+    println(info.exists().toString());
+    println(info.name());
+
+    IFileInfo childInfo = working.info("emerald_io_refined.txt");
+    println(childInfo.isFile().toString());
+
+    println(file.delete().toString());
+}

@@ -1,0 +1,35 @@
+use Std::Text::StringBuilder;
+use Std::Text::Strings;
+main() {
+    StringBuilder builder = StringBuilder();
+    Int index = 0;
+    while (index < 20000) { builder.append("ab"); builder.appendInt(index % 10); index = index + 1; }
+    builder.appendBool(true);
+    builder.appendChar("z".charAt(0));
+    builder.appendFloat(1.5);
+    println(builder.length());
+    String text = builder.toString();
+    println(text.length());
+    println(text.substring(0, 6));
+    builder.append("!");
+    println(builder.toString().length());
+    builder.clear();
+    println(builder.isEmpty());
+    println(builder.toString().length());
+    List<String> parts = "a,b,c".split(",");
+    println(Strings.join(parts, "-"));
+    println("abcabc".lastIndexOf("bc"));
+    println("abc".lastIndexOf("x"));
+    println("ab".repeat(3));
+    println("x".repeat(0).length());
+    println("  x ".trimStart() + "|");
+    println("  x ".trimEnd() + "|");
+    println(" \t".isBlank());
+    println("a b".isBlank());
+    println("a".compareTo("b"));
+    println("b".compareTo("a"));
+    println("ab".compareTo("ab"));
+    println("ab".compareTo("abc"));
+    println("A".charAt(0).code());
+    println(66.toChar().toString());
+}

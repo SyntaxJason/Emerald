@@ -1,0 +1,56 @@
+use Std::Collections::IList;
+use Std::Collections::IIterator;
+use Std::Collections::ArrayList;
+use Std::Functional::IConsumer;
+use Std::Functional::IPredicate;
+
+public class Constant implements IList<Int> {
+    public Int marker;
+    public Constant() { this.marker = 12345; }
+    public IIterator<Int> iterator() { ArrayList<Int> a = ArrayList(); return a.iterator(); }
+    public Int size() { return 3; }
+    public Bool isEmpty() { return false; }
+    public Bool contains(Int value) { return value == 42; }
+    public Void clear() { return; }
+    public Void forEach(IConsumer<Int> consumer) { return; }
+    public Bool any(IPredicate<Int> predicate) { return false; }
+    public Bool all(IPredicate<Int> predicate) { return false; }
+    public Int get(Int index) { return 42 + index; }
+    public Int getOr(Int index, Int fallback) { return 42; }
+    public Int firstOr(Int fallback) { return 42; }
+    public Int lastOr(Int fallback) { return 42; }
+    public Void set(Int index, Int value) { return; }
+    public Void add(Int value) { return; }
+    public Void addAt(Int index, Int value) { return; }
+    public Bool remove(Int value) { return false; }
+    public Int removeAt(Int index) { return 42; }
+    public Int indexOf(Int value) { return 0; }
+    public IList<Int> filter(IPredicate<Int> predicate) { ArrayList<Int> a = ArrayList(); return a; }
+}
+
+public class Summer {
+    public static Int sum(IList<Int> values) {
+        Int total = 0;
+        Int index = 0;
+        while (index < values.size()) {
+            total = total + values.get(index);
+            index = index + 1;
+        }
+        return total;
+    }
+}
+
+main() {
+    IList<Int> constant = Constant();
+    println(constant.size());
+    println(constant.get(1));
+    println(constant.contains(42).toString());
+    ArrayList<Int> real = ArrayList();
+    real.add(5);
+    real.add(7);
+    IList<Int> viewed = real;
+    println(viewed.size());
+    println(viewed.get(1));
+    println(Summer.sum(constant));
+    println(Summer.sum(real));
+}

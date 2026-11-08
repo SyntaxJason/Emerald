@@ -1,0 +1,20 @@
+public class HyperAllocFlowV1PoolDynamicChild {
+    public String value;
+
+    public HyperAllocFlowV1PoolDynamicChild(Int value) {
+        this.value = value.toString();
+    }
+}
+
+main() {
+    Int index = 0;
+
+    while (index < 2) {
+        HyperAllocFlowV1PoolDynamicChild value = HyperAllocFlowV1PoolDynamicChild(index + 41);
+        index = index + 1;
+
+        if (index == 2) {
+            println(value.value);
+        }
+    }
+}

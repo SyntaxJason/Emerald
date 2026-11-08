@@ -1,0 +1,6 @@
+main() {
+    List<Int> values = List();
+    List<Int> replacement = List();
+    values = replacement;
+    println(42.toString());
+}

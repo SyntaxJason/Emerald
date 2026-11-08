@@ -1,0 +1,29 @@
+public interface IStartable {
+    public Void start();
+}
+
+public interface IService extends IStartable {
+    public Void stop();
+}
+
+public class WebService implements IService {
+    public WebService() {
+    }
+
+    @Override
+    public Void start() {
+        println("start");
+    }
+
+    @Override
+    public Void stop() {
+        println("stop");
+    }
+}
+
+main() {
+    WebService service = WebService();
+
+    service.start();
+    service.stop();
+}

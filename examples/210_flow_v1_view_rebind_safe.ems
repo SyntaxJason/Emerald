@@ -1,0 +1,19 @@
+public class HyperAllocFlowV1ViewRebindItem {
+    public Int value;
+
+    public HyperAllocFlowV1ViewRebindItem(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1ViewRebindItem> left = List();
+    List<HyperAllocFlowV1ViewRebindItem> right = List();
+    HyperAllocFlowV1ViewRebindItem first = HyperAllocFlowV1ViewRebindItem(20);
+    HyperAllocFlowV1ViewRebindItem second = HyperAllocFlowV1ViewRebindItem(42);
+    left.add(first);
+    right.add(second);
+    HyperAllocFlowV1ViewRebindItem view = left.get(0);
+    view = right.get(0);
+    println(view.value.toString());
+}

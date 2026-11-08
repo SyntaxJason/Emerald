@@ -1,0 +1,61 @@
+use Std::Functional::IAction;
+use Std::Functional::IConsumer;
+use Std::Functional::ISupplier;
+use Std::Functional::IPredicate;
+use Std::Functional::IUnaryOperator;
+use Std::Functional::IResettable;
+use Std::Functional::NoopAction;
+use Std::Functional::NoopConsumer;
+use Std::Functional::ConstantSupplier;
+use Std::Functional::IdentityFunction;
+use Std::Functional::AlwaysTruePredicate;
+use Std::Compare::IComparator;
+use Std::Compare::NaturalIntComparator;
+use Std::Data::IBox;
+use Std::Data::IMutableBox;
+use Std::Data::IIntRange;
+use Std::Data::IPair;
+use Std::Data::Box;
+use Std::Data::MutableBox;
+use Std::Data::ResettableBox;
+use Std::Data::IntRange;
+use Std::Data::Pair;
+
+main() {
+    IAction action = NoopAction();
+    IConsumer<String> consumer = NoopConsumer();
+    IConsumer<String> lambdaConsumer = (value) -> println(value);
+    ISupplier<String> supplier = ConstantSupplier("emerald");
+    IUnaryOperator<String> identity = IdentityFunction();
+    IUnaryOperator<String> lambdaIdentity = (value) -> value;
+    IPredicate<Int> predicate = AlwaysTruePredicate();
+    IPredicate<Int> lambdaPredicate = (value) -> value == 7;
+    IComparator<Int> comparator = NaturalIntComparator();
+    IBox<Int> boxed = Box(7);
+    IMutableBox<String> mutable = MutableBox("old");
+    ResettableBox<String> resettable = ResettableBox("start");
+    IMutableBox<String> resettableMutable = resettable;
+    IResettable reset = resettable;
+    IIntRange range = IntRange(1, 10);
+    IPair<String, Int> pair = Pair("answer", 42);
+
+    action.call();
+    consumer.accept("ignored");
+    lambdaConsumer.accept("lambda");
+    mutable.set("new");
+    resettableMutable.set("changed");
+    reset.reset();
+
+    println(supplier.get());
+    println(identity.apply("stdlib"));
+    println(lambdaIdentity.apply("lambda-id"));
+    println(predicate.test(1).toString());
+    println(lambdaPredicate.test(7).toString());
+    println(comparator.compare(1, 3).toString());
+    println(boxed.value().toString());
+    println(mutable.value());
+    println(resettableMutable.value());
+    println(range.contains(7).toString());
+    println(pair.first());
+    println(pair.second().toString());
+}

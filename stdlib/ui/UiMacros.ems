@@ -1,0 +1,151 @@
+namespace Std::Ui;
+
+use Std::Ui::EmHtmlRuntime;
+use Std::Ui::UiApplication;
+use Std::Ui::UiWindow;
+
+macro UiState on Class {
+    class.addField(FieldAST::create("uiDirtyValue", "Bool", Expr::bool(true)));
+
+    MethodAST dirty = quote method {
+        public Bool isDirty() {
+            return this.uiDirtyValue;
+        }
+    };
+
+    MethodAST markDirty = quote method {
+        public Void markDirty() {
+            this.uiDirtyValue = true;
+        }
+    };
+
+    MethodAST clearDirty = quote method {
+        public Void clearDirty() {
+            this.uiDirtyValue = false;
+        }
+    };
+
+    class.addMethod(dirty);
+    class.addMethod(markDirty);
+    class.addMethod(clearDirty);
+}
+
+macro EmHtml on Class {
+    String path = args[0].toString();
+    String template = EmHtml::load(path);
+    Bool hasRender = false;
+    Int methodIndex = 0;
+
+    while (methodIndex < class.methods.length()) {
+        MethodAST current = class.methods.get(methodIndex);
+
+        if (current.name == "render") {
+            hasRender = true;
+        }
+
+        methodIndex = methodIndex + 1;
+    }
+
+    class.addField(FieldAST::create("emhtmlPathValue", "String", Expr::str(path)));
+
+    MethodAST pathMethod = quote method {
+        public String emhtmlPath() {
+            return $(Expr::str(path));
+        }
+    };
+
+    MethodAST templateMethod = quote method {
+        public String emhtmlTemplate() {
+            return $(Expr::str(template));
+        }
+    };
+
+    MethodAST dispatchMethod = quote method {
+        public Bool dispatch(String action) {
+            return this.onUiAction(action);
+        }
+    };
+
+    MethodAST mountMethod = quote method {
+        public Bool mount(UiWindow window) {
+            return window.mountHtml(this.render());
+        }
+    };
+
+    MethodAST refreshMethod = quote method {
+        public Bool refresh(UiWindow window) {
+            return window.refreshHtml(this.render());
+        }
+    };
+
+    MethodAST dispatchRefreshMethod = quote method {
+        public Bool dispatchAndRefresh(UiWindow window, String action) {
+            Bool handled = this.dispatch(action);
+
+            if (handled == false) {
+                return false;
+            }
+
+            this.refresh(window);
+            return true;
+        }
+    };
+
+    MethodAST runMethod = quote method {
+        public Int run(UiApplication application, UiWindow window) {
+            while (window.isOpen()) {
+                application.run();
+
+                String action = window.pollAction();
+
+                if (action.isEmpty()) {
+                    return 0;
+                }
+
+                this.dispatchAndRefresh(window, action);
+            }
+
+            return 0;
+        }
+    };
+
+    MethodAST escapeMethod = quote method {
+        public String emhtmlEscape(String value) {
+            return value;
+        }
+    };
+
+    class.addMethod(pathMethod);
+    class.addMethod(templateMethod);
+    class.addMethod(dispatchMethod);
+    class.addMethod(mountMethod);
+    class.addMethod(refreshMethod);
+    class.addMethod(dispatchRefreshMethod);
+    class.addMethod(runMethod);
+    class.addMethod(escapeMethod);
+
+    if (hasRender == false) {
+        MethodAST renderMethod = EmHtml::render(class, template);
+
+        class.addMethod(renderMethod);
+    }
+}
+
+macro UiAction on Method {
+    StatementAST dirty = quote stmt {
+        this.markDirty();
+    };
+
+    method.body.append(dirty);
+}
+
+macro UiBind on Method {
+    String name = args[0].toString();
+    StatementAST marker = Stmt::var("uiBind" + method.name, "String", Expr::str(name));
+    method.body.prepend(marker);
+}
+
+public class UiMacros {
+    public UiMacros() {
+    }
+}

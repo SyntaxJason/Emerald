@@ -1,0 +1,30 @@
+macro ArgValues on Method {
+    String tag = args[0].toString();
+    Int repeats = args[1].toInt();
+    Bool enabled = args[2].toBool();
+
+    if (enabled) {
+        Int index = 1;
+
+        while (index <= repeats) {
+            StatementAST line = Stmt::expr(
+                Expr::call("println", [Expr::str(tag + " " + index.toString())])
+            );
+
+            method.body.append(line);
+            index = index + 1;
+        }
+    }
+}
+
+public class ArgProbe {
+    @ArgValues("ARG", 3, true)
+    public Void run() {
+        println("body");
+    }
+}
+
+main() {
+    ArgProbe probe = ArgProbe();
+    probe.run();
+}

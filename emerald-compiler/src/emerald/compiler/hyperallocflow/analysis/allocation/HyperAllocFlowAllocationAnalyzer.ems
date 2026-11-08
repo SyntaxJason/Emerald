@@ -1,0 +1,1005 @@
+namespace emerald::compiler::hyperallocflow::analysis::allocation;
+
+use emerald::compiler::debug::DebugLog;
+use emerald::compiler::hyperallocflow::AllocationKind;
+use emerald::compiler::hyperallocflow::HyperAllocFlowBudget;
+use emerald::compiler::hyperallocflow::HyperAllocFlowDecision;
+use emerald::compiler::hyperallocflow::HyperAllocFlowReport;
+use emerald::compiler::hyperallocflow::FunctionSummary;
+use emerald::compiler::hyperallocflow::analysis::container::HyperAllocFlowContainerAnalyzer;
+use emerald::compiler::hyperallocflow::analysis::decision::HyperAllocFlowDecisionWriter;
+use emerald::compiler::hyperallocflow::analysis::escape::HyperAllocFlowEscapeAnalyzer;
+use emerald::compiler::hyperallocflow::analysis::fold::HyperAllocFlowFoldAnalyzer;
+use emerald::compiler::hyperallocflow::analysis::inline::HyperAllocFlowInlineAnalyzer;
+use emerald::compiler::hyperallocflow::analysis::ownership::HyperAllocFlowOwnershipAnalyzer;
+use emerald::compiler::hyperallocflow::analysis::summary::HyperAllocFlowSummaryBuilder;
+use emerald::compiler::hyperallocflow::analysis::static::HyperAllocFlowStaticAnalyzer;
+use emerald::compiler::hyperallocflow::analysis::support::HyperAllocFlowProgramCatalog;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class HyperAllocFlowAllocationAnalyzer {
+    private List<FunctionSummary> summaryItems;
+    private HyperAllocFlowBudget budget;
+    private HyperAllocFlowProgramCatalog catalog;
+    private HyperAllocFlowEscapeAnalyzer escapes;
+    private HyperAllocFlowOwnershipAnalyzer ownership;
+    private HyperAllocFlowSummaryBuilder summaries;
+    private HyperAllocFlowFoldAnalyzer folds;
+    private HyperAllocFlowInlineAnalyzer inlines;
+    private HyperAllocFlowStaticAnalyzer statics;
+    private HyperAllocFlowDecisionWriter decisions;
+    private HyperAllocFlowContainerAnalyzer containers;
+    private List<Int> sharedArgumentScratch;
+    private Int aswlbCounter;
+
+    public HyperAllocFlowAllocationAnalyzer() {
+        this.aswlbCounter = 0;
+        this.summaryItems = List();
+        this.budget = HyperAllocFlowBudget();
+        this.catalog = HyperAllocFlowProgramCatalog();
+        this.escapes = HyperAllocFlowEscapeAnalyzer(this.catalog);
+        this.ownership = HyperAllocFlowOwnershipAnalyzer(this.catalog, this.escapes);
+        this.summaries = HyperAllocFlowSummaryBuilder(this.catalog, this.escapes);
+        this.folds = HyperAllocFlowFoldAnalyzer(this.catalog, this.escapes);
+        this.inlines = HyperAllocFlowInlineAnalyzer(this.catalog, this.folds);
+        this.statics = HyperAllocFlowStaticAnalyzer();
+        this.decisions = HyperAllocFlowDecisionWriter(this.catalog, this.budget);
+        this.containers = HyperAllocFlowContainerAnalyzer(this.escapes);
+        this.sharedArgumentScratch = List();
+    }
+
+    public HyperAllocFlowReport analyze(SyntaxProgram program) {
+        DebugLog.log("flow: building function summaries");
+        this.summaryItems = this.summaries.buildFunctionSummaries(program);
+        DebugLog.log("flow: " + this.summaryItems.length().toString() + " function summaries at fixed point");
+        this.escapes.setFunctionSummaries(this.summaryItems);
+        HyperAllocFlowReport report = HyperAllocFlowReport();
+        report.setFunctionSummaries(this.summaryItems);
+        report.setVirtualSummaries(this.escapes.virtualSlots(), this.escapes.virtualSummaries(), this.escapes.virtualMemberStarts(), this.escapes.virtualMembers());
+        this.recordStringReturnCopies(program, report);
+        List<String> borrowedOwners = List();
+        DebugLog.log("flow: analyzing top-level statements");
+        this.analyzeStatementsWithLocalBudget(program.statements(), program, report, true, true, "Root", borrowedOwners);
+        DebugLog.log("flow: analyzing class members");
+        this.analyzeClassMembers(program, report);
+        DebugLog.log("flow: static analysis");
+        this.statics.analyze(program, report);
+        DebugLog.log("flow: applying root defaults");
+        this.decisions.addRootDefaults(program, report);
+        return report;
+    }
+
+    private Void recordStringReturnCopies(SyntaxProgram program, HyperAllocFlowReport report) {
+        List<Int> copies = this.summaries.stringReturnCopies(program);
+        Int index = 0;
+
+        while (index < copies.length()) {
+            report.markReturnCopy(copies.get(index));
+            index = index + 1;
+        }
+    }
+
+    public Void analyzeClassMembers(SyntaxProgram program, HyperAllocFlowReport report) {
+        Int classIndex = 0;
+
+        while (classIndex < program.classes().length()) {
+            ClassDeclaration declaration = program.classes().get(classIndex);
+            DebugLog.log("flow: analyze class " + declaration.fullName());
+            this.analyzeFields(declaration, program, report);
+            this.analyzeMethods(declaration, program, report);
+            classIndex = classIndex + 1;
+        }
+    }
+
+    public Void analyzeFields(ClassDeclaration declaration, SyntaxProgram program, HyperAllocFlowReport report) {
+        Int fieldIndex = 0;
+
+        while (fieldIndex < declaration.fields().length()) {
+            FieldDeclaration field = declaration.fields().get(fieldIndex);
+
+            if (field.hasInitializer()) {
+                this.decisions.markExpressionTreeRoot(field.initializerIndex(), "field initializer escapes into object storage", program, report);
+            }
+
+            fieldIndex = fieldIndex + 1;
+        }
+    }
+
+    public Void analyzeMethods(ClassDeclaration declaration, SyntaxProgram program, HyperAllocFlowReport report) {
+        Int methodIndex = 0;
+
+        while (methodIndex < declaration.methods().length()) {
+            this.analyzeMethod(declaration.methods().get(methodIndex), program, report);
+            methodIndex = methodIndex + 1;
+        }
+    }
+
+    private Void analyzeMethod(MethodDeclaration method, SyntaxProgram program, HyperAllocFlowReport report) {
+        if (method.isGenerated()) {
+            return;
+        }
+
+        if (this.inlines.isInlineReturnMethod(method, program)) {
+            this.analyzeInlineReturnMethod(method, program, report);
+            return;
+        }
+
+        List<String> borrowedOwners = List();
+        this.fillBorrowedOwnerNames(method, borrowedOwners);
+        this.analyzeStatementsWithLocalBudget(method.statements(), program, report, true, false, "Root", borrowedOwners);
+        this.shareBorrowedReferences(method, borrowedOwners, program, report);
+    }
+
+    // Parameters and `this` have no allocation decision in this method, so a
+    // use after a call that may adopt them is protected at the call site.
+    private Void shareBorrowedReferences(MethodDeclaration method, List<String> borrowedOwners, SyntaxProgram program, HyperAllocFlowReport report) {
+        if (!method.isStatic()) {
+            this.markSharedCallArguments("this", method.ownerName(), 0, method.statements(), borrowedOwners, program, report);
+        }
+
+        Int index = 0;
+
+        while (index < method.parameters().length()) {
+            Parameter parameter = method.parameters().get(index);
+            this.markSharedCallArguments(parameter.name(), parameter.typeName(), 0, method.statements(), borrowedOwners, program, report);
+            index = index + 1;
+        }
+    }
+
+    // Scalars and Inline aggregates are copied, never adopted; the type check
+    // runs only for the rare names that need sharing.
+    private Void markSharedCallArguments(String name, String typeName, Int startIndex, List<Statement> statements, List<String> borrowedOwners, SyntaxProgram program, HyperAllocFlowReport report) {
+        if (this.isCopiedScalar(typeName) || typeName == "Void") {
+            return;
+        }
+
+        this.ownership.collectSharedArguments(name, startIndex, statements, borrowedOwners, program, this.sharedArgumentScratch);
+        Bool inline = this.sharedArgumentScratch.length() > 0 && this.inlines.isInlineType(typeName, program);
+
+        while (this.sharedArgumentScratch.length() > 0) {
+            if (!inline) {
+                report.markSharedArgument(this.sharedArgumentScratch.get(this.sharedArgumentScratch.length() - 1));
+            }
+
+            this.sharedArgumentScratch.removeAt(this.sharedArgumentScratch.length() - 1);
+        }
+    }
+
+    private Void fillBorrowedOwnerNames(MethodDeclaration method, List<String> names) {
+        if (!method.isStatic()) {
+            names.add("this");
+        }
+
+        Int index = 0;
+
+        while (index < method.parameters().length()) {
+            names.add(method.parameters().get(index).name());
+            index = index + 1;
+        }
+    }
+
+    private Void analyzeInlineReturnMethod(MethodDeclaration method, SyntaxProgram program, HyperAllocFlowReport report) {
+        Statement statement = method.statements().get(0);
+        Int expressionIndex = statement.expressionIndex();
+
+        if (expressionIndex == 0 || report.hasExpression(expressionIndex)) {
+            return;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+        HyperAllocFlowDecision decision = HyperAllocFlowDecision(expressionIndex, method.returnTypeName(), AllocationKind("Inline"), "inline return recipe is materialized at the caller and requires no standalone allocation", expression.line(), expression.column());
+        decision.setEstimatedBytes(0);
+        decision.markNonAllocation();
+        report.add(decision);
+    }
+
+    public Void analyzeStatementsWithLocalBudget(List<Statement> statements, SyntaxProgram program, HyperAllocFlowReport report, Bool localAllowed, Bool poolAllowed, String repeatedKind, List<String> borrowedOwnerNames) {
+        this.aswlbCounter = this.aswlbCounter + 1;
+
+        if (this.aswlbCounter % 2000000 == 0) {
+            DebugLog.log("analyzeStatementsWithLocalBudget calls=" + this.aswlbCounter.toString());
+        }
+
+        Int index = 0;
+        Int localStackBytes = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+            this.markReleasableTemporaries(statement.expressionIndex(), program, report);
+
+            if (statement.isVariable()) {
+                localStackBytes = localStackBytes + this.analyzeVariable(statement, index + 1, statements, program, report, localAllowed, repeatedKind, localStackBytes, borrowedOwnerNames);
+            }
+
+            if (statement.isReturn()) {
+                this.analyzeReturn(statement, program, report);
+            }
+
+            if (statement.isAssign()) {
+                this.decisions.markExpressionTreeRoot(statement.expressionIndex(), "assignment target may outlive temporary expression", program, report);
+            }
+
+            if (statement.isFieldAssign()) {
+                this.decisions.markExpressionTreeRoot(statement.expressionIndex(), "value escapes into field storage", program, report);
+            }
+
+            if (statement.isExpression()) {
+                this.analyzeContainerArguments(statement.expressionIndex(), program, report);
+                this.analyzeOwnedReturnExpression(statement.expressionIndex(), program, report);
+            }
+
+            if (statement.isIf()) {
+                List<String> nestedOwnerNames = this.containers.extendBorrowedOwners(index, statements, borrowedOwnerNames, program);
+                this.analyzeStatementsWithLocalBudget(statement.bodyStatements(), program, report, localAllowed, poolAllowed, repeatedKind, nestedOwnerNames);
+                this.analyzeStatementsWithLocalBudget(statement.elseStatements(), program, report, localAllowed, poolAllowed, repeatedKind, nestedOwnerNames);
+            }
+
+            if (statement.isWhile() || statement.isFor()) {
+                String bodyRepeatedKind = this.repeatedKindFor(statement.bodyStatements(), program, poolAllowed);
+                String elseRepeatedKind = this.repeatedKindFor(statement.elseStatements(), program, poolAllowed);
+                List<String> nestedOwnerNames = this.containers.extendBorrowedOwners(index, statements, borrowedOwnerNames, program);
+                this.analyzeStatementsWithLocalBudget(statement.bodyStatements(), program, report, false, poolAllowed, bodyRepeatedKind, nestedOwnerNames);
+                this.analyzeStatementsWithLocalBudget(statement.elseStatements(), program, report, false, poolAllowed, elseRepeatedKind, nestedOwnerNames);
+            }
+
+            index = index + 1;
+        }
+    }
+
+
+    // Constructor calls used only as a View receiver or View argument, e.g.
+    // `r.weigh(Node("a"))` or `Node("a").name().length()`, would otherwise fall
+    // back to a strict Root that lives until shutdown. They are released by the
+    // emitter after the call, or after the enclosing scalar expression when the
+    // call result borrows them.
+    private Void markReleasableTemporaries(Int expressionIndex, SyntaxProgram program, HyperAllocFlowReport report) {
+        if (expressionIndex == 0) {
+            return;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (this.catalog.isObjectCreation(expression, program) && !expression.textIs("List")) {
+            this.markConstructorArgumentTemporaries(expression, program, report);
+        }
+
+        if ((expression.kindIs("methodcall") || expression.kindIs("staticcall")) && expression.hasResolvedMethod()) {
+            Int argumentIndex = 0;
+
+            while (argumentIndex < expression.argumentCount()) {
+                Int valueIndex = expression.argumentIndexAt(argumentIndex);
+
+                if (this.isTemporaryConstruction(valueIndex, program, report) && this.escapes.callArgumentIsView(expression, argumentIndex, program)) {
+                    if (!this.escapes.callReturnBorrowsParameter(expression, argumentIndex)) {
+                        report.add(this.stackTemporaryDecision(valueIndex, program, "temporary View argument has independent result and does not escape"));
+                    } else {
+                        report.add(this.temporaryDecision(valueIndex, program, "borrowed result keeps its temporary source on the heap"));
+                    }
+                }
+
+                argumentIndex = argumentIndex + 1;
+            }
+
+            if (expression.kindIs("methodcall") && this.isTemporaryConstruction(expression.leftIndex(), program, report) && this.escapes.methodReceiverIsView(expression)) {
+                if (!this.escapes.callReturnBorrowsReceiver(expression)) {
+                    report.add(this.stackTemporaryDecision(expression.leftIndex(), program, "temporary View receiver has independent result and does not escape"));
+                } else {
+                    report.add(this.temporaryDecision(expression.leftIndex(), program, "borrowed result keeps its temporary receiver on the heap"));
+                }
+            }
+        }
+
+        this.markReleasableTemporaries(expression.leftIndex(), program, report);
+        this.markReleasableTemporaries(expression.rightIndex(), program, report);
+        Int nestedIndex = 0;
+
+        while (nestedIndex < expression.argumentCount()) {
+            this.markReleasableTemporaries(expression.argumentIndexAt(nestedIndex), program, report);
+            nestedIndex = nestedIndex + 1;
+        }
+    }
+
+    // `NativeLocal(name, type, this.variable())`: arguments whose constructor
+    // parameter is only read cannot be kept by the new object.
+    private Void markConstructorArgumentTemporaries(Expression expression, SyntaxProgram program, HyperAllocFlowReport report) {
+        MethodDeclaration constructor = this.catalog.findConstructor(expression, program);
+
+        if (constructor.isMissing()) {
+            return;
+        }
+
+        Int argumentIndex = 0;
+
+        while (argumentIndex < expression.argumentCount() && argumentIndex < constructor.parameterCount()) {
+            Int valueIndex = expression.argumentIndexAt(argumentIndex);
+
+            if (!this.escapes.parameterEscapesTypedInStatements(constructor.statements(), constructor.parameterAt(argumentIndex).name(), constructor.parameterAt(argumentIndex).typeName(), program)) {
+                report.markConstructorArgumentRelease(valueIndex);
+
+                if (this.isTemporaryConstruction(valueIndex, program, report)) {
+                    report.add(this.stackTemporaryDecision(valueIndex, program, "temporary object passed to a non-escaping constructor parameter"));
+                }
+            }
+
+            argumentIndex = argumentIndex + 1;
+        }
+    }
+
+    private Bool isTemporaryConstruction(Int expressionIndex, SyntaxProgram program, HyperAllocFlowReport report) {
+        if (expressionIndex == 0 || report.hasExpression(expressionIndex)) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (!this.catalog.isObjectCreation(expression, program) || expression.textIs("List") || this.inlines.isInlineType(expression.text(), program)) {
+            return false;
+        }
+
+        MethodDeclaration constructor = this.catalog.findConstructor(expression, program);
+
+        if (constructor.isMissing() || this.escapes.parameterEscapesTypedInStatements(constructor.statements(), "this", expression.text(), program)) {
+            return false;
+        }
+
+        // Releasing the temporary also releases everything its constructor
+        // adopted, so only literals may flow into owning constructor fields.
+        Int argumentIndex = 0;
+
+        while (argumentIndex < expression.argumentCount() && argumentIndex < constructor.parameterCount()) {
+            Expression argument = program.expression(expression.argumentIndexAt(argumentIndex));
+            Bool literal = argument.kindIs("int") || argument.kindIs("float") || argument.kindIs("bool") || argument.kindIs("string") || argument.kindIs("char");
+
+            Bool copiedScalar = this.isCopiedScalar(constructor.parameterAt(argumentIndex).typeName());
+            if (!literal && !copiedScalar && this.escapes.parameterEscapesTypedInStatements(constructor.statements(), constructor.parameterAt(argumentIndex).name(), constructor.parameterAt(argumentIndex).typeName(), program)) {
+                return false;
+            }
+
+            argumentIndex = argumentIndex + 1;
+        }
+
+        return argumentIndex == expression.argumentCount();
+    }
+
+    private HyperAllocFlowDecision stackTemporaryDecision(Int expressionIndex, SyntaxProgram program, String reason) {
+        Expression expression = program.expression(expressionIndex);
+        ClassDeclaration declaration = this.catalog.findClass(expression.text(), program);
+        Bool leaf = !declaration.isMissing() && declaration.parentName().isEmpty() && declaration.implementedInterfaces().length() == 0;
+        Int index = 0;
+        while (leaf && index < declaration.fields().length()) {
+            String typeName = declaration.fields().get(index).typeName();
+            leaf = typeName == "Int" || typeName == "Float" || typeName == "Bool" || typeName == "Char";
+            index = index + 1;
+        }
+        index = 0;
+        while (leaf && index < program.classCount()) {
+            ClassDeclaration child = program.classAt(index);
+            if (child.parentName() == declaration.name() || child.parentName() == declaration.fullName()) { leaf = false; }
+            index = index + 1;
+        }
+        if (leaf && this.budget.estimateObjectBytes(expression.text(), program) <= this.budget.localObjectSoftLimit()) {
+            HyperAllocFlowDecision decision = HyperAllocFlowDecision(expressionIndex, expression.text(), AllocationKind("Local"), reason + "; fixed entry-block stack slot, no Flow allocation", expression.line(), expression.column());
+            decision.setEstimatedBytes(this.budget.estimateObjectBytes(expression.text(), program));
+            return decision;
+        }
+        return this.temporaryDecision(expressionIndex, program, reason);
+    }
+
+    private HyperAllocFlowDecision temporaryDecision(Int expressionIndex, SyntaxProgram program, String reason) {
+        Expression expression = program.expression(expressionIndex);
+        HyperAllocFlowDecision decision = this.decisions.rootDecision(expressionIndex, expression, reason, program);
+        decision.allowTemporaryRelease();
+        return decision;
+    }
+
+    private Void analyzeReturn(Statement statement, SyntaxProgram program, HyperAllocFlowReport report) {
+        if (statement.expressionIndex() == 0) {
+            return;
+        }
+
+        Expression expression = program.expression(statement.expressionIndex());
+        String returnType = this.inlines.inlineReturnType(expression, program);
+
+        if (!returnType.isEmpty() && !report.hasExpression(statement.expressionIndex())) {
+            HyperAllocFlowDecision decision = HyperAllocFlowDecision(statement.expressionIndex(), returnType, AllocationKind("Root"), "inline value crosses an unspecialized return boundary and requires one transferable Root fallback", expression.line(), expression.column());
+            decision.setEstimatedBytes(this.budget.estimateObjectBytes(returnType, program));
+            report.add(decision);
+            return;
+        }
+
+        this.decisions.markExpressionTreeRoot(statement.expressionIndex(), "return value escapes current scope", program, report);
+    }
+
+    public Int analyzeVariable(Statement statement, Int nextStatementIndex, List<Statement> statements, SyntaxProgram program, HyperAllocFlowReport report, Bool localAllowed, String repeatedKind, Int currentLocalStackBytes, List<String> borrowedOwnerNames) {
+        Int expressionIndex = statement.expressionIndex();
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "methodcall" && expression.text() == "get" && !this.isCopiedScalar(statement.typeName()) && !this.inlines.isInlineType(statement.typeName(), program)) {
+            Bool escapesScope = this.containers.borrowedViewEscapesScope(statement, nextStatementIndex, statements, borrowedOwnerNames, program);
+            Bool invalidated = this.containers.borrowedViewIsInvalidated(statement, nextStatementIndex, statements, program);
+
+            if (escapesScope || invalidated) {
+                HyperAllocFlowDecision viewEscape = HyperAllocFlowDecision(expressionIndex, statement.typeName(), AllocationKind("Root"), "container get returns a borrowed View tied to the container and element lifetime", expression.line(), expression.column());
+                viewEscape.setEstimatedBytes(0);
+                viewEscape.markNonAllocation();
+
+                if (escapesScope) {
+                    viewEscape.markSafetyIssue("borrowed container element View escapes its container scope; use removeAt for ownership transfer");
+                } else {
+                    viewEscape.markSafetyIssue("borrowed container element View is used after clear, set, remove, removeAt, or container replacement may release it");
+                }
+
+                report.add(viewEscape);
+                return 0;
+            }
+        }
+
+        if (this.inlines.canInlineContainerResultVariable(statement, nextStatementIndex, statements, expression, program)) {
+            HyperAllocFlowDecision inlineContainerResult = HyperAllocFlowDecision(expressionIndex, statement.typeName(), AllocationKind("Inline"), "typed Inline container result is copied into an independent local aggregate value", expression.line(), expression.column());
+            inlineContainerResult.setEstimatedBytes(this.budget.estimateObjectBytes(statement.typeName(), program));
+            report.add(inlineContainerResult);
+            return 0;
+        }
+
+        if (this.inlines.canInlineReturnedVariable(statement, nextStatementIndex, statements, expression, program)) {
+            HyperAllocFlowDecision inlineReturnDecision = HyperAllocFlowDecision(expressionIndex, statement.typeName(), AllocationKind("Inline"), "small data value returned across a method boundary is materialized directly as an inline aggregate", expression.line(), expression.column());
+            inlineReturnDecision.setEstimatedBytes(this.budget.estimateObjectBytes(statement.typeName(), program));
+            report.add(inlineReturnDecision);
+            return 0;
+        }
+
+        if (this.summaries.isOwnedReturnCall(expression, statement.typeName(), program)) {
+            return this.analyzeOwnedReturnVariable(statement, nextStatementIndex, statements, expressionIndex, expression, program, report);
+        }
+
+        if (statement.typeName() == "String" && this.isDynamicStringInitializer(expression, program)) {
+            return this.analyzeDynamicStringVariable(statement, nextStatementIndex, statements, expressionIndex, expression, program, report);
+        }
+
+        if (expression.kind() == "methodcall" && expression.text() == "removeAt" && !this.isCopiedScalar(statement.typeName()) && !this.inlines.isInlineType(statement.typeName(), program)) {
+            HyperAllocFlowDecision removedDecision = HyperAllocFlowDecision(expressionIndex, statement.typeName(), AllocationKind("Root"), "container removeAt transfers the element's unique ownership into the caller scope", expression.line(), expression.column());
+            removedDecision.setEstimatedBytes(this.budget.estimateObjectBytes(statement.typeName(), program));
+            removedDecision.markOwnershipTransfer();
+            removedDecision.allowScopeCleanup();
+            report.add(removedDecision);
+            this.markSharedCallArguments(statement.name(), statement.typeName(), nextStatementIndex, statements, borrowedOwnerNames, program, report);
+            return 0;
+        }
+
+        if (!this.catalog.isObjectCreation(expression, program)) {
+            this.decisions.markExpressionTreeStrictRoot(expressionIndex, "nested allocation has no precise Flow classification yet", program, report);
+
+            // Aliases and borrowed call results keep whatever owner they had;
+            // a later adopting call must not hand them to a short-lived owner.
+            this.markSharedCallArguments(statement.name(), statement.typeName(), nextStatementIndex, statements, borrowedOwnerNames, program, report);
+
+            return 0;
+        }
+
+        if (report.hasExpression(expressionIndex)) {
+            return 0;
+        }
+
+        if (!localAllowed) {
+            return this.analyzeRepeatedVariable(statement, nextStatementIndex, statements, expressionIndex, expression, program, report, repeatedKind);
+        }
+
+        if (expression.text() == "List") {
+            Bool listEscapes = this.escapes.variableEscapes(statement.name(), nextStatementIndex, statements, program);
+
+            if (listEscapes && this.ownership.variableUsedAfterCallEscape(statement.name(), nextStatementIndex, statements, program)) {
+                report.add(this.sharedAfterCallDecision(expressionIndex, statement.typeName(), expression, 40));
+                return 0;
+            }
+
+            HyperAllocFlowDecision listDecision = HyperAllocFlowDecision(expressionIndex, statement.typeName(), AllocationKind("Root"), "typed container owns its backing storage and reference elements deterministically", expression.line(), expression.column());
+            listDecision.setEstimatedBytes(40);
+
+            if (!listEscapes) {
+                listDecision.allowScopeCleanup();
+            }
+
+            report.add(listDecision);
+            return 0;
+        }
+
+        Int objectBytes = this.budget.estimateObjectBytes(expression.text(), program);
+        Bool escapes = this.escapes.variableEscapes(statement.name(), nextStatementIndex, statements, program);
+        Bool ownedEscape = false;
+        Int ownedStorageCount = 0;
+
+        if (escapes) {
+            ownedEscape = this.ownership.variableUsesOnlyOwnedStorage(statement.name(), nextStatementIndex, statements, program);
+
+            if (ownedEscape) {
+                ownedStorageCount = this.ownership.variableOwnedStorageCount(statement.name(), nextStatementIndex, statements, program);
+            }
+        }
+
+        if (!escapes && this.inlines.canInlineVariable(statement, nextStatementIndex, statements, expression, program)) {
+            HyperAllocFlowDecision inlineDecision = HyperAllocFlowDecision(expressionIndex, expression.text(), AllocationKind("Inline"), "small primitive data value is stored as an inline LLVM aggregate and copied by value", expression.line(), expression.column());
+            inlineDecision.setEstimatedBytes(objectBytes);
+            report.add(inlineDecision);
+            return 0;
+        }
+
+        if (escapes && this.inlines.canInlineVariable(statement, nextStatementIndex, statements, expression, program)) {
+            HyperAllocFlowDecision inlineContainerDecision = HyperAllocFlowDecision(expressionIndex, expression.text(), AllocationKind("Inline"), "small data value escapes only through typed Inline container copies", expression.line(), expression.column());
+            inlineContainerDecision.setEstimatedBytes(objectBytes);
+            report.add(inlineContainerDecision);
+            return 0;
+        }
+
+        if (this.ownership.variableParticipatesInOwnershipCycle(statement.name(), statements, program)) {
+            HyperAllocFlowDecision cycleDecision = HyperAllocFlowDecision(expressionIndex, expression.text(), AllocationKind("Bond"), "local ownership graph forms a cycle; Bond provides automatic cycle-safe lifetime", expression.line(), expression.column());
+            cycleDecision.setEstimatedBytes(objectBytes);
+            cycleDecision.allowScopeCleanup();
+            report.add(cycleDecision);
+            return 0;
+        }
+
+        if (escapes && this.ownership.variableUsedAfterCallEscape(statement.name(), nextStatementIndex, statements, program)) {
+            report.add(this.sharedAfterCallDecision(expressionIndex, expression.text(), expression, objectBytes));
+            return 0;
+        }
+
+        if (ownedStorageCount > 1) {
+            HyperAllocFlowDecision bondDecision = HyperAllocFlowDecision(expressionIndex, expression.text(), AllocationKind("Bond"), "local variable flows into multiple owned storage sites; Bond provides shared lifetime", expression.line(), expression.column());
+            bondDecision.setEstimatedBytes(objectBytes);
+            bondDecision.allowScopeCleanup();
+            report.add(bondDecision);
+            return 0;
+        }
+
+        if (!escapes && this.folds.canFoldVariable(statement, nextStatementIndex, statements, expression, program)) {
+            HyperAllocFlowDecision foldedDecision = HyperAllocFlowDecision(expressionIndex, expression.text(), AllocationKind("Folded"), "primitive immutable object is scalar-replaced and has no runtime object allocation", expression.line(), expression.column());
+            foldedDecision.setEstimatedBytes(objectBytes);
+            report.add(foldedDecision);
+            return 0;
+        }
+
+        if (!this.budget.objectFitsLocal(expression.text(), program)) {
+            HyperAllocFlowDecision objectLimitDecision = this.decisions.rootDecision(expressionIndex, expression, this.budget.objectLimitReason(expression.text(), program), program);
+
+            if (!escapes) {
+                objectLimitDecision.allowScopeCleanup();
+            }
+
+            report.add(objectLimitDecision);
+            return 0;
+        }
+
+        if (!this.budget.scopeFitsLocal(currentLocalStackBytes, objectBytes)) {
+            HyperAllocFlowDecision scopeLimitDecision = this.decisions.rootDecision(expressionIndex, expression, this.budget.scopeLimitReason(currentLocalStackBytes, objectBytes), program);
+
+            if (!escapes) {
+                scopeLimitDecision.allowScopeCleanup();
+            }
+
+            report.add(scopeLimitDecision);
+            return 0;
+        }
+
+        if (escapes) {
+            HyperAllocFlowDecision escapeDecision = this.decisions.rootDecision(expressionIndex, expression, "local variable escapes current scope", program);
+
+            report.add(escapeDecision);
+            return 0;
+        }
+
+        HyperAllocFlowDecision decision = HyperAllocFlowDecision(expressionIndex, expression.text(), AllocationKind("Local"), "non-escaping local candidate within conservative Flow budget", expression.line(), expression.column());
+        decision.setEstimatedBytes(objectBytes);
+        report.add(decision);
+        return objectBytes;
+    }
+
+    // Container reads of these types copy the value out of the list storage,
+    // so later clear/set/remove calls cannot invalidate the local.
+    private Bool isCopiedScalar(String typeName) {
+        return typeName == "Int" || typeName == "Bool" || typeName == "Float" || typeName == "Char";
+    }
+
+    private Bool isDynamicStringInitializer(Expression expression, SyntaxProgram program) {
+        if (expression.kind() == "string" || expression.kind() == "name" || expression.kind() == "field") {
+            return false;
+        }
+
+        if (expression.kind() == "methodcall" && (expression.text() == "get" || expression.text() == "removeAt")) {
+            return false;
+        }
+
+        if (expression.kind() == "methodcall" || expression.kind() == "staticcall") {
+            if (expression.hasResolvedMethod()) {
+                String owner = expression.resolvedMethodOwner();
+
+                if (owner == "String") {
+                    if (expression.textIs("toString")) {
+                        return this.isDynamicStringInitializer(program.expression(expression.leftIndex()), program);
+                    }
+
+                    return this.isStringAllocatingBuiltin(expression.text());
+                }
+
+                if (owner == "Int" || owner == "Char" || owner == "Float") {
+                    return expression.textIs("toString");
+                }
+            }
+
+            return this.summaries.isOwnedReturnCall(expression, "String", program);
+        }
+
+        return true;
+    }
+
+    private Bool isStringAllocatingBuiltin(String name) {
+        if (name == "toString" || name == "substring" || name == "replace" || name == "trim") {
+            return true;
+        }
+
+        if (name == "toLower" || name == "toLowerCase" || name == "toUpper" || name == "toUpperCase") {
+            return true;
+        }
+
+        return name == "concat" || name == "repeat" || name == "trimStart" || name == "trimEnd";
+    }
+
+    private Int analyzeDynamicStringVariable(Statement statement, Int nextStatementIndex, List<Statement> statements, Int expressionIndex, Expression expression, SyntaxProgram program, HyperAllocFlowReport report) {
+        if (report.hasExpression(expressionIndex)) {
+            return 0;
+        }
+
+        Bool escapes = this.escapes.variableEscapes(statement.name(), nextStatementIndex, statements, program);
+        Bool safeReturnTransfer = this.escapes.variableEscapesOnlyByReturn(statement.name(), nextStatementIndex, statements, program);
+        Bool safeOwnedStorage = this.ownership.variableUsesOnlyOwnedStorage(statement.name(), nextStatementIndex, statements, program);
+
+        if (safeReturnTransfer) {
+            this.recordBorrowedReturnTransfers(statement.name(), nextStatementIndex, statements, program, report);
+        }
+        Int ownedStorageCount = 0;
+
+        if (safeOwnedStorage) {
+            ownedStorageCount = this.ownership.variableOwnedStorageCount(statement.name(), nextStatementIndex, statements, program);
+        }
+
+        if (escapes && !safeReturnTransfer && this.ownership.variableUsedAfterCallEscape(statement.name(), nextStatementIndex, statements, program)) {
+            report.add(this.sharedAfterCallDecision(expressionIndex, "String", expression, 32));
+            return 0;
+        }
+
+        if (ownedStorageCount > 1 || this.ownership.variableParticipatesInOwnershipCycle(statement.name(), statements, program)) {
+            HyperAllocFlowDecision bondDecision = HyperAllocFlowDecision(expressionIndex, "String", AllocationKind("Bond"), "dynamic String flows into multiple owners and is promoted to Bond", expression.line(), expression.column());
+            bondDecision.allowScopeCleanup();
+            bondDecision.setEstimatedBytes(32);
+            report.add(bondDecision);
+            return 0;
+        }
+
+        HyperAllocFlowDecision rootDecision = HyperAllocFlowDecision(expressionIndex, "String", AllocationKind("Root"), "dynamic String result receives deterministic unique ownership", expression.line(), expression.column());
+
+        if (!escapes || safeReturnTransfer) {
+            rootDecision.allowScopeCleanup();
+        } else if (!safeOwnedStorage) {
+            rootDecision.markStrictIssue("dynamic String escapes before Flow can prove an ownership transfer");
+        }
+
+        rootDecision.setEstimatedBytes(32);
+        report.add(rootDecision);
+        return 0;
+    }
+
+    public Int analyzeOwnedReturnVariable(Statement statement, Int nextStatementIndex, List<Statement> statements, Int expressionIndex, Expression expression, SyntaxProgram program, HyperAllocFlowReport report) {
+        if (report.hasExpression(expressionIndex)) {
+            return 0;
+        }
+
+        Int objectBytes = this.budget.estimateObjectBytes(statement.typeName(), program);
+        Bool escapes = this.escapes.variableEscapes(statement.name(), nextStatementIndex, statements, program);
+        Bool safeReturnTransfer = this.escapes.variableEscapesOnlyByReturn(statement.name(), nextStatementIndex, statements, program);
+        Bool safeOwnedStorage = this.ownership.variableUsesOnlyOwnedStorage(statement.name(), nextStatementIndex, statements, program);
+
+        if (safeReturnTransfer) {
+            this.recordBorrowedReturnTransfers(statement.name(), nextStatementIndex, statements, program, report);
+        }
+        Int ownedStorageCount = 0;
+
+        if (safeOwnedStorage) {
+            ownedStorageCount = this.ownership.variableOwnedStorageCount(statement.name(), nextStatementIndex, statements, program);
+        }
+
+        if (this.ownership.variableParticipatesInOwnershipCycle(statement.name(), statements, program)) {
+            HyperAllocFlowDecision cycleDecision = HyperAllocFlowDecision(expressionIndex, statement.typeName(), AllocationKind("Bond"), "owned method result enters a cyclic ownership graph and is promoted to Bond in the caller", expression.line(), expression.column());
+            cycleDecision.setEstimatedBytes(objectBytes);
+            cycleDecision.markOwnershipTransfer();
+            cycleDecision.allowScopeCleanup();
+            report.add(cycleDecision);
+            return 0;
+        }
+
+        if (escapes && !safeReturnTransfer && this.ownership.variableUsedAfterCallEscape(statement.name(), nextStatementIndex, statements, program)) {
+            HyperAllocFlowDecision sharedDecision = this.sharedAfterCallDecision(expressionIndex, statement.typeName(), expression, objectBytes);
+            sharedDecision.markOwnershipTransfer();
+            report.add(sharedDecision);
+            return 0;
+        }
+
+        if (ownedStorageCount > 1) {
+            HyperAllocFlowDecision bondDecision = HyperAllocFlowDecision(expressionIndex, statement.typeName(), AllocationKind("Bond"), "owned method result flows into multiple owned storage sites and is promoted to Bond in the caller", expression.line(), expression.column());
+            bondDecision.setEstimatedBytes(objectBytes);
+            bondDecision.markOwnershipTransfer();
+            bondDecision.allowScopeCleanup();
+            report.add(bondDecision);
+            return 0;
+        }
+
+        HyperAllocFlowDecision decision = HyperAllocFlowDecision(expressionIndex, statement.typeName(), AllocationKind("Root"), "owned method result transfers into the caller scope", expression.line(), expression.column());
+        decision.setEstimatedBytes(objectBytes);
+        decision.markOwnershipTransfer();
+
+        if (!escapes || safeReturnTransfer) {
+            decision.allowScopeCleanup();
+        } else {
+            decision.markStrictIssue("owned method result escapes caller ownership before Bond analysis can prove safe sharing");
+        }
+
+        report.add(decision);
+        return 0;
+    }
+
+    // The callee may adopt the object into storage that dies before the caller
+    // is done with it. A Bond keeps the caller's scope reference counted next
+    // to the callee's edge, so whichever owner finishes last frees it.
+    private HyperAllocFlowDecision sharedAfterCallDecision(Int expressionIndex, String typeName, Expression expression, Int estimatedBytes) {
+        HyperAllocFlowDecision decision = HyperAllocFlowDecision(expressionIndex, typeName, AllocationKind("Bond"), "local is used after a call that may take ownership; Bond keeps the caller reference alive", expression.line(), expression.column());
+        decision.setEstimatedBytes(estimatedBytes);
+        decision.allowScopeCleanup();
+        return decision;
+    }
+
+    // Every top-level `return helper(...)` whose result borrows the local hands
+    // the local to the caller. Record it so the emitter keeps the local alive on
+    // that return path while still releasing it on every other scope exit.
+    private Void recordBorrowedReturnTransfers(String name, Int startIndex, List<Statement> statements, SyntaxProgram program, HyperAllocFlowReport report) {
+        Int index = startIndex;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isReturn() && this.escapes.returnExpressionBorrowsName(statement.expressionIndex(), name, program)) {
+                report.recordReturnTransfer(statement.expressionIndex(), name);
+            }
+
+            index = index + 1;
+        }
+    }
+
+    private Void analyzeContainerArguments(Int expressionIndex, SyntaxProgram program, HyperAllocFlowReport report) {
+        if (expressionIndex == 0) {
+            return;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() != "methodcall") {
+            return;
+        }
+
+        Int valueIndex = -1;
+
+        if (expression.text() == "add") {
+            valueIndex = 0;
+        } else if (expression.text() == "addAt" || expression.text() == "set") {
+            valueIndex = 1;
+        }
+
+        if (valueIndex < 0 || valueIndex >= expression.argumentIndexes().length()) {
+            return;
+        }
+
+        Int argumentIndex = expression.argumentIndexes().get(valueIndex);
+        Expression argument = program.expression(argumentIndex);
+
+        if (!this.catalog.isObjectCreation(argument, program) || report.hasExpression(argumentIndex)) {
+            return;
+        }
+
+        if (this.inlines.isInlineType(argument.text(), program)) {
+            HyperAllocFlowDecision inlineDecision = HyperAllocFlowDecision(argumentIndex, argument.text(), AllocationKind("Inline"), "temporary small data value is copied directly into typed Inline container storage", argument.line(), argument.column());
+            inlineDecision.setEstimatedBytes(this.budget.estimateObjectBytes(argument.text(), program));
+            report.add(inlineDecision);
+            return;
+        }
+
+        HyperAllocFlowDecision ownedDecision = HyperAllocFlowDecision(argumentIndex, argument.text(), AllocationKind("Root"), "temporary reference object transfers unique ownership directly into typed container storage", argument.line(), argument.column());
+        ownedDecision.setEstimatedBytes(this.budget.estimateObjectBytes(argument.text(), program));
+        report.add(ownedDecision);
+    }
+
+    public Void analyzeOwnedReturnExpression(Int expressionIndex, SyntaxProgram program, HyperAllocFlowReport report) {
+        if (expressionIndex == 0 || report.hasExpression(expressionIndex)) {
+            return;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        String typeName = this.summaries.ownedReturnType(expression);
+
+        if (typeName.isEmpty() || !this.summaries.isOwnedReturnCall(expression, typeName, program)) {
+            return;
+        }
+
+        HyperAllocFlowDecision decision = HyperAllocFlowDecision(expressionIndex, typeName, AllocationKind("Root"), "unused owned method result is released immediately by the caller", expression.line(), expression.column());
+        decision.setEstimatedBytes(this.budget.estimateObjectBytes(typeName, program));
+        decision.markOwnershipTransfer();
+        decision.allowScopeCleanup();
+        report.add(decision);
+    }
+
+    public Int analyzeRepeatedVariable(Statement statement, Int nextStatementIndex, List<Statement> statements, Int expressionIndex, Expression expression, SyntaxProgram program, HyperAllocFlowReport report, String repeatedKind) {
+        if (expression.text() == "List") {
+            Bool listEscapes = this.escapes.variableEscapes(statement.name(), nextStatementIndex, statements, program);
+
+            if (listEscapes && this.ownership.variableUsedAfterCallEscape(statement.name(), nextStatementIndex, statements, program)) {
+                report.add(this.sharedAfterCallDecision(expressionIndex, statement.typeName(), expression, 40));
+                return 0;
+            }
+
+            HyperAllocFlowDecision listDecision = HyperAllocFlowDecision(expressionIndex, statement.typeName(), AllocationKind("Root"), "repeated typed container uses deterministic Root ownership because its backing storage may resize", expression.line(), expression.column());
+            listDecision.setEstimatedBytes(40);
+
+            if (!listEscapes) {
+                listDecision.allowScopeCleanup();
+            }
+
+            report.add(listDecision);
+            return 0;
+        }
+
+        // An inline container copies the payload; its element does not make
+        // the temporary object escape, including inside repeated scopes.
+        if (this.inlines.canInlineVariable(statement, nextStatementIndex, statements, expression, program)) {
+            HyperAllocFlowDecision inlineDecision = HyperAllocFlowDecision(expressionIndex, expression.text(), AllocationKind("Inline"), "small immutable value in repeated scope is copied into typed inline storage", expression.line(), expression.column());
+            inlineDecision.setEstimatedBytes(this.budget.estimateObjectBytes(expression.text(), program));
+            report.add(inlineDecision);
+            return 0;
+        }
+
+        if (this.escapes.variableEscapes(statement.name(), nextStatementIndex, statements, program)) {
+            if (this.ownership.variableUsedAfterCallEscape(statement.name(), nextStatementIndex, statements, program)) {
+                report.add(this.sharedAfterCallDecision(expressionIndex, expression.text(), expression, this.budget.estimateObjectBytes(expression.text(), program)));
+                return 0;
+            }
+
+            HyperAllocFlowDecision repeatedEscape = this.decisions.rootDecision(expressionIndex, expression, "repeated local escapes its iteration and requires Root lifetime", program);
+
+            if (this.ownership.variableUsesOnlyOwnedStorage(statement.name(), nextStatementIndex, statements, program)) {
+                repeatedEscape.allowScopeCleanup();
+            }
+
+            report.add(repeatedEscape);
+            return 0;
+        }
+
+        if (repeatedKind == "Root") {
+            report.add(this.decisions.strictRootDecision(expressionIndex, expression, "repeated scope contains control flow that still requires Shard cleanup lowering", program));
+            return 0;
+        }
+
+        Int objectBytes = this.budget.estimateObjectBytes(expression.text(), program);
+
+        if (repeatedKind == "Shard") {
+            if (!this.budget.objectFitsShard(expression.text(), program)) {
+                report.add(this.decisions.strictRootDecision(expressionIndex, expression, this.budget.shardLimitReason(expression.text(), program), program));
+                return 0;
+            }
+
+            HyperAllocFlowDecision shardDecision = HyperAllocFlowDecision(expressionIndex, expression.text(), AllocationKind("Shard"), "non-escaping repeated allocation joins the iteration Shard and is released with the whole scope", expression.line(), expression.column());
+            shardDecision.setEstimatedBytes(objectBytes);
+            report.add(shardDecision);
+            return 0;
+        }
+
+        if (!this.budget.objectFitsPool(expression.text(), program)) {
+            report.add(this.decisions.strictRootDecision(expressionIndex, expression, this.budget.poolLimitReason(expression.text(), program), program));
+            return 0;
+        }
+
+        HyperAllocFlowDecision poolDecision = HyperAllocFlowDecision(expressionIndex, expression.text(), AllocationKind("Pool"), "non-escaping repeated allocation uses one reusable thread-local Pool slot", expression.line(), expression.column());
+        poolDecision.setEstimatedBytes(objectBytes);
+        report.add(poolDecision);
+        return 0;
+    }
+
+    public String repeatedKindFor(List<Statement> statements, SyntaxProgram program, Bool poolAllowed) {
+        if (!poolAllowed) {
+            return "Shard";
+        }
+
+        if (this.repeatedAllocationCount(statements, program) > 1 || this.repeatedScopeRequiresShard(statements, program)) {
+            return "Shard";
+        }
+
+        return "Pool";
+    }
+
+    public Bool repeatedScopeRequiresShard(List<Statement> statements, SyntaxProgram program) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isVariable()) {
+                Expression expression = program.expression(statement.expressionIndex());
+
+                if (this.catalog.isObjectCreation(expression, program) && expression.text() != "List" && !this.budget.objectFitsPool(expression.text(), program)) {
+                    return true;
+                }
+            }
+
+            if (statement.isIf()) {
+                if (this.repeatedScopeRequiresShard(statement.bodyStatements(), program) || this.repeatedScopeRequiresShard(statement.elseStatements(), program)) {
+                    return true;
+                }
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    public Int repeatedAllocationCount(List<Statement> statements, SyntaxProgram program) {
+        Int total = 0;
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isVariable() && this.catalog.isObjectCreation(program.expression(statement.expressionIndex()), program)) {
+                total = total + 1;
+            }
+
+            if (statement.isIf()) {
+                total = total + this.repeatedAllocationCount(statement.bodyStatements(), program);
+                total = total + this.repeatedAllocationCount(statement.elseStatements(), program);
+            }
+
+            index = index + 1;
+        }
+
+        return total;
+    }
+
+    public Bool statementsContainReturn(List<Statement> statements) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isReturn()) {
+                return true;
+            }
+
+            if (statement.isIf()) {
+                if (this.statementsContainReturn(statement.bodyStatements()) || this.statementsContainReturn(statement.elseStatements())) {
+                    return true;
+                }
+            }
+
+            if (statement.isWhile() || statement.isFor()) {
+                if (this.statementsContainReturn(statement.bodyStatements()) || this.statementsContainReturn(statement.elseStatements())) {
+                    return true;
+                }
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+}

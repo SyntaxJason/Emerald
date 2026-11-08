@@ -1,0 +1,56 @@
+namespace Std::Text;
+
+use Std::Native::NativeString;
+
+// Accumulates text in chunks, so building an n-byte String costs O(n) instead
+// of the O(n^2) of repeated `text = text + part`. The chunks are joined once
+// per toString() call and the result becomes the single remaining chunk.
+public class StringBuilder {
+    private List<String> chunks;
+    private Int size;
+
+    public StringBuilder() {
+        this.chunks = List();
+        this.size = 0;
+    }
+
+    public Int length() { return this.size; }
+
+    public Bool isEmpty() { return this.size == 0; }
+
+    public Void append(String value) {
+        if (value.length() > 0) {
+            this.chunks.add(value);
+            this.size = this.size + value.length();
+        }
+    }
+
+    public Void appendInt(Int value) { this.append(value.toString()); }
+
+    public Void appendFloat(Float value) { this.append(value.toString()); }
+
+    public Void appendChar(Char value) { this.append(value.toString()); }
+
+    public Void appendBool(Bool value) {
+        if (value) { this.append("true"); } else { this.append("false"); }
+    }
+
+    public Void appendLine(String value) {
+        this.append(value);
+        this.append("\n");
+    }
+
+    public String toString() {
+        if (this.chunks.length() == 0) { return ""; }
+        if (this.chunks.length() == 1) { return this.chunks.get(0) + ""; }
+        String joined = NativeString.join(this.chunks, "");
+        this.chunks.clear();
+        this.chunks.add(joined);
+        return joined;
+    }
+
+    public Void clear() {
+        this.chunks.clear();
+        this.size = 0;
+    }
+}

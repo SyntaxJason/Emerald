@@ -1,0 +1,13 @@
+public class HyperAllocFlowV1ParameterAliasHelper {
+    public static String copy(String input) {
+        String value = input;
+        return value + "";
+    }
+}
+
+main() {
+    List<String> values = List();
+    values.add("42");
+    String view = values.get(0);
+    println(HyperAllocFlowV1ParameterAliasHelper.copy(view));
+}

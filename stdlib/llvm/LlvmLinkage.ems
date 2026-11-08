@@ -1,0 +1,6 @@
+namespace Std::Llvm;
+
+public class LlvmLinkage {
+    public LlvmLinkage() {
+    }
+}

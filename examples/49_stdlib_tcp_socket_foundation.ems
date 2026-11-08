@@ -1,0 +1,25 @@
+use Std::Net::Endpoint;
+use Std::Net::IEndpoint;
+use Std::Net::TcpConnection;
+use Std::Net::ITcpConnection;
+use Std::Net::TcpListener;
+use Std::Net::ITcpListener;
+use Std::Net::Tcp;
+
+main() {
+    IEndpoint endpoint = Endpoint("127.0.0.1", 8080);
+    println(endpoint.host());
+    println(endpoint.port().toString());
+    println(endpoint.toString());
+    println(endpoint.isLoopback().toString());
+
+    ITcpConnection connection = TcpConnection(0, endpoint);
+    println(connection.isOpen().toString());
+    println(connection.tryClose().isSuccess().toString());
+
+    ITcpListener listener = TcpListener(0, endpoint);
+    println(listener.isOpen().toString());
+    println(listener.tryClose().isSuccess().toString());
+
+    println(Tcp.connect("127.0.0.1", -1).isFailure().toString());
+}

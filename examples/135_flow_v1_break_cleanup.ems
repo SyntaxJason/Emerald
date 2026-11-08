@@ -1,0 +1,25 @@
+public class HyperAllocFlowV1BreakValue {
+    public Int value;
+
+    public HyperAllocFlowV1BreakValue(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    Int index = 0;
+    Int total = 39;
+
+    while (index < 8) {
+        HyperAllocFlowV1BreakValue value = HyperAllocFlowV1BreakValue(index);
+        total = total + value.value;
+
+        if (index == 2) {
+            break;
+        }
+
+        index = index + 1;
+    }
+
+    println(total.toString());
+}

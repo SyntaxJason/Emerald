@@ -1,0 +1,17 @@
+public class HyperAllocFlowV1AddAtViewBox {
+    public Int value;
+
+    public HyperAllocFlowV1AddAtViewBox(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1AddAtViewBox> values = List();
+    HyperAllocFlowV1AddAtViewBox first = HyperAllocFlowV1AddAtViewBox(42);
+    HyperAllocFlowV1AddAtViewBox second = HyperAllocFlowV1AddAtViewBox(1);
+    values.add(first);
+    HyperAllocFlowV1AddAtViewBox view = values.get(0);
+    values.addAt(0, second);
+    println(view.value.toString());
+}

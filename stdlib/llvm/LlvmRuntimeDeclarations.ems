@@ -1,0 +1,883 @@
+namespace Std::Llvm;
+
+use Std::Collections::ArrayList;
+use Std::Collections::IList;
+
+public class LlvmRuntimeDeclarations {
+    private LlvmContext context;
+    private LlvmModule llvmModule;
+
+    public LlvmRuntimeDeclarations(LlvmContext context, LlvmModule llvmModule) {
+        this.context = LlvmContext(context.handle());
+        this.llvmModule = LlvmModule(llvmModule.handle(), llvmModule.context());
+    }
+
+    public LlvmRuntimeFunction hyperAllocFlowInit() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("hyperalloc_flow_init", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction hyperAllocFlowShutdown() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("hyperalloc_flow_shutdown", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction alloc() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int64Type());
+        return this.declare("hyperalloc_flow_alloc", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction allocAtomic() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int64Type());
+        return this.declare("hyperalloc_flow_alloc_atomic", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction bondAlloc() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int64Type());
+        return this.declare("hyperalloc_flow_bond_alloc", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction bondPromote() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("hyperalloc_flow_bond_promote", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction bondRetain() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("hyperalloc_flow_bond_retain", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction bondRelease() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("hyperalloc_flow_bond_release", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction shareBorrowed() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("hyperalloc_flow_share_borrowed", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction ownerEnter() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("hyperalloc_flow_owner_enter", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction ownerLeave() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("hyperalloc_flow_owner_leave", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction ownerReset() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("hyperalloc_flow_owner_reset", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction rootDetach() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("hyperalloc_flow_root_detach", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction rootReplace() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("hyperalloc_flow_root_replace", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction rootRelease() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("hyperalloc_flow_root_release", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction poolAcquire() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int64Type());
+        params.add(this.context.int64Type());
+        return this.declare("hyperalloc_flow_pool_acquire", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction shardBegin() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("hyperalloc_flow_shard_begin", this.context.int64Type(), params);
+    }
+
+    public LlvmRuntimeFunction shardAlloc() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int64Type());
+        return this.declare("hyperalloc_flow_shard_alloc", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction shardRegisterOwner() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("hyperalloc_flow_shard_register_owner", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction shardEnd() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int64Type());
+        return this.declare("hyperalloc_flow_shard_end", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction stringNew() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.context.int64Type());
+        return this.declare("emerald_string_new", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction stringFromCString() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_string_from_cstr", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction staticStringFromCString() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_static_string_from_cstr", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction stringConcat() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_string_concat", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction stringEquals() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_string_equals", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction stringLength() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_string_length", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction stringStartsWith() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_string_starts_with", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction stringEndsWith() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_string_ends_with", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction stringContains() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_string_contains", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction stringReplace() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_string_replace", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction stringSubstring() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.context.int32Type());
+        params.add(this.context.int32Type());
+        return this.declare("emerald_string_substring", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction stringIndexOf() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_string_index_of", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction stringSplit() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_string_split", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction stringJoin() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_string_join", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction stringTrim() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_string_trim", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction stringToLower() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_string_to_lower", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction stringToUpper() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_string_to_upper", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction stringToInt() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_string_to_int64", this.context.int64Type(), params);
+    }
+
+    public LlvmRuntimeFunction stringCharAt() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.context.int32Type());
+        return this.declare("emerald_string_char_at", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction charToString() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_char_to_string", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction charIsDigit() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_char_is_digit", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction charIsLetter() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_char_is_letter", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction charIsWhitespace() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_char_is_whitespace", this.context.int32Type(), params);
+    }
+
+
+    public LlvmRuntimeFunction listNew() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_list_new", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction listNewTyped() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        params.add(this.context.int64Type());
+        return this.declare("emerald_list_new_typed", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction listLength() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_list_length", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction listAdd() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_list_add", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction listGet() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.context.int32Type());
+        return this.declare("emerald_list_get", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction listGetInto() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.context.int32Type());
+        params.add(this.pointerType());
+        return this.declare("emerald_list_get_into", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction listSet() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.context.int32Type());
+        params.add(this.pointerType());
+        return this.declare("emerald_list_set", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction listAddAt() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.context.int32Type());
+        params.add(this.pointerType());
+        return this.declare("emerald_list_add_at", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction listRemove() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_list_remove", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction listRemoveAt() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.context.int32Type());
+        return this.declare("emerald_list_remove_at", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction listRemoveAtInto() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.context.int32Type());
+        params.add(this.pointerType());
+        return this.declare("emerald_list_remove_at_into", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction listIndexOf() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_list_index_of", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction listIndexOfString() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_list_index_of_string", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction listRemoveString() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_list_remove_string", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction listClear() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_list_clear", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction intToString() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int64Type());
+        return this.declare("emerald_int64_to_string", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction print() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_print", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction println() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_println", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction panic() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_panic", this.context.voidType(), params);
+    }
+
+
+
+    public LlvmRuntimeFunction consoleReadLine() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_console_read_line", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction consoleErrorLine() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_console_error_line", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction fileExists() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_file_exists", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction fileIsFile() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_file_is_file", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction fileReadText() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_file_read_text", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction fileReadLines() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_file_read_lines", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction fileWriteText() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_file_write_text", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction fileAppendText() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_file_append_text", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction fileDelete() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_file_delete", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction fileSize() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_file_size", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction directoryExists() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_directory_exists", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction directoryCreate() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_directory_create", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction directoryDelete() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_directory_delete", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction directoryList() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_directory_list", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction pathCurrent() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_path_current", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction pathJoin() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_path_join", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction pathParent() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_path_parent", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction pathFileName() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_path_file_name", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction pathExtension() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_path_extension", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction envGet() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_env_get", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction envGetOr() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.pointerType());
+        return this.declare("emerald_env_get_or", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction envHas() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        return this.declare("emerald_env_has", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction envCurrentDirectory() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_env_current_directory", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction envArgs() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_env_args", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction timeMonotonicMillis() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_time_monotonic_millis", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction timeMonotonicNanos() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_time_monotonic_nanos", this.context.int64Type(), params);
+    }
+
+    public LlvmRuntimeFunction timeUnixMillis() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_time_unix_millis", this.context.int64Type(), params);
+    }
+
+    public LlvmRuntimeFunction timeLocalOffsetMinutes() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int64Type());
+        return this.declare("emerald_time_local_offset_minutes", this.context.int64Type(), params);
+    }
+
+    public LlvmRuntimeFunction timeSleepMillis() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int64Type());
+        return this.declare("emerald_time_sleep_millis", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction randomNext() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_random_next", this.context.int64Type(), params);
+    }
+
+    public LlvmRuntimeFunction processCommand() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_process_command", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction processSetArgs() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        params.add(this.pointerType());
+        return this.declare("emerald_process_set_args", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction processArgs() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_process_args", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction processExit() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_process_exit", this.context.voidType(), params);
+    }
+
+    public LlvmRuntimeFunction systemOs() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_system_os", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction systemIsWindows() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_system_is_windows", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction systemIsLinux() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_system_is_linux", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction systemLineSeparator() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_system_line_separator", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction systemPathSeparator() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_system_path_separator", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction systemDirectorySeparator() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_system_directory_separator", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction systemArch() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_system_arch", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction systemProcessorCount() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_system_processor_count", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction systemUserName() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_system_user_name", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction systemHostName() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_system_host_name", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction systemHomeDirectory() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_system_home_directory", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction systemTempDirectory() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_system_temp_directory", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction tcpConnect() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.context.int32Type());
+        return this.declare("emerald_tcp_connect", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction tcpListen() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.context.int32Type());
+        return this.declare("emerald_tcp_listen", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction tcpIsOpen() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_tcp_is_open", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction tcpListenerIsOpen() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_tcp_listener_is_open", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction tcpListenerPort() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_tcp_listener_port", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction tcpReadText() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_tcp_read_text", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction tcpReadLine() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_tcp_read_line", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction tcpWriteText() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        params.add(this.pointerType());
+        return this.declare("emerald_tcp_write_text", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction tcpClose() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_tcp_close", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction tcpAccept() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_tcp_accept", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction tcpCloseListener() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_tcp_close_listener", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction udpBind() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.context.int32Type());
+        return this.declare("emerald_udp_bind", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction udpIsOpen() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_udp_is_open", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction udpLocalPort() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_udp_local_port", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction udpSendText() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        params.add(this.pointerType());
+        params.add(this.context.int32Type());
+        params.add(this.pointerType());
+        return this.declare("emerald_udp_send_text", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction udpReceiveText() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_udp_receive_text", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction udpLastSenderHost() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_udp_last_sender_host", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction udpLastSenderPort() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_udp_last_sender_port", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction udpClose() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_udp_close", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction uiInit() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_ui_init", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction uiBackend() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_ui_backend", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction uiCreateWindow() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.pointerType());
+        params.add(this.context.int32Type());
+        params.add(this.context.int32Type());
+        return this.declare("emerald_ui_create_window", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction uiSetHtml() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        params.add(this.pointerType());
+        return this.declare("emerald_ui_set_html", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction uiSetTitle() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        params.add(this.pointerType());
+        return this.declare("emerald_ui_set_title", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction uiIsOpen() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_ui_is_open", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction uiPollAction() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_ui_poll_action", this.pointerType(), params);
+    }
+
+    public LlvmRuntimeFunction uiShow() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_ui_show", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction uiClose() {
+        ArrayList<LlvmType> params = ArrayList();
+        params.add(this.context.int32Type());
+        return this.declare("emerald_ui_close", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction uiPump() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_ui_pump", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction uiRun() {
+        ArrayList<LlvmType> params = ArrayList();
+        return this.declare("emerald_ui_run", this.context.int32Type(), params);
+    }
+
+    public LlvmRuntimeFunction declare(String name, LlvmType returnType, IList<LlvmType> parameterTypes) {
+        LlvmType functionType = this.context.functionTypeWithParams(returnType, parameterTypes);
+        LlvmFunction existing = this.llvmModule.getFunction(name);
+
+        if (!existing.isNull()) {
+            return LlvmRuntimeFunction(functionType, existing);
+        }
+
+        LlvmFunction declared = this.llvmModule.addFunction(name, functionType);
+        declared.setLinkage(Llvm.externalLinkage());
+
+        return LlvmRuntimeFunction(functionType, declared);
+    }
+
+    private LlvmType pointerType() {
+        return this.context.opaquePointerType();
+    }
+}

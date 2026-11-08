@@ -1,0 +1,91 @@
+namespace emerald::compiler::macro;
+
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+
+public class MacroValue {
+    private String kindValue;
+    private String stringValue;
+    private Int intValueValue;
+    private Bool boolValueValue;
+    private Int expressionIndexValue;
+    private Statement statementValue;
+    private MethodDeclaration methodValue;
+    private ClassDeclaration classValue;
+    private FieldDeclaration fieldValue;
+    private List<Statement> blockStatementItems;
+    private List<Parameter> parameterItems;
+    private List<MacroValue> listItems;
+
+    public MacroValue(String kind, String stringData, Int intData, Bool boolData, Int expressionIndex, Statement statementData, MethodDeclaration methodData, ClassDeclaration classData, FieldDeclaration fieldData, List<Statement> blockStatements, List<Parameter> parameters, List<MacroValue> values) {
+        this.kindValue = kind;
+        this.stringValue = stringData;
+        this.intValueValue = intData;
+        this.boolValueValue = boolData;
+        this.expressionIndexValue = expressionIndex;
+        this.statementValue = statementData;
+        this.methodValue = methodData;
+        this.classValue = classData;
+        this.fieldValue = fieldData;
+        this.blockStatementItems = blockStatements;
+        this.parameterItems = parameters;
+        this.listItems = values;
+    }
+
+    public String kind() {
+        return this.kindValue;
+    }
+
+    public String stringData() {
+        return this.stringValue;
+    }
+
+    public Int intData() {
+        return this.intValueValue;
+    }
+
+    public Bool boolData() {
+        return this.boolValueValue;
+    }
+
+    public Int expressionIndex() {
+        return this.expressionIndexValue;
+    }
+
+    public Statement statement() {
+        return this.statementValue;
+    }
+
+    public MethodDeclaration method() {
+        return this.methodValue;
+    }
+
+    public ClassDeclaration classDeclaration() {
+        return this.classValue;
+    }
+
+    public FieldDeclaration field() {
+        return this.fieldValue;
+    }
+
+    public List<Statement> blockStatements() {
+        return this.blockStatementItems;
+    }
+
+    public Parameter parameter() {
+        return this.parameterItems.get(0);
+    }
+
+    public List<MacroValue> values() {
+        return this.listItems;
+    }
+
+    public Bool isKind(String kind) {
+        return this.kindValue == kind;
+    }
+
+}

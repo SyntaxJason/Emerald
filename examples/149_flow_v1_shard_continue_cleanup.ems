@@ -1,0 +1,31 @@
+public class HyperAllocFlowV1ShardContinueLeft {
+    public Int value;
+
+    public HyperAllocFlowV1ShardContinueLeft(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1ShardContinueRight {
+    public Int value;
+
+    public HyperAllocFlowV1ShardContinueRight(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    Int index = 0;
+
+    while (index < 2) {
+        HyperAllocFlowV1ShardContinueLeft left = HyperAllocFlowV1ShardContinueLeft(20);
+        HyperAllocFlowV1ShardContinueRight right = HyperAllocFlowV1ShardContinueRight(22);
+        index = index + 1;
+
+        if (index == 1) {
+            continue;
+        }
+
+        println((left.value + right.value).toString());
+    }
+}

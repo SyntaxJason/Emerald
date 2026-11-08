@@ -1,0 +1,18 @@
+class Widget {
+    private Int count;
+
+    public Widget() {
+        this.count = 0;
+    }
+
+    public Int sum() {
+        Int total = this.count;
+        return total;
+    }
+}
+
+main() {
+    Widget w = Widget();
+    println(w.sum().toString());
+    return 0;
+}

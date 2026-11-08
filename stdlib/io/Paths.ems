@@ -1,0 +1,30 @@
+namespace Std::Io;
+
+use Std::Io::IPath;
+use Std::Io::Path;
+use Std::Native::NativePath;
+
+public class Paths {
+    public Paths() {
+    }
+
+    public static IPath current() {
+        return Path(NativePath.current());
+    }
+
+    public static String join(String left, String right) {
+        return NativePath.join(left, right);
+    }
+
+    public static String parent(String value) {
+        return NativePath.parent(value);
+    }
+
+    public static String fileName(String value) {
+        return NativePath.fileName(value);
+    }
+
+    public static String extension(String value) {
+        return NativePath.extension(value);
+    }
+}

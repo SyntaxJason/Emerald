@@ -1,0 +1,36 @@
+namespace emerald::compiler::syntax;
+
+public class ParameterParser {
+    private ParserState state;
+    private TypeParser types;
+
+    public ParameterParser(ParserState parserState) {
+        this.state = parserState;
+        this.types = TypeParser(parserState);
+    }
+
+    public List<Parameter> parse() {
+        List<Parameter> parameters = List();
+        this.state.consumeSymbol("(", "Expected '(' before parameter list");
+
+        if (!this.state.checkSymbol(")")) {
+            Bool parsing = true;
+
+            while (parsing && !this.state.isAtEnd()) {
+                String typeName = this.types.parse("Expected parameter type");
+                Token nameToken = this.state.consumeKind("identifier", "Expected parameter name");
+                parameters.add(Parameter(nameToken.text(), typeName, nameToken.line(), nameToken.column()));
+
+                if (this.state.checkSymbol(",")) {
+                    this.state.advance();
+                    continue;
+                }
+
+                parsing = false;
+            }
+        }
+
+        this.state.consumeSymbol(")", "Expected ')' after parameter list");
+        return parameters;
+    }
+}

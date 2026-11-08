@@ -1,5 +1,7 @@
 namespace Std::Data;
 
+use Std::Data::IMutableBox;
+
 public class MutableBox<T> implements IMutableBox<T> {
     private T stored;
 

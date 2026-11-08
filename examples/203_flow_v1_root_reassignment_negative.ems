@@ -1,0 +1,13 @@
+public class HyperAllocFlowV1ReassignedRoot {
+    private Int value;
+
+    public HyperAllocFlowV1ReassignedRoot(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    HyperAllocFlowV1ReassignedRoot value = HyperAllocFlowV1ReassignedRoot(20);
+    value = HyperAllocFlowV1ReassignedRoot(22);
+    println(42.toString());
+}

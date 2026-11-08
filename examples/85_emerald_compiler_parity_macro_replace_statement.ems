@@ -1,0 +1,19 @@
+macro ReplaceFirstReturn on Method {
+    StatementAST replacement = Stmt::return(
+        Expr::str("replaced")
+    );
+
+    method.body.replace(0, replacement);
+}
+
+public class ReplaceProbe {
+    @ReplaceFirstReturn
+    public String value() {
+        return "original";
+    }
+}
+
+main() {
+    ReplaceProbe probe = ReplaceProbe();
+    println(probe.value());
+}

@@ -1,0 +1,107 @@
+namespace emerald::compiler::macro;
+
+use emerald::compiler::diagnostic::DiagnosticBag;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class MacroInterpreterContext {
+    private SyntaxProgram programValue;
+    private DiagnosticBag diagnosticBag;
+    private List<String> names;
+    private List<MacroValue> values;
+    private Bool failedValue;
+    private MacroValueFactory factoryValue;
+
+    public MacroInterpreterContext(SyntaxProgram program, DiagnosticBag diagnostics) {
+        this.programValue = program;
+        this.diagnosticBag = diagnostics;
+        this.names = this.emptyNames();
+        this.values = this.emptyValues();
+        this.failedValue = false;
+        this.factoryValue = MacroValueFactory();
+    }
+
+    public SyntaxProgram program() {
+        return this.programValue;
+    }
+
+    public MacroValueFactory factory() {
+        return this.factoryValue;
+    }
+
+    public Bool failed() {
+        return this.failedValue;
+    }
+
+    public Void reset() {
+        this.names = this.emptyNames();
+        this.values = this.emptyValues();
+        this.failedValue = false;
+    }
+
+    public Void declare(String name, MacroValue value) {
+        this.names.add(name);
+        this.values.add(value);
+    }
+
+    public Void declareOrAssign(String name, MacroValue value) {
+        Int index = this.indexOf(name);
+
+        if (index >= 0) {
+            this.values.set(index, value);
+            return;
+        }
+
+        this.declare(name, value);
+    }
+
+    public Void assign(String name, MacroValue value, Int line, Int column) {
+        Int index = this.indexOf(name);
+
+        if (index >= 0) {
+            this.values.set(index, value);
+            return;
+        }
+
+        this.error("unknown macro variable " + name, line, column);
+    }
+
+    public MacroValue lookup(String name, Int line, Int column) {
+        Int index = this.indexOf(name);
+
+        if (index >= 0) {
+            return this.values.get(index);
+        }
+
+        return this.error("unknown macro variable " + name, line, column);
+    }
+
+    public MacroValue error(String message, Int line, Int column) {
+        this.diagnosticBag.error("Macro error: " + message, line, column);
+        this.failedValue = true;
+        return this.factoryValue.voidValue();
+    }
+
+    private Int indexOf(String name) {
+        Int index = this.names.length() - 1;
+
+        while (index >= 0) {
+            if (this.names.get(index) == name) {
+                return index;
+            }
+
+            index = index - 1;
+        }
+
+        return -1;
+    }
+
+    private List<String> emptyNames() {
+        List<String> result = List();
+        return result;
+    }
+
+    private List<MacroValue> emptyValues() {
+        List<MacroValue> result = List();
+        return result;
+    }
+}

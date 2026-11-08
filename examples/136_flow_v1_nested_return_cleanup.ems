@@ -1,0 +1,38 @@
+public class HyperAllocFlowV1ReturnLeft {
+    public Int value;
+
+    public HyperAllocFlowV1ReturnLeft(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1ReturnRight {
+    public Int value;
+
+    public HyperAllocFlowV1ReturnRight(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1ReturnRunner {
+    public static Int run() {
+        Int index = 0;
+
+        while (index < 4) {
+            HyperAllocFlowV1ReturnLeft left = HyperAllocFlowV1ReturnLeft(20);
+            HyperAllocFlowV1ReturnRight right = HyperAllocFlowV1ReturnRight(22);
+
+            if (index == 0) {
+                return left.value + right.value;
+            }
+
+            index = index + 1;
+        }
+
+        return 0;
+    }
+}
+
+main() {
+    println(HyperAllocFlowV1ReturnRunner.run().toString());
+}

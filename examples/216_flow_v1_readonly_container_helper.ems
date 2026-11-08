@@ -1,0 +1,21 @@
+public class HyperAllocFlowV1ReadonlyHelperItem {
+    public Int value;
+
+    public HyperAllocFlowV1ReadonlyHelperItem(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1ReadonlyHelper {
+    public static Int count(List<HyperAllocFlowV1ReadonlyHelperItem> items) {
+        return items.length();
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1ReadonlyHelperItem> items = List();
+    items.add(HyperAllocFlowV1ReadonlyHelperItem(42));
+    HyperAllocFlowV1ReadonlyHelperItem view = items.get(0);
+    HyperAllocFlowV1ReadonlyHelper.count(items);
+    println(view.value.toString());
+}

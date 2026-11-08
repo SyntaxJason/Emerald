@@ -1,5 +1,9 @@
 namespace Std::Collections;
 
+use Std::Collections::IList;
+use Std::Collections::IMapEntry;
+use Std::Functional::IBiConsumer;
+
 public interface IMap<K, V> {
     public Int size();
 

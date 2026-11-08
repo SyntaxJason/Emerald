@@ -1,0 +1,17 @@
+public class HyperAllocFlowV1ListBox {
+    public Int value;
+
+    public HyperAllocFlowV1ListBox(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1ListBox> boxes = List();
+    HyperAllocFlowV1ListBox left = HyperAllocFlowV1ListBox(40);
+    HyperAllocFlowV1ListBox right = HyperAllocFlowV1ListBox(2);
+    boxes.add(left);
+    boxes.add(right);
+    println((boxes.get(0).value + boxes.get(1).value).toString());
+    boxes.clear();
+}

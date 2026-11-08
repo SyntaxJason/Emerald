@@ -1,0 +1,9 @@
+namespace Std::Native;
+
+// Compiler bridge: allocation-free hash of any value, selected by its static
+// type. Int/Bool/Char are mixed, Float normalizes -0.0 and NaN, String hashes
+// its bytes, and objects use hashCode() when defined (identity otherwise).
+// The result is never negative.
+public class NativeHash {
+    public static Int of(Any value) { return 0; }
+}

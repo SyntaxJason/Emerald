@@ -1,0 +1,19 @@
+public class HyperAllocFlowMutablePair {
+    private Int left;
+    private Int right;
+
+    public HyperAllocFlowMutablePair(Int left, Int right) {
+        this.left = left;
+        this.right = right;
+    }
+
+    public Int changeAndRead() {
+        this.left = this.left + 1;
+        return this.left + this.right;
+    }
+}
+
+main() {
+    HyperAllocFlowMutablePair pair = HyperAllocFlowMutablePair(20, 21);
+    println(pair.changeAndRead().toString());
+}

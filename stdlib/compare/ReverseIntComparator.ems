@@ -1,10 +1,14 @@
 namespace Std::Compare;
 
+use Std::Compare::IComparator;
+
 public class ReverseIntComparator implements IComparator<Int> {
     public ReverseIntComparator() {
     }
 
     public Int compare(Int left, Int right) {
-        return right - left;
+        if (right < left) { return -1; }
+        if (right > left) { return 1; }
+        return 0;
     }
 }

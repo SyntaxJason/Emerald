@@ -1,0 +1,26 @@
+main() {
+    Int sum = 2000000000 + 2000000000;
+    println(sum);
+    println(9223372036854775807);
+    println(-9223372036854775808);
+    println("4000000000".toInt());
+    List<Int> integers = List();
+    integers.add(sum);
+    integers.add(-5000000000);
+    println(integers.get(0));
+    println(integers.removeAt(1));
+    Float decimal = 2.0;
+    Float exponent = 1.25e2;
+    println(decimal + 3);
+    println(exponent / 2.0);
+    println(-decimal);
+    println(7.toFloat() / 2.0);
+    println(3.75.toInt());
+    println((2.0 < 3).toString());
+    List<Float> floats = List();
+    floats.add(2.5);
+    floats.add(-3.75);
+    println(floats.get(0).toString());
+    println(floats.removeAt(1));
+    println(2.toString());
+}

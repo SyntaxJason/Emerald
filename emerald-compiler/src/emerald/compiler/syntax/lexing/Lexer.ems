@@ -1,0 +1,73 @@
+namespace emerald::compiler::syntax;
+
+use emerald::compiler::diagnostic::DiagnosticBag;
+
+public class Lexer {
+    private LexerCursor cursor;
+    private LexerRules rules;
+    private LexerTokenReader reader;
+    private DiagnosticBag diagnostics;
+
+    public Lexer(String text, DiagnosticBag bag) {
+        this.cursor = LexerCursor(text);
+        this.rules = LexerRules();
+        this.reader = LexerTokenReader(this.cursor, this.rules, bag);
+        this.diagnostics = bag;
+    }
+
+    public List<Token> tokenize() {
+        List<Token> tokens = List();
+
+        while (!this.cursor.isAtEnd()) {
+            this.scanToken(tokens);
+        }
+
+        tokens.add(Token("eof", "", this.cursor.line(), this.cursor.column()));
+        return tokens;
+    }
+
+    private Void scanToken(List<Token> tokens) {
+        String value = this.cursor.peekText();
+
+        if (this.rules.isWhitespace(value)) {
+            this.cursor.advanceText();
+            return;
+        }
+
+        if (value == "/" && this.cursor.peekNextText() == "/") {
+            this.reader.skipLineComment();
+            return;
+        }
+
+        if (this.rules.isIdentifierStart(value)) {
+            tokens.add(this.reader.readIdentifier());
+            return;
+        }
+
+        if (this.rules.isDigit(value)) {
+            tokens.add(this.reader.readNumber());
+            return;
+        }
+
+        if (value == "\"") {
+            tokens.add(this.reader.readString());
+            return;
+        }
+
+        if (this.rules.isTwoCharacterSymbol(value, this.cursor.peekNextText())) {
+            tokens.add(Token("symbol", value + this.cursor.peekNextText(), this.cursor.line(), this.cursor.column()));
+            this.cursor.advanceText();
+            this.cursor.advanceText();
+            return;
+        }
+
+        if (this.rules.isSymbol(value)) {
+            tokens.add(Token("symbol", value, this.cursor.line(), this.cursor.column()));
+            this.cursor.advanceText();
+            return;
+        }
+
+        this.diagnostics.error("Unexpected character '" + value + "'", this.cursor.line(), this.cursor.column());
+        this.cursor.advanceText();
+    }
+}

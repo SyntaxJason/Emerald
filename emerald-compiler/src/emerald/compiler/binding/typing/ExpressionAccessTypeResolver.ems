@@ -1,0 +1,426 @@
+namespace emerald::compiler::binding;
+
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+
+public class ExpressionAccessTypeResolver {
+    private BindingContext context;
+    private BindingTypeCatalog catalog;
+    private ExpressionTypeResolver resolver;
+
+    public ExpressionAccessTypeResolver(BindingContext bindingContext, BindingTypeCatalog typeCatalog, ExpressionTypeResolver typeResolver) {
+        this.context = bindingContext;
+        this.catalog = typeCatalog;
+        this.resolver = typeResolver;
+    }
+
+    public String fieldType(Expression expression) {
+        String receiverType = this.resolver.typeOf(expression.leftIndex());
+
+        if (receiverType == "Error") {
+            return "Error";
+        }
+
+        FieldDeclaration field = this.catalog.findField(receiverType, expression.text());
+
+        if (field.isMissing()) {
+            this.context.diagnostics().error("Unknown field " + expression.text() + " on " + receiverType, expression.line(), expression.column());
+            return "Error";
+        }
+
+        return field.typeName();
+    }
+
+    public String callType(Expression expression, String expected) {
+        if (expression.text() == "List") {
+            if (this.catalog.isListType(expected)) {
+                return expected;
+            }
+
+            return "List<Void>";
+        }
+
+        String requested = expression.text();
+        if (requested.indexOf("<") < 0 && expected.indexOf("<") > 0 && this.catalog.canAssign(requested, expected)) {
+            requested = requested + expected.substring(expected.indexOf("<"), expected.length());
+        }
+        ClassDeclaration declaration = this.catalog.findClass(requested);
+
+        if (declaration.isMissing()) {
+            this.context.diagnostics().error("Unknown function or class: " + expression.text(), expression.line(), expression.column());
+            return "Error";
+        }
+
+        if (declaration.name().indexOf("<") > 0) { expression.setText(declaration.fullName()); }
+        MethodDeclaration constructor = this.constructorFor(expression, declaration);
+
+        if (!constructor.isMissing()) {
+            this.checkArguments(expression, constructor.parameters());
+
+            if (!expected.isEmpty() && this.catalog.canAssign(declaration.name(), expected)) {
+                return expected;
+            }
+
+            return declaration.name();
+        }
+
+        if (this.catalog.hasConstructor(declaration.name())) {
+            this.context.diagnostics().error("No matching constructor for " + declaration.name(), expression.line(), expression.column());
+            return "Error";
+        }
+
+        if (expression.argumentIndexes().length() == 0) {
+            return declaration.name();
+        }
+
+        this.context.diagnostics().error("No matching constructor for " + declaration.name(), expression.line(), expression.column());
+        return "Error";
+    }
+
+    public String methodCallType(Expression expression) {
+        String receiverType = this.receiverType(expression);
+
+        if (receiverType == "Error") {
+            return "Error";
+        }
+
+        if (this.catalog.isListType(receiverType) && (expression.text() == "length" || expression.text() == "size" || expression.text() == "isEmpty" || expression.text() == "get" || expression.text() == "removeAt" || expression.text() == "add" || expression.text() == "set" || expression.text() == "addAt" || expression.text() == "clear" || expression.text() == "contains" || expression.text() == "remove" || expression.text() == "indexOf")) {
+            expression.resolveBuiltinMethod("List");
+            return this.listMethodType(expression, receiverType);
+        }
+
+        if (receiverType == "String") {
+            expression.resolveBuiltinMethod("String");
+            return this.stringMethodType(expression);
+        }
+
+        if (receiverType == "Int") {
+            expression.resolveBuiltinMethod("Int");
+            return this.intMethodType(expression);
+        }
+
+        if (receiverType == "Float") {
+            expression.resolveBuiltinMethod("Float");
+            this.checkBuiltinArgumentCount(expression, 0);
+            if (expression.textIs("toString")) { return "String"; }
+            if (expression.textIs("toInt")) { return "Int"; }
+            this.context.diagnostics().error("Unknown method " + expression.text() + " on Float", expression.line(), expression.column());
+            return "Error";
+        }
+
+        if (receiverType == "Bool") {
+            expression.resolveBuiltinMethod("Bool");
+            return this.boolMethodType(expression);
+        }
+
+        if (receiverType == "Char") {
+            expression.resolveBuiltinMethod("Char");
+            return this.charMethodType(expression);
+        }
+
+        if (receiverType == "Process") {
+            expression.resolveBuiltinMethod("Process");
+            return this.processMethodType(expression);
+        }
+
+        MethodDeclaration method = this.methodFor(expression, receiverType);
+
+        if (method.isMissing()) {
+            if (this.hasMethodWithDifferentArgumentCount(expression, receiverType)) {
+                this.context.diagnostics().error("Invalid argument count for " + expression.text(), expression.line(), expression.column());
+                return "Error";
+            }
+
+            this.context.diagnostics().error("Unknown method " + expression.text() + " on " + receiverType, expression.line(), expression.column());
+            return "Error";
+        }
+
+        this.checkArguments(expression, method.parameters());
+        expression.resolveMethod(method);
+        return method.returnTypeName();
+    }
+
+
+    private Bool hasMethodWithDifferentArgumentCount(Expression expression, String receiverType) {
+        Expression receiver = this.context.program().expression(expression.leftIndex());
+
+        if (receiver.kind() == "name" && !this.context.hasSymbol(receiver.text()) && !this.catalog.findClass(receiver.text()).isMissing()) {
+            return this.catalog.hasStaticMethod(receiver.text(), expression.text());
+        }
+
+        return this.catalog.hasMethod(receiverType, expression.text());
+    }
+
+    private MethodDeclaration methodFor(Expression expression, String receiverType) {
+        Expression receiver = this.context.program().expression(expression.leftIndex());
+
+        if (receiver.kind() == "name" && !this.context.hasSymbol(receiver.text()) && !this.catalog.findClass(receiver.text()).isMissing()) {
+            return this.catalog.findStaticMethod(receiver.text(), expression.text(), expression.argumentIndexes().length());
+        }
+
+        return this.catalog.findMethod(receiverType, expression.text(), expression.argumentIndexes().length());
+    }
+
+    private String receiverType(Expression expression) {
+        Expression receiver = this.context.program().expression(expression.leftIndex());
+
+        if (receiver.kind() == "name" && !this.context.hasSymbol(receiver.text()) && !this.catalog.findClass(receiver.text()).isMissing()) {
+            return receiver.text();
+        }
+
+        return this.resolver.typeOf(expression.leftIndex());
+    }
+
+    private String listMethodType(Expression expression, String listType) {
+        if (expression.text() == "length" || expression.text() == "size") {
+            this.checkBuiltinArgumentCount(expression, 0);
+            return "Int";
+        }
+
+        if (expression.text() == "isEmpty") {
+            this.checkBuiltinArgumentCount(expression, 0);
+            return "Bool";
+        }
+
+        if (expression.text() == "get" || expression.text() == "removeAt") {
+            this.checkBuiltinArgumentCount(expression, 1);
+            return this.catalog.listElementType(listType);
+        }
+
+        if (expression.text() == "add") {
+            this.checkBuiltinArgumentCount(expression, 1);
+            return "Void";
+        }
+
+        if (expression.text() == "set" || expression.text() == "addAt") {
+            this.checkBuiltinArgumentCount(expression, 2);
+            return "Void";
+        }
+
+        if (expression.text() == "clear") {
+            this.checkBuiltinArgumentCount(expression, 0);
+            return "Void";
+        }
+
+        if (expression.text() == "contains" || expression.text() == "remove") {
+            this.checkBuiltinArgumentCount(expression, 1);
+            return "Bool";
+        }
+
+        if (expression.text() == "indexOf") {
+            this.checkBuiltinArgumentCount(expression, 1);
+            return "Int";
+        }
+
+        this.context.diagnostics().error("Unknown List method: " + expression.text(), expression.line(), expression.column());
+        return "Error";
+    }
+
+    private String stringMethodType(Expression expression) {
+        if (expression.text() == "hashCode") {
+            this.checkBuiltinArgumentCount(expression, 0);
+            return "Int";
+        }
+        if (expression.text() == "length" || expression.text() == "size" || expression.text() == "toInt") {
+            this.checkBuiltinArgumentCount(expression, 0);
+            return "Int";
+        }
+
+        if (expression.text() == "isEmpty") {
+            this.checkBuiltinArgumentCount(expression, 0);
+            return "Bool";
+        }
+
+        if (expression.text() == "equals" || expression.text() == "startsWith" || expression.text() == "endsWith" || expression.text() == "contains") {
+            this.checkBuiltinArgumentCount(expression, 1);
+            return "Bool";
+        }
+
+        if (expression.text() == "toString" || expression.text() == "trim" || expression.text() == "toUpper" || expression.text() == "toLower" || expression.text() == "toUpperCase" || expression.text() == "toLowerCase") {
+            this.checkBuiltinArgumentCount(expression, 0);
+            return "String";
+        }
+
+        if (expression.text() == "substring" || expression.text() == "replace") {
+            this.checkBuiltinArgumentCount(expression, 2);
+            return "String";
+        }
+
+        if (expression.text() == "indexOf" || expression.text() == "lastIndexOf" || expression.text() == "compareTo") {
+            this.checkBuiltinArgumentCount(expression, 1);
+            return "Int";
+        }
+
+        if (expression.text() == "repeat") {
+            this.checkBuiltinArgumentCount(expression, 1);
+            return "String";
+        }
+
+        if (expression.text() == "trimStart" || expression.text() == "trimEnd") {
+            this.checkBuiltinArgumentCount(expression, 0);
+            return "String";
+        }
+
+        if (expression.text() == "isBlank") {
+            this.checkBuiltinArgumentCount(expression, 0);
+            return "Bool";
+        }
+
+        if (expression.text() == "split") {
+            this.checkBuiltinArgumentCount(expression, 1);
+            return "List<String>";
+        }
+
+        if (expression.text() == "charAt") {
+            this.checkBuiltinArgumentCount(expression, 1);
+            return "Char";
+        }
+
+
+        this.context.diagnostics().error("Unknown method " + expression.text() + " on String", expression.line(), expression.column());
+        return "Error";
+    }
+
+    private String charMethodType(Expression expression) {
+        if (expression.text() == "toString") {
+            this.checkBuiltinArgumentCount(expression, 0);
+            return "String";
+        }
+
+        if (expression.text() == "code") {
+            this.checkBuiltinArgumentCount(expression, 0);
+            return "Int";
+        }
+
+        if (expression.text() == "isDigit" || expression.text() == "isLetter" || expression.text() == "isWhitespace") {
+            this.checkBuiltinArgumentCount(expression, 0);
+            return "Bool";
+        }
+
+        this.context.diagnostics().error("Unknown method " + expression.text() + " on Char", expression.line(), expression.column());
+        return "Error";
+    }
+
+    private String processMethodType(Expression expression) {
+        if (expression.text() == "args") {
+            this.checkBuiltinArgumentCount(expression, 0);
+            return "List<String>";
+        }
+
+        if (expression.text() == "command") {
+            this.checkBuiltinArgumentCount(expression, 0);
+            return "String";
+        }
+
+        if (expression.text() == "exit") {
+            this.checkBuiltinArgumentCount(expression, 1);
+            return "Void";
+        }
+
+        this.context.diagnostics().error("Unknown method " + expression.text() + " on Process", expression.line(), expression.column());
+        return "Error";
+    }
+
+    private String intMethodType(Expression expression) {
+        if (expression.textIs("toFloat")) { this.checkBuiltinArgumentCount(expression, 0); return "Float"; }
+        if (expression.textIs("toChar")) { this.checkBuiltinArgumentCount(expression, 0); return "Char"; }
+        if (expression.text() == "toString") {
+            this.checkBuiltinArgumentCount(expression, 0);
+            return "String";
+        }
+
+        this.context.diagnostics().error("Unknown method " + expression.text() + " on Int", expression.line(), expression.column());
+        return "Error";
+    }
+
+    private String boolMethodType(Expression expression) {
+        if (expression.text() == "toString") {
+            this.checkBuiltinArgumentCount(expression, 0);
+            return "String";
+        }
+
+        this.context.diagnostics().error("Unknown method " + expression.text() + " on Bool", expression.line(), expression.column());
+        return "Error";
+    }
+
+    private MethodDeclaration constructorFor(Expression expression, ClassDeclaration declaration) {
+        Int bestScore = -1;
+        Int bestIndex = -1;
+        Int index = 0;
+
+        while (index < declaration.methods().length()) {
+            MethodDeclaration candidate = declaration.methods().get(index);
+
+            if (candidate.isConstructor() && candidate.parameters().length() == expression.argumentIndexes().length()) {
+                Int score = this.constructorScore(expression, candidate);
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestIndex = index;
+                }
+            }
+
+            index = index + 1;
+        }
+
+        if (bestIndex < 0) {
+            return this.catalog.missingMethod();
+        }
+
+        expression.resolveConstructor(bestIndex);
+        return declaration.methods().get(bestIndex).signatureCopy();
+    }
+
+    private Int constructorScore(Expression expression, MethodDeclaration constructor) {
+        Int score = 0;
+        Int index = 0;
+
+        while (index < constructor.parameters().length()) {
+            String expected = constructor.parameters().get(index).typeName();
+            String actual = this.resolver.typeOfExpected(expression.argumentIndexes().get(index), expected);
+
+            if (actual == expected) {
+                score = score + 4;
+            } else if (this.catalog.canAssign(actual, expected)) {
+                score = score + 1;
+            } else {
+                return -1;
+            }
+
+            index = index + 1;
+        }
+
+        return score;
+    }
+
+    private Void checkBuiltinArgumentCount(Expression expression, Int expected) {
+        if (expression.argumentIndexes().length() == expected) {
+            return;
+        }
+
+        this.context.diagnostics().error("Invalid argument count for " + expression.text(), expression.line(), expression.column());
+    }
+
+    private Void checkArguments(Expression expression, List<Parameter> parameters) {
+        if (expression.argumentIndexes().length() != parameters.length()) {
+            this.context.diagnostics().error("Invalid argument count for " + expression.text(), expression.line(), expression.column());
+            return;
+        }
+
+        Int index = 0;
+
+        while (index < parameters.length()) {
+            String actual = this.resolver.typeOfExpected(expression.argumentIndexes().get(index), parameters.get(index).typeName());
+            String expected = parameters.get(index).typeName();
+
+            if (!this.catalog.canAssign(actual, expected)) {
+                this.context.diagnostics().error("Cannot pass " + actual + " as " + expected, expression.line(), expression.column());
+            }
+
+            index = index + 1;
+        }
+    }
+}

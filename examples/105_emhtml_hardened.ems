@@ -1,0 +1,86 @@
+use Std::Ui::UiApplication;
+use Std::Ui::UiWindow;
+use Std::Ui::UiMacros;
+
+@UiState
+@EmHtml("examples/ui/advanced.emhtml")
+public class AdvancedView {
+    private String titleValue;
+    private String descriptionValue;
+    private Int clicksValue;
+    private List<String> itemValues;
+
+    public AdvancedView() {
+        this.titleValue = "Emerald emhtml Advanced";
+        this.descriptionValue = "Diese View nutzt @if, @for, :class, ?disabled, escaped output und raw output.";
+        this.clicksValue = 0;
+        this.itemValues = List();
+        this.itemValues.add("Linux WebKitGTK Backend");
+        this.itemValues.add("Windows Win32/WebView2 Slot");
+        this.itemValues.add("Macro-first UI API");
+    }
+
+    @UiBind("title")
+    public String title() {
+        return this.titleValue;
+    }
+
+    @UiBind("description")
+    public String description() {
+        return this.descriptionValue;
+    }
+
+    @UiBind("clicks")
+    public String clicks() {
+        return this.clicksValue.toString();
+    }
+
+    @UiBind("items")
+    public List<String> items() {
+        return this.itemValues;
+    }
+
+    @UiBind("detailsVisible")
+    public Bool detailsVisible() {
+        return true;
+    }
+
+    @UiBind("locked")
+    public Bool locked() {
+        return false;
+    }
+
+    @UiBind("buttonClass")
+    public String buttonClass() {
+        return "active-button";
+    }
+
+    @UiBind("rawBadge")
+    public String rawBadge() {
+        return "<strong>Raw HTML:</strong> bewusst nicht escaped";
+    }
+
+    @UiAction("increment")
+    public Void increment() {
+        this.clicksValue = this.clicksValue + 1;
+    }
+
+    public Bool onUiAction(String action) {
+        if (action.equals("increment")) {
+            this.increment();
+            return true;
+        }
+
+        return false;
+    }
+}
+
+main() {
+    UiApplication application = UiApplication();
+    UiWindow window = application.window("Emerald emhtml Advanced", 980, 680);
+    AdvancedView view = AdvancedView();
+
+    view.mount(window);
+    window.show();
+    view.run(application, window);
+}

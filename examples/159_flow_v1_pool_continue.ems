@@ -1,0 +1,22 @@
+public class HyperAllocFlowV1PoolContinueValue {
+    public Int value;
+
+    public HyperAllocFlowV1PoolContinueValue(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    Int index = 0;
+
+    while (index < 2) {
+        HyperAllocFlowV1PoolContinueValue value = HyperAllocFlowV1PoolContinueValue(index + 41);
+        index = index + 1;
+
+        if (index == 1) {
+            continue;
+        }
+
+        println(value.value.toString());
+    }
+}

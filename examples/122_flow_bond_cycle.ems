@@ -1,0 +1,36 @@
+public class HyperAllocFlowCycleNode {
+    public HyperAllocFlowCycleNode next;
+    private Int number;
+
+    public HyperAllocFlowCycleNode(Int number) {
+        this.number = number;
+    }
+
+    public Int value() {
+        return this.number;
+    }
+}
+
+public class HyperAllocFlowCycleOwner {
+    private HyperAllocFlowCycleNode node;
+
+    public HyperAllocFlowCycleOwner(HyperAllocFlowCycleNode node) {
+        this.node = node;
+    }
+
+    public Int value() {
+        return this.node.value();
+    }
+}
+
+main() {
+    HyperAllocFlowCycleNode left = HyperAllocFlowCycleNode(4);
+    HyperAllocFlowCycleNode right = HyperAllocFlowCycleNode(5);
+    HyperAllocFlowCycleOwner leftOwnerA = HyperAllocFlowCycleOwner(left);
+    HyperAllocFlowCycleOwner leftOwnerB = HyperAllocFlowCycleOwner(left);
+    HyperAllocFlowCycleOwner rightOwnerA = HyperAllocFlowCycleOwner(right);
+    HyperAllocFlowCycleOwner rightOwnerB = HyperAllocFlowCycleOwner(right);
+    left.next = right;
+    right.next = left;
+    println((leftOwnerA.value() + rightOwnerA.value()).toString());
+}

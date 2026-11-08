@@ -1,0 +1,198 @@
+namespace emerald::compiler::syntax;
+
+public class ClassMemberParser {
+    private ParserState state;
+    private TopLevelParser topLevel;
+
+    public ClassMemberParser(ParserState parserState) {
+        this.state = parserState;
+        this.topLevel = TopLevelParser(parserState);
+    }
+
+    public Void parseMember(String ownerName, List<FieldDeclaration> fields, List<MethodDeclaration> methods, List<Annotation> annotations) {
+        if (this.isFieldMember()) {
+            this.rejectFieldAnnotations(annotations);
+            FieldDeclaration field = this.parseFieldMember();
+
+            if (!field.isMissing()) {
+                fields.add(field);
+            }
+
+            return;
+        }
+
+        MethodDeclaration method = this.parseClassMember(ownerName, annotations);
+
+        if (!method.isMissing()) {
+            methods.add(method);
+        }
+    }
+
+    public List<FieldDeclaration> parseDataFields(Bool isData) {
+        List<FieldDeclaration> fields = List();
+
+        if (!isData || !this.state.checkSymbol("(")) {
+            return fields;
+        }
+
+        TypeParser types = TypeParser(this.state);
+        this.state.advance();
+
+        while (!this.state.isAtEnd() && !this.state.checkSymbol(")")) {
+            String typeName = types.parse("Expected data field type");
+            Token nameToken = this.state.consumeKind("identifier", "Expected data field name");
+            fields.add(FieldDeclaration(nameToken.text(), typeName, nameToken.line(), nameToken.column()));
+
+            if (this.state.checkSymbol(",")) {
+                this.state.advance();
+                continue;
+            }
+
+            break;
+        }
+
+        this.state.consumeSymbol(")", "Expected ')' after data fields");
+        return fields;
+    }
+
+    public Void addDataMethods(DataClassBuilder builder, String ownerName, List<FieldDeclaration> fields, List<MethodDeclaration> methods, Int line, Int column) {
+        builder.addGeneratedMethods(ownerName, fields, methods, line, column);
+    }
+
+    private FieldDeclaration parseFieldMember() {
+        this.consumeVisibility();
+        TypeParser types = TypeParser(this.state);
+        String typeName = types.parse("Expected field type");
+        Token nameToken = this.state.consumeKind("identifier", "Expected field name");
+        this.state.consumeSymbol(";", "Expected ';' after field declaration");
+        return FieldDeclaration(nameToken.text(), typeName, nameToken.line(), nameToken.column());
+    }
+
+    private MethodDeclaration parseClassMember(String ownerName, List<Annotation> annotations) {
+        this.consumeVisibility();
+        Bool isStatic = this.consumeStaticKeyword();
+
+        if (!isStatic && this.state.current().textIs(ownerName) && this.state.peek(1).textIs("(")) {
+            return this.parseConstructor(ownerName, annotations);
+        }
+
+        TypeParser types = TypeParser(this.state);
+        String returnType = types.parse("Expected method return type");
+        Token name = this.state.consumeKind("identifier", "Expected method name");
+        List<Parameter> parameters = this.parseParameters();
+
+        if (this.state.checkSymbol(";")) {
+            this.state.advance();
+            List<Statement> empty = List();
+            return MethodDeclaration(ownerName, name.text(), returnType, annotations, parameters, empty, false, isStatic, name.line(), name.column());
+        }
+
+        StatementParser statementParser = StatementParser(this.state);
+        List<Statement> statements = statementParser.parseBlockStatements();
+        return MethodDeclaration(ownerName, name.text(), returnType, annotations, parameters, statements, false, isStatic, name.line(), name.column());
+    }
+
+    private MethodDeclaration parseConstructor(String ownerName, List<Annotation> annotations) {
+        Token name = this.state.advance();
+        List<Parameter> parameters = this.parseParameters();
+        StatementParser statementParser = StatementParser(this.state);
+        List<Statement> statements = statementParser.parseBlockStatements();
+        return MethodDeclaration(ownerName, ownerName, ownerName, annotations, parameters, statements, true, false, name.line(), name.column());
+    }
+
+    private Void rejectFieldAnnotations(List<Annotation> annotations) {
+        Int index = 0;
+
+        while (index < annotations.length()) {
+            Annotation annotation = annotations.get(index);
+            this.state.diagnostics().error("Annotations on fields are not supported yet", annotation.line(), annotation.column());
+            index = index + 1;
+        }
+    }
+
+    private List<Parameter> parseParameters() {
+        ParameterParser parser = ParameterParser(this.state);
+        return parser.parse();
+    }
+
+    private Void consumeVisibility() {
+        if (this.state.current().isIdentifier("public") || this.state.current().isIdentifier("private")) {
+            this.state.advance();
+        }
+    }
+
+    private Bool consumeStaticKeyword() {
+        if (this.state.current().isIdentifier("static")) {
+            this.state.advance();
+            return true;
+        }
+
+        return false;
+    }
+
+    private Bool isFieldMember() {
+        Int offset = 0;
+
+        if (this.state.current().isIdentifier("public") || this.state.current().isIdentifier("private")) {
+            offset = 1;
+        }
+
+        if (!this.state.peek(offset).kindIs("identifier")) {
+            return false;
+        }
+
+        offset = this.skipType(offset);
+
+        if (!this.state.peek(offset).kindIs("identifier")) {
+            return false;
+        }
+
+        return this.state.peek(offset + 1).textIs(";");
+    }
+
+    private Int skipType(Int offset) {
+        offset = offset + 1;
+
+        while (this.state.peek(offset).textIs("::")) {
+            offset = offset + 1;
+
+            if (this.state.peek(offset).kindIs("identifier")) {
+                offset = offset + 1;
+                continue;
+            }
+
+            return offset;
+        }
+
+        if (this.state.peek(offset).textIs("<")) {
+            return this.skipGenericArguments(offset);
+        }
+
+        return offset;
+    }
+
+    private Int skipGenericArguments(Int offset) {
+        Int depth = 0;
+
+        while (!this.state.peek(offset).kindIs("eof")) {
+            if (this.state.peek(offset).textIs("<")) {
+                depth = depth + 1;
+            }
+
+            if (this.state.peek(offset).textIs(">")) {
+                depth = depth - 1;
+                offset = offset + 1;
+
+                if (depth <= 0) {
+                    return offset;
+                }
+
+                continue;
+            }
+
+            offset = offset + 1;
+        }
+
+        return offset;
+    }
+}

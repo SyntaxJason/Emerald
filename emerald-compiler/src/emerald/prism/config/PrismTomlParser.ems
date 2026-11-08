@@ -1,0 +1,237 @@
+namespace emerald::prism::config;
+
+use Std::Io::Files;
+
+public class PrismTomlParser {
+    public PrismTomlParser() {
+    }
+
+    public PrismProject parseFile(String path) {
+        PrismProject project = PrismProject();
+
+        if (!Files.exists(path)) {
+            return project;
+        }
+
+        return this.parse(Files.readText(path));
+    }
+
+    public PrismProject parse(String text) {
+        PrismProject project = PrismProject();
+        List<String> lines = text.split("\n");
+        String section = "";
+        Int index = 0;
+
+        while (index < lines.length()) {
+            String line = this.clean(lines.get(index));
+
+            if (line.isEmpty()) {
+                index = index + 1;
+                continue;
+            }
+
+            if (line.startsWith("[") && line.endsWith("]")) {
+                section = line.substring(1, line.length() - 1).trim();
+                index = index + 1;
+                continue;
+            }
+
+            Int equals = line.indexOf("=");
+
+            if (equals < 0) {
+                index = index + 1;
+                continue;
+            }
+
+            String key = line.substring(0, equals).trim();
+            String value = this.unquote(line.substring(equals + 1, line.length()).trim());
+
+            this.apply(project, section, key, value);
+            index = index + 1;
+        }
+
+        return project;
+    }
+
+    private Void apply(PrismProject project, String section, String key, String value) {
+        if (section == "package") {
+            this.applyPackage(project, key, value);
+            return;
+        }
+
+        if (section == "build") {
+            this.applyBuild(project, key, value);
+            return;
+        }
+
+        if (section == "registry") {
+            this.applyRegistry(project, key, value);
+            return;
+        }
+
+        if (section == "dependencies") {
+            project.addDependency(this.dependency(key, value));
+            return;
+        }
+
+        if (section == "assets") {
+            project.addAsset(PrismAsset(key, value));
+            return;
+        }
+    }
+
+    private PrismDependency dependency(String name, String value) {
+        if (value.startsWith("github:")) {
+            return this.githubDependency(name, value.substring(7, value.length()));
+        }
+
+        if (value.startsWith("gh:")) {
+            return this.githubDependency(name, value.substring(3, value.length()));
+        }
+
+        if (value.startsWith("https://github.com/")) {
+            return this.githubDependency(name, value.substring(19, value.length()));
+        }
+
+        if (value.startsWith("path:")) {
+            return PrismDependency(name, "local", "path:" + value.substring(5, value.length()));
+        }
+
+        if (value.startsWith("./")) {
+            return PrismDependency(name, "local", "path:" + value);
+        }
+
+        if (value.startsWith("../")) {
+            return PrismDependency(name, "local", "path:" + value);
+        }
+
+        return PrismDependency(name, value, "registry");
+    }
+
+    private PrismDependency githubDependency(String name, String value) {
+        String repository = value;
+        String reference = "main";
+        Int at = value.indexOf("@");
+
+        if (at >= 0) {
+            repository = value.substring(0, at);
+            reference = value.substring(at + 1, value.length());
+        }
+
+        if (repository.endsWith(".git")) {
+            repository = repository.substring(0, repository.length() - 4);
+        }
+
+        return PrismDependency(name, reference, "github:" + repository);
+    }
+
+    private Void applyPackage(PrismProject project, String key, String value) {
+        if (key == "name") {
+            project.setName(value);
+            return;
+        }
+
+        if (key == "version") {
+            project.setVersion(value);
+            return;
+        }
+
+        if (key == "description") {
+            project.setDescription(value);
+            return;
+        }
+    }
+
+    private Void applyBuild(PrismProject project, String key, String value) {
+        if (key == "main") {
+            project.setMain(value);
+            return;
+        }
+
+        if (key == "output") {
+            project.setOutput(value);
+            return;
+        }
+
+        if (key == "target") {
+            project.setTarget(value);
+            return;
+        }
+
+        if (key == "emit") {
+            project.setEmitMode(value);
+            return;
+        }
+
+        if (key == "cc") {
+            project.setCc(value);
+            return;
+        }
+
+        if (key == "sysroot") {
+            project.setSysroot(value);
+            return;
+        }
+
+        if (key == "keepTemps") {
+            project.setKeepTemps(this.boolValue(value));
+            return;
+        }
+
+        if (key == "writeIr") {
+            project.setWriteIr(this.boolValue(value));
+            return;
+        }
+    }
+
+    private Void applyRegistry(PrismProject project, String key, String value) {
+        if (key == "default") {
+            project.setRegistry(value);
+            return;
+        }
+
+        if (key == "url") {
+            project.setRegistry(value);
+            return;
+        }
+    }
+
+    private String clean(String line) {
+        String value = line.trim();
+        Int hash = value.indexOf("#");
+
+        if (hash < 0) {
+            return value;
+        }
+
+        return value.substring(0, hash).trim();
+    }
+
+    private String unquote(String value) {
+        String result = value.trim();
+
+        if (result.startsWith("\"") && result.endsWith("\"")) {
+            return result.substring(1, result.length() - 1);
+        }
+
+        return result;
+    }
+
+    private Bool boolValue(String value) {
+        String normalized = value.trim().toLowerCase();
+
+        if (normalized == "true") {
+            return true;
+        }
+
+        if (normalized == "yes") {
+            return true;
+        }
+
+        if (normalized == "1") {
+            return true;
+        }
+
+        return false;
+    }
+}

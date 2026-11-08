@@ -1,0 +1,30 @@
+public class HyperAllocFlowBondValue {
+    private Int number;
+
+    public HyperAllocFlowBondValue(Int number) {
+        this.number = number;
+    }
+
+    public Int value() {
+        return this.number;
+    }
+}
+
+public class HyperAllocFlowBondBox {
+    private HyperAllocFlowBondValue value;
+
+    public HyperAllocFlowBondBox(HyperAllocFlowBondValue value) {
+        this.value = value;
+    }
+
+    public Int number() {
+        return this.value.value();
+    }
+}
+
+main() {
+    HyperAllocFlowBondValue shared = HyperAllocFlowBondValue(5);
+    HyperAllocFlowBondBox left = HyperAllocFlowBondBox(shared);
+    HyperAllocFlowBondBox right = HyperAllocFlowBondBox(shared);
+    println((left.number() + right.number()).toString());
+}

@@ -1,0 +1,23 @@
+namespace emerald::compiler::source;
+
+public class SourceFile {
+    private String pathValue;
+    private String textValue;
+
+    public SourceFile(String path, String text) {
+        this.pathValue = path;
+        this.textValue = text;
+    }
+
+    public String path() {
+        return this.pathValue + "";
+    }
+
+    public String text() {
+        return this.textValue + "";
+    }
+
+    public Bool isEmpty() {
+        return this.textValue.isEmpty();
+    }
+}

@@ -1,0 +1,214 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::debug::DebugLog;
+use emerald::compiler::hyperallocflow::analysis::inline::HyperAllocFlowInlineBoundaryAnalyzer;
+use emerald::compiler::hyperallocflow::analysis::support::HyperAllocFlowProgramCatalog;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Collections::ArrayList;
+use Std::Llvm::LlvmBasicBlock;
+use Std::Llvm::LlvmFunction;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmNativeVariable;
+use Std::Llvm::LlvmType;
+use Std::Llvm::LlvmValue;
+use Std::Llvm::LlvmRuntimeFunction;
+
+public class NativeMethodEmitter {
+    private NativeEmitContext context;
+    private NativeDefaultReturnEmitter defaultReturns;
+    private HyperAllocFlowInlineBoundaryAnalyzer inlineBoundaries;
+
+    public NativeMethodEmitter(NativeEmitContext emitContext) {
+        this.context = emitContext;
+        this.defaultReturns = NativeDefaultReturnEmitter(emitContext);
+        this.inlineBoundaries = HyperAllocFlowInlineBoundaryAnalyzer(HyperAllocFlowProgramCatalog());
+    }
+
+    public Void emitAll(SyntaxProgram program, LlvmNativeBackend backend) {
+        this.declareAll(program, backend);
+        this.emitBodies(program, backend);
+    }
+
+    private Void declareAll(SyntaxProgram program, LlvmNativeBackend backend) {
+        Int classIndex = 0;
+
+        NativeLookup lookup = NativeLookup();
+
+        while (classIndex < program.classes().length()) {
+            ClassDeclaration declaration = program.classes().get(classIndex);
+            DebugLog.log("declare class " + declaration.fullName());
+            Int methodIndex = 0;
+
+            if (lookup.isTemplate(declaration)) {
+                methodIndex = declaration.methods().length();
+            }
+
+            while (methodIndex < declaration.methods().length()) {
+                MethodDeclaration method = declaration.methods().get(methodIndex);
+                if (!this.inlineBoundaries.isInlineReturnMethod(method, program)) {
+                    this.declareFunction(method, backend);
+                }
+                methodIndex = methodIndex + 1;
+            }
+
+            classIndex = classIndex + 1;
+        }
+    }
+
+    private Void emitBodies(SyntaxProgram program, LlvmNativeBackend backend) {
+        Int classIndex = 0;
+
+        NativeLookup lookup = NativeLookup();
+
+        while (classIndex < program.classes().length()) {
+            ClassDeclaration declaration = program.classes().get(classIndex);
+
+            if (!lookup.isTemplate(declaration)) {
+                this.emitClass(declaration, program, backend);
+            }
+
+            classIndex = classIndex + 1;
+        }
+    }
+
+    private Void emitClass(ClassDeclaration declaration, SyntaxProgram program, LlvmNativeBackend backend) {
+        DebugLog.log("emit class " + declaration.fullName());
+        Int methodIndex = 0;
+
+        while (methodIndex < declaration.methods().length()) {
+            MethodDeclaration method = declaration.methods().get(methodIndex);
+            if (!this.inlineBoundaries.isInlineReturnMethod(method, program)) {
+                this.emitMethod(declaration, method, program, backend);
+            }
+            methodIndex = methodIndex + 1;
+        }
+    }
+
+    private Void emitMethod(ClassDeclaration declaration, MethodDeclaration method, SyntaxProgram program, LlvmNativeBackend backend) {
+        DebugLog.log("emit method " + method.ownerName() + "." + method.name());
+        LlvmFunction function = this.declareFunction(method, backend);
+        LlvmBasicBlock entry = function.appendBlock("entry");
+        backend.builder().positionAtEnd(entry);
+
+        if (declaration.isInterface()) {
+            this.emitInterface(declaration, method, program, backend, function);
+            return;
+        }
+
+        List<NativeLocal> locals = this.createLocals(declaration, method, backend, function);
+        String activeReturnType = method.returnTypeName();
+
+        if (method.isConstructor()) {
+            activeReturnType = "Void";
+        }
+
+        NativeStatementEmitter statements = NativeStatementEmitter(this.context);
+        EmitResult result = statements.emit(method.statements(), program, backend, locals, activeReturnType, function);
+
+        if (!result.terminated()) {
+            this.defaultReturns.emit(activeReturnType, backend);
+        }
+    }
+
+    private Void emitInterface(ClassDeclaration declaration, MethodDeclaration method, SyntaxProgram program, LlvmNativeBackend backend, LlvmFunction function) {
+        NativeLookup lookup = NativeLookup();
+        ArrayList<LlvmType> types = ArrayList();
+        types.add(backend.context().opaquePointerType());
+        LlvmRuntimeFunction getClass = backend.runtimeDeclarations().declare("emerald_object_class", backend.context().int32Type(), types);
+        ArrayList<LlvmValue> receiverArgs = ArrayList();
+        receiverArgs.add(function.parameter(0));
+        LlvmValue classTag = backend.callRuntime(getClass, receiverArgs, "class_tag");
+        Int index = 0;
+        while (index < program.classCount()) {
+            ClassDeclaration candidate = program.classAt(index);
+            if (!lookup.isTemplate(candidate) && lookup.classImplementsInterface(candidate, declaration, program)) {
+                MethodDeclaration implementation = lookup.findMethod(program, candidate.fullName(), method.name(), method.parameterCount());
+                if (!implementation.isMissing() && this.sameSignature(method, implementation)) {
+                    LlvmBasicBlock invoke = function.appendBlock("dispatch_" + index.toString());
+                    LlvmBasicBlock next = function.appendBlock("next_" + index.toString());
+                    LlvmValue matches = backend.builder().intEqual(classTag, backend.int32(index + 1), "matches_" + index.toString());
+                    backend.builder().conditionalBranch(matches, invoke, next);
+                    backend.builder().positionAtEnd(invoke);
+                    ArrayList<LlvmValue> args = ArrayList();
+                    Int parameterIndex = 0;
+                    while (parameterIndex <= method.parameterCount()) { args.add(function.parameter(parameterIndex)); parameterIndex = parameterIndex + 1; }
+                    LlvmValue result = backend.builder().callFunction(this.context.typeMapper().methodType(implementation, backend), backend.llvmModule().getFunction(this.context.mangler().methodName(implementation)), args, "");
+                    if (method.returnTypeName() == "Void") { backend.builder().returnVoid(); }
+                    else { backend.builder().returnValue(result); }
+                    backend.builder().positionAtEnd(next);
+                }
+            }
+            index = index + 1;
+        }
+        ArrayList<LlvmValue> panicArgs = ArrayList();
+        panicArgs.add(backend.runtimeStaticString("Invalid interface dispatch: " + declaration.fullName() + "." + method.name(), "interface_error"));
+        backend.callRuntime(backend.runtimeDeclarations().panic(), panicArgs, "");
+        backend.builder().unreachable();
+    }
+
+    private Bool sameSignature(MethodDeclaration contract, MethodDeclaration implementation) {
+        if (contract.returnTypeName() != implementation.returnTypeName()) { return false; }
+        Int index = 0;
+        while (index < contract.parameterCount()) {
+            if (contract.parameterAt(index).typeName() != implementation.parameterAt(index).typeName()) { return false; }
+            index = index + 1;
+        }
+        return true;
+    }
+
+    private LlvmFunction declareFunction(MethodDeclaration method, LlvmNativeBackend backend) {
+        String name = this.context.mangler().methodName(method);
+        LlvmFunction existing = backend.llvmModule().getFunction(name);
+
+        if (!existing.isNull()) {
+            return existing;
+        }
+
+        ArrayList<LlvmType> parameterTypes = ArrayList();
+
+        if (!method.isStatic()) {
+            parameterTypes.add(backend.context().opaquePointerType());
+        }
+
+        Int parameterIndex = 0;
+
+        while (parameterIndex < method.parameters().length()) {
+            Parameter parameter = method.parameters().get(parameterIndex);
+            parameterTypes.add(this.context.typeMapper().llvmType(parameter.typeName(), backend));
+            parameterIndex = parameterIndex + 1;
+        }
+
+        LlvmType returnType = this.context.typeMapper().returnType(method, backend);
+        LlvmType functionType = backend.context().functionTypeWithParams(returnType, parameterTypes);
+        LlvmFunction function = backend.llvmModule().addFunction(name, functionType);
+        function.setLinkage(backend.definitionLinkage());
+        return function;
+    }
+
+    private List<NativeLocal> createLocals(ClassDeclaration declaration, MethodDeclaration method, LlvmNativeBackend backend, LlvmFunction function) {
+        List<NativeLocal> locals = List();
+        Int offset = 0;
+
+        if (!method.isStatic()) {
+            LlvmNativeVariable self = backend.local("this", backend.context().opaquePointerType());
+            self.store(backend.builder(), function.parameter(0));
+            locals.add(NativeLocal("this", declaration.name(), self));
+            offset = 1;
+        }
+
+        Int localParameterIndex = 0;
+
+        while (localParameterIndex < method.parameters().length()) {
+            Parameter parameter = method.parameters().get(localParameterIndex);
+            LlvmNativeVariable local = backend.local(parameter.name(), this.context.typeMapper().llvmType(parameter.typeName(), backend));
+            local.store(backend.builder(), function.parameter(localParameterIndex + offset));
+            locals.add(NativeLocal(parameter.name(), parameter.typeName(), local));
+            localParameterIndex = localParameterIndex + 1;
+        }
+
+        return locals;
+    }
+}

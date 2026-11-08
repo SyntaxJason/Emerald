@@ -1,0 +1,337 @@
+namespace emerald::compiler::macro;
+
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+
+public class MacroAstAccess {
+    private MacroInterpreterContext context;
+    private MacroValueConverter values;
+    private MacroAstFactory ast;
+
+    public MacroAstAccess(MacroInterpreterContext interpreterContext, MacroValueConverter valueConverter, MacroAstFactory astFactory) {
+        this.context = interpreterContext;
+        this.values = valueConverter;
+        this.ast = astFactory;
+    }
+
+    public MacroValue property(MacroValue receiver, String name, Int line, Int column) {
+        if (receiver.isKind("method")) {
+            return this.methodProperty(receiver.method(), name, line, column);
+        }
+
+        if (receiver.isKind("class")) {
+            return this.classProperty(receiver.classDeclaration(), name, line, column);
+        }
+
+        if (receiver.isKind("block")) {
+            return this.blockProperty(receiver.blockStatements(), name, line, column);
+        }
+
+        if (receiver.isKind("field")) {
+            return this.fieldProperty(receiver.field(), name, line, column);
+        }
+
+        if (receiver.isKind("parameter")) {
+            return this.parameterProperty(receiver.parameter(), name, line, column);
+        }
+
+        if (receiver.isKind("expression")) {
+            return this.expressionProperty(receiver.expressionIndex(), name, line, column);
+        }
+
+        return this.context.error("cannot access property " + name + " on " + receiver.kind(), line, column);
+    }
+
+    public MacroValue method(MacroValue receiver, String name, List<MacroValue> arguments, Int line, Int column) {
+        if (receiver.isKind("block")) {
+            return this.blockMethod(receiver.blockStatements(), name, arguments, line, column);
+        }
+
+        if (receiver.isKind("class")) {
+            return this.classMethod(receiver.classDeclaration(), name, arguments, line, column);
+        }
+
+        if (receiver.isKind("expression")) {
+            return this.expressionMethod(receiver.expressionIndex(), name, line, column);
+        }
+
+        if (receiver.isKind("list")) {
+            return this.listMethod(receiver, name, arguments, line, column);
+        }
+
+        if (receiver.isKind("string")) {
+            return this.stringMethod(receiver, name, line, column);
+        }
+
+        if (receiver.isKind("int")) {
+            return this.intMethod(receiver, name, line, column);
+        }
+
+        return this.context.error("unsupported macro method " + name + " on " + receiver.kind(), line, column);
+    }
+
+    private MacroValue blockMethod(List<Statement> statements, String name, List<MacroValue> arguments, Int line, Int column) {
+        if (name == "prepend") {
+            statements.addAt(0, this.values.expectStatement(arguments, 0, line, column));
+            return this.context.factory().voidValue();
+        }
+
+        if (name == "append") {
+            statements.add(this.values.expectStatement(arguments, 0, line, column));
+            return this.context.factory().voidValue();
+        }
+
+        if (name == "insertAt") {
+            statements.addAt(this.values.expectInt(arguments, 0, line, column), this.values.expectStatement(arguments, 1, line, column));
+            return this.context.factory().voidValue();
+        }
+
+        if (name == "replace") {
+            Int index = this.values.expectInt(arguments, 0, line, column);
+
+            if (index < statements.length()) {
+                statements.set(index, this.values.expectStatement(arguments, 1, line, column));
+            }
+
+            return this.context.factory().voidValue();
+        }
+
+        if (name == "get") {
+            Int index = this.values.expectInt(arguments, 0, line, column);
+
+            if (index < statements.length()) {
+                return this.context.factory().statementValue(statements.get(index));
+            }
+
+            return this.context.error("block index out of range", line, column);
+        }
+
+        return this.context.error("unknown method " + name + " on BlockAST", line, column);
+    }
+
+    private MacroValue classMethod(ClassDeclaration declaration, String name, List<MacroValue> arguments, Int line, Int column) {
+        if (name == "addMethod") {
+            MethodDeclaration method = this.values.expectMethod(arguments, 0, line, column);
+            declaration.methods().add(this.methodWithOwner(method, declaration.name()));
+            return this.context.factory().voidValue();
+        }
+
+        if (name == "addField") {
+            FieldDeclaration field = this.values.expectField(arguments, 0, line, column);
+            declaration.fields().add(field);
+            this.attachFieldInitializer(declaration, field);
+            return this.context.factory().voidValue();
+        }
+
+        return this.context.error("unknown method " + name + " on ClassAST", line, column);
+    }
+
+    private MethodDeclaration methodWithOwner(MethodDeclaration method, String ownerName) {
+        return MethodDeclaration(ownerName, method.name(), method.returnTypeName(), method.annotations(), method.parameters(), method.statements(), method.isConstructor(), method.isStatic(), method.line(), method.column());
+    }
+
+    private Void attachFieldInitializer(ClassDeclaration declaration, FieldDeclaration field) {
+        if (!field.hasInitializer()) {
+            return;
+        }
+
+        Int index = 0;
+
+        while (index < declaration.methods().length()) {
+            MethodDeclaration method = declaration.methods().get(index);
+
+            if (method.isConstructor()) {
+                method.statements().addAt(0, this.fieldInitializerStatement(field));
+            }
+
+            index = index + 1;
+        }
+    }
+
+    private Statement fieldInitializerStatement(FieldDeclaration field) {
+        Int thisExpression = this.context.program().addExpression(this.ast.simpleExpression("name", "this", 0, false, 0, 0, field.line(), field.column()));
+        Int targetExpression = this.context.program().addExpression(this.ast.simpleExpression("field", field.name(), 0, false, thisExpression, 0, field.line(), field.column()));
+        return Statement("fieldassign", "", "", field.initializerIndex(), targetExpression, this.ast.emptyStatements(), this.ast.emptyStatements(), field.line(), field.column());
+    }
+
+    private MacroValue expressionMethod(Int expressionIndex, String name, Int line, Int column) {
+        if (name == "toString") {
+            return this.context.factory().stringValue(this.values.expressionToString(expressionIndex));
+        }
+
+        if (name == "toInt") {
+            return this.context.factory().intValue(this.values.expressionToInt(expressionIndex, line, column));
+        }
+
+        if (name == "toBool") {
+            return this.context.factory().boolValue(this.values.expressionToBool(expressionIndex, line, column));
+        }
+
+        return this.context.error("unknown method " + name + " on ExpressionAST", line, column);
+    }
+
+    private MacroValue listMethod(MacroValue receiver, String name, List<MacroValue> arguments, Int line, Int column) {
+        if (name == "add") {
+            receiver.values().add(this.values.expectArgument(arguments, 0, line, column));
+            return this.context.factory().voidValue();
+        }
+
+        if (name == "get") {
+            Int index = this.values.expectInt(arguments, 0, line, column);
+
+            if (index < receiver.values().length()) {
+                return receiver.values().get(index);
+            }
+
+            return this.context.error("list index out of range", line, column);
+        }
+
+        if (name == "length" || name == "size") {
+            return this.context.factory().intValue(receiver.values().length());
+        }
+
+        return this.context.error("unknown method " + name + " on List", line, column);
+    }
+
+    private MacroValue stringMethod(MacroValue receiver, String name, Int line, Int column) {
+        if (name == "length" || name == "size") {
+            return this.context.factory().intValue(receiver.stringData().length());
+        }
+
+        if (name == "toString") {
+            return receiver;
+        }
+
+        return this.context.error("unknown method " + name + " on String", line, column);
+    }
+
+    private MacroValue intMethod(MacroValue receiver, String name, Int line, Int column) {
+        if (name == "toString") {
+            return this.context.factory().stringValue(receiver.intData().toString());
+        }
+
+        if (name == "toInt") {
+            return receiver;
+        }
+
+        return this.context.error("unknown method " + name + " on Int", line, column);
+    }
+
+    private MacroValue methodProperty(MethodDeclaration method, String name, Int line, Int column) {
+        if (name == "name") {
+            return this.context.factory().stringValue(method.name());
+        }
+
+        if (name == "returnType") {
+            return this.context.factory().stringValue(method.returnTypeName());
+        }
+
+        if (name == "body") {
+            return this.context.factory().blockValue(method.statements());
+        }
+
+        if (name == "isStatic") {
+            return this.context.factory().boolValue(method.isStatic());
+        }
+
+        if (name == "params") {
+            List<MacroValue> values = List();
+            Int index = 0;
+
+            while (index < method.parameters().length()) {
+                values.add(this.context.factory().parameterValue(method.parameters().get(index)));
+                index = index + 1;
+            }
+
+            return this.context.factory().listValue(values);
+        }
+
+        return this.context.error("MethodAST has no property " + name, line, column);
+    }
+
+    private MacroValue classProperty(ClassDeclaration declaration, String name, Int line, Int column) {
+        if (name == "name") {
+            return this.context.factory().stringValue(declaration.name());
+        }
+
+        if (name == "methods") {
+            List<MacroValue> values = List();
+            Int index = 0;
+
+            while (index < declaration.methods().length()) {
+                values.add(this.context.factory().methodValue(declaration.methods().get(index)));
+                index = index + 1;
+            }
+
+            return this.context.factory().listValue(values);
+        }
+
+        if (name == "fields") {
+            List<MacroValue> values = List();
+            Int index = 0;
+
+            while (index < declaration.fields().length()) {
+                values.add(this.context.factory().fieldValue(declaration.fields().get(index)));
+                index = index + 1;
+            }
+
+            return this.context.factory().listValue(values);
+        }
+
+        return this.context.error("ClassAST has no property " + name, line, column);
+    }
+
+    private MacroValue blockProperty(List<Statement> statements, String name, Int line, Int column) {
+        if (name == "length" || name == "size") {
+            return this.context.factory().intValue(statements.length());
+        }
+
+        return this.context.error("BlockAST has no property " + name, line, column);
+    }
+
+    private MacroValue fieldProperty(FieldDeclaration field, String name, Int line, Int column) {
+        if (name == "name") {
+            return this.context.factory().stringValue(field.name());
+        }
+
+        if (name == "type") {
+            return this.context.factory().stringValue(field.typeName());
+        }
+
+        if (name == "initializer") {
+            return this.context.factory().expressionValue(field.initializerIndex());
+        }
+
+        return this.context.error("FieldAST has no property " + name, line, column);
+    }
+
+    private MacroValue parameterProperty(Parameter parameter, String name, Int line, Int column) {
+        if (name == "name") {
+            return this.context.factory().stringValue(parameter.name());
+        }
+
+        if (name == "type") {
+            return this.context.factory().stringValue(parameter.typeName());
+        }
+
+        return this.context.error("ParamAST has no property " + name, line, column);
+    }
+
+    private MacroValue expressionProperty(Int expressionIndex, String name, Int line, Int column) {
+        Expression expression = this.context.program().expression(expressionIndex);
+
+        if (name == "kind") {
+            return this.context.factory().stringValue(expression.kind());
+        }
+
+        if (name == "text") {
+            return this.context.factory().stringValue(expression.text());
+        }
+
+        return this.context.error("ExpressionAST has no property " + name, line, column);
+    }
+}

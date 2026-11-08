@@ -1,0 +1,33 @@
+namespace Std::Llvm;
+
+public class LlvmTargetMachine {
+    private Int machineHandle;
+
+    public LlvmTargetMachine(Int handle) {
+        this.machineHandle = handle;
+    }
+
+    public Int handle() {
+        return this.machineHandle;
+    }
+
+    public Bool isNull() {
+        return this.machineHandle == 0;
+    }
+
+    public Bool applyDataLayout(LlvmModule llvmModule) {
+        return LlvmNative.targetMachineApplyDataLayout(this.machineHandle, llvmModule.handle());
+    }
+
+    public Bool emitObjectFile(LlvmModule llvmModule, String path) {
+        return LlvmNative.targetMachineEmitObjectFile(this.machineHandle, llvmModule.handle(), path);
+    }
+
+    public Bool emitAssemblyFile(LlvmModule llvmModule, String path) {
+        return LlvmNative.targetMachineEmitAssemblyFile(this.machineHandle, llvmModule.handle(), path);
+    }
+
+    public Void dispose() {
+        LlvmNative.disposeTargetMachine(this.machineHandle);
+    }
+}

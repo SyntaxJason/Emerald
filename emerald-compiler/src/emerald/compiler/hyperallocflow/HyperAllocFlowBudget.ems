@@ -1,0 +1,163 @@
+namespace emerald::compiler::hyperallocflow;
+
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class HyperAllocFlowBudget {
+    public HyperAllocFlowBudget() {
+    }
+
+    public Int localObjectSoftLimit() {
+        return 128;
+    }
+
+    public Int localObjectHardLimit() {
+        return 512;
+    }
+
+    public Int scopeLocalSoftLimit() {
+        return 4096;
+    }
+
+    public Int scopeLocalHardLimit() {
+        return 16384;
+    }
+
+    public Int emeraldThreadStackTarget() {
+        return 262144;
+    }
+
+    public Int poolObjectHardLimit() {
+        return 4096;
+    }
+
+    public Int shardObjectHardLimit() {
+        return 65536;
+    }
+
+    public Int estimateObjectBytes(String name, SyntaxProgram program) {
+        ClassDeclaration declaration = this.findClass(name, program);
+
+        if (declaration.isMissing()) {
+            return this.pointerBytes();
+        }
+
+        Int total = 0;
+        Int index = 0;
+
+        while (index < declaration.fields().length()) {
+            FieldDeclaration field = declaration.fields().get(index);
+            Int bytes = this.fieldBytes(field.typeName());
+            total = this.align(total, bytes) + bytes;
+            index = index + 1;
+        }
+
+        if (total == 0) {
+            return this.pointerBytes();
+        }
+
+        return this.align(total, this.pointerBytes());
+    }
+
+    public Bool objectFitsLocal(String name, SyntaxProgram program) {
+        return this.estimateObjectBytes(name, program) <= this.localObjectHardLimit();
+    }
+
+    public Bool scopeFitsLocal(Int currentBytes, Int objectBytes) {
+        return currentBytes + objectBytes <= this.scopeLocalHardLimit();
+    }
+
+    public Bool objectFitsPool(String name, SyntaxProgram program) {
+        ClassDeclaration declaration = this.findClass(name, program);
+        return !declaration.isMissing() && this.estimateObjectBytes(name, program) <= this.poolObjectHardLimit();
+    }
+
+    public Bool objectFitsShard(String name, SyntaxProgram program) {
+        ClassDeclaration declaration = this.findClass(name, program);
+
+        if (declaration.isMissing()) {
+            return false;
+        }
+
+        return this.estimateObjectBytes(name, program) <= this.shardObjectHardLimit();
+    }
+
+    public String objectLimitReason(String name, SyntaxProgram program) {
+        Int size = this.estimateObjectBytes(name, program);
+        return "estimated object size " + size.toString() + " B exceeds Local hard limit " + this.localObjectHardLimit().toString() + " B";
+    }
+
+    public String scopeLimitReason(Int currentBytes, Int objectBytes) {
+        Int nextBytes = currentBytes + objectBytes;
+        return "estimated scope Local stack " + nextBytes.toString() + " B exceeds Local hard limit " + this.scopeLocalHardLimit().toString() + " B";
+    }
+
+    public String poolLimitReason(String name, SyntaxProgram program) {
+        Int size = this.estimateObjectBytes(name, program);
+
+        if (size > this.poolObjectHardLimit()) {
+            return "estimated object size " + size.toString() + " B exceeds Pool hard limit " + this.poolObjectHardLimit().toString() + " B";
+        }
+
+        return "Pool requires a known Emerald class layout so owned fields can be reset before slot reuse";
+    }
+
+    public String shardLimitReason(String name, SyntaxProgram program) {
+        Int size = this.estimateObjectBytes(name, program);
+
+        if (size > this.shardObjectHardLimit()) {
+            return "estimated object size " + size.toString() + " B exceeds Shard hard limit " + this.shardObjectHardLimit().toString() + " B";
+        }
+
+        return "Shard requires a known Emerald class layout";
+    }
+
+    private Int fieldBytes(String typeName) {
+        if (typeName == "Bool") {
+            return 1;
+        }
+
+        if (typeName == "Char") { return 4; }
+        if (typeName == "Int" || typeName == "Float") { return 8; }
+
+        return this.pointerBytes();
+    }
+
+    private Int pointerBytes() {
+        return 8;
+    }
+
+    private Int align(Int value, Int alignment) {
+        Int rest = value % alignment;
+
+        if (rest == 0) {
+            return value;
+        }
+
+        return value + alignment - rest;
+    }
+
+    private ClassDeclaration findClass(String name, SyntaxProgram program) {
+        Int index = 0;
+
+        while (index < program.classes().length()) {
+            ClassDeclaration declaration = program.classes().get(index);
+
+            if (declaration.hasName(name) || declaration.hasFullName(name)) {
+                return declaration.headerCopy();
+            }
+
+            index = index + 1;
+        }
+
+        return this.missingClass();
+    }
+
+    private ClassDeclaration missingClass() {
+        List<FieldDeclaration> fields = List();
+        List<MethodDeclaration> methods = List();
+        return ClassDeclaration("", fields, methods, 1, 1);
+    }
+}

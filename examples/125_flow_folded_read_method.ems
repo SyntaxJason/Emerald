@@ -1,0 +1,18 @@
+public class HyperAllocFlowFoldedMethodPair {
+    private Int left;
+    private Int right;
+
+    public HyperAllocFlowFoldedMethodPair(Int left, Int right) {
+        this.left = left;
+        this.right = right;
+    }
+
+    public Int sum() {
+        return this.left + this.right;
+    }
+}
+
+main() {
+    HyperAllocFlowFoldedMethodPair pair = HyperAllocFlowFoldedMethodPair(19, 23);
+    println(pair.sum().toString());
+}

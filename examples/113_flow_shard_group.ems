@@ -1,0 +1,37 @@
+public class HyperAllocFlowShardLeft {
+    private Int value;
+
+    public HyperAllocFlowShardLeft(Int value) {
+        this.value = value;
+    }
+
+    public Int read() {
+        return this.value;
+    }
+}
+
+public class HyperAllocFlowShardRight {
+    private Int value;
+
+    public HyperAllocFlowShardRight(Int value) {
+        this.value = value;
+    }
+
+    public Int read() {
+        return this.value;
+    }
+}
+
+main() {
+    Int index = 0;
+    Int total = 0;
+
+    while (index < 3) {
+        HyperAllocFlowShardLeft left = HyperAllocFlowShardLeft(index);
+        HyperAllocFlowShardRight right = HyperAllocFlowShardRight(index + 1);
+        total = total + left.read() + right.read();
+        index = index + 1;
+    }
+
+    println(total.toString());
+}

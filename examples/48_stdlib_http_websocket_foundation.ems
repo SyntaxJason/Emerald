@@ -1,0 +1,43 @@
+use Std::Net::Uri;
+use Std::Net::IUri;
+use Std::Http::HttpHeaders;
+use Std::Http::IHttpHeaders;
+use Std::Http::HttpRequest;
+use Std::Http::IHttpRequest;
+use Std::Http::HttpResponse;
+use Std::Http::IHttpResponse;
+use Std::Http::HttpClient;
+use Std::Http::IHttpClient;
+use Std::WebSocket::WebSocket;
+use Std::WebSocket::IWebSocketMessage;
+use Std::WebSocket::IWebSocketCloseStatus;
+
+main() {
+    IUri uri = Uri("https://example.com/docs");
+    println(uri.scheme());
+    println(uri.host());
+    println(uri.path());
+    println(uri.isSecure().toString());
+
+    IHttpHeaders headers = HttpHeaders();
+    headers.set("Accept", "text/plain");
+    println(headers.getOr("accept", "missing"));
+
+    IHttpRequest request = HttpRequest("GET", uri.toString());
+    request.setHeader("Accept", "text/plain");
+
+    IHttpResponse response = HttpResponse(200, "OK", "Hello");
+    println(request.isGet().toString());
+    println(response.isSuccess().toString());
+    println(response.body());
+
+    IHttpClient client = HttpClient();
+    println(client.send(HttpRequest("TRACE", uri.toString())).isFailure().toString());
+
+    WebSocket sockets = WebSocket();
+    IWebSocketMessage message = sockets.textMessage("hello");
+    IWebSocketCloseStatus closeStatus = sockets.normalClose("done");
+
+    println(message.isText().toString());
+    println(closeStatus.isNormal().toString());
+}

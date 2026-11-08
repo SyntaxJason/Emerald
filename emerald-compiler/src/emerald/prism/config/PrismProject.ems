@@ -1,0 +1,155 @@
+namespace emerald::prism::config;
+
+public class PrismProject {
+    private String packageName;
+    private String packageVersion;
+    private String packageDescription;
+    private String sourceMain;
+    private String outputBase;
+    private String targetName;
+    private String emitModeName;
+    private String ccCommand;
+    private String sysrootPath;
+    private String registryUrl;
+    private Bool keepTempFiles;
+    private Bool writeIrFile;
+    private List<PrismDependency> dependencyValues;
+    private List<PrismAsset> assetValues;
+
+    public PrismProject() {
+        this.packageName = "app";
+        this.packageVersion = "0.1.0";
+        this.packageDescription = "";
+        this.sourceMain = "src/Main.ems";
+        this.outputBase = "build/app";
+        this.targetName = "native";
+        this.emitModeName = "exe";
+        this.ccCommand = "";
+        this.sysrootPath = "";
+        this.registryUrl = "https://prism.emerald-lang.eu";
+        this.keepTempFiles = false;
+        this.writeIrFile = false;
+        this.dependencyValues = List();
+        this.assetValues = List();
+    }
+
+    public String name() {
+        return this.packageName;
+    }
+
+    public Void setName(String value) {
+        this.packageName = value;
+    }
+
+    public String version() {
+        return this.packageVersion;
+    }
+
+    public Void setVersion(String value) {
+        this.packageVersion = value;
+    }
+
+    public String description() {
+        return this.packageDescription;
+    }
+
+    public Void setDescription(String value) {
+        this.packageDescription = value;
+    }
+
+    public String mainPath() {
+        return this.sourceMain;
+    }
+
+    public Void setMain(String value) {
+        this.sourceMain = value;
+    }
+
+    public String output() {
+        return this.outputBase;
+    }
+
+    public Void setOutput(String value) {
+        this.outputBase = value;
+    }
+
+    public String target() {
+        return this.targetName;
+    }
+
+    public Void setTarget(String value) {
+        this.targetName = value;
+    }
+
+    public String emitMode() {
+        return this.emitModeName;
+    }
+
+    public Void setEmitMode(String value) {
+        this.emitModeName = value;
+    }
+
+    public String cc() {
+        return this.ccCommand;
+    }
+
+    public Void setCc(String value) {
+        this.ccCommand = value;
+    }
+
+    public String sysroot() {
+        return this.sysrootPath;
+    }
+
+    public Void setSysroot(String value) {
+        this.sysrootPath = value;
+    }
+
+    public String registry() {
+        return this.registryUrl;
+    }
+
+    public Void setRegistry(String value) {
+        this.registryUrl = value;
+    }
+
+    public Bool keepTemps() {
+        return this.keepTempFiles;
+    }
+
+    public Void setKeepTemps(Bool value) {
+        this.keepTempFiles = value;
+    }
+
+    public Bool writeIr() {
+        return this.writeIrFile;
+    }
+
+    public Void setWriteIr(Bool value) {
+        this.writeIrFile = value;
+    }
+
+    public List<PrismDependency> dependencies() {
+        return this.dependencyValues;
+    }
+
+    public List<PrismAsset> assets() {
+        return this.assetValues;
+    }
+
+    public Void addDependency(PrismDependency dependency) {
+        this.dependencyValues.add(dependency);
+    }
+
+    public Void addAsset(PrismAsset asset) {
+        this.assetValues.add(asset);
+    }
+
+    public Bool hasDependencies() {
+        return !this.dependencyValues.isEmpty();
+    }
+
+    public Bool hasAssets() {
+        return !this.assetValues.isEmpty();
+    }
+}

@@ -1,0 +1,121 @@
+namespace LangCompare;
+
+use Std::Io::File;
+use Std::Native::NativeTime;
+
+class Node {
+    private String label;
+    private List<Int> values;
+    private Node child;
+    private Bool hasChild;
+
+    public Node(String label) {
+        this.label = label;
+        this.values = List();
+        this.hasChild = false;
+    }
+
+    public Void fill(Int count) {
+        Int i = 0;
+
+        while (i < count) {
+            this.values.add(i * i);
+            i = i + 1;
+        }
+
+        return;
+    }
+
+    public Void attachChild(Node node) {
+        this.child = node;
+        this.hasChild = true;
+        return;
+    }
+
+    public Int sum() {
+        Int total = 0;
+        Int i = 0;
+
+        while (i < this.values.length()) {
+            total = total + this.values.get(i);
+            i = i + 1;
+        }
+
+        if (this.hasChild) {
+            total = total + this.child.sum();
+        }
+
+        return total;
+    }
+
+    public String describe() {
+        return this.label + " sum=" + this.sum().toString();
+    }
+}
+
+class MemoryProbe {
+    public MemoryProbe() {
+    }
+
+    public static Int rssKb() {
+        File status = File("/proc/self/status");
+        String content = status.readOr("");
+        List<String> lines = content.split("\n");
+        Int index = 0;
+
+        while (index < lines.length()) {
+            String line = lines.get(index);
+
+            if (line.startsWith("VmRSS:")) {
+                String rest = line.replace("VmRSS:", "").replace("kB", "").trim();
+                return rest.toInt();
+            }
+
+            index = index + 1;
+        }
+
+        return -1;
+    }
+}
+
+main() {
+    Int checkpointMillis = 5000;
+    Int start = NativeTime.monotonicMillis();
+    Int lastCheckpoint = start;
+    Int i = 0;
+
+    while (true) {
+        Node root = Node("root-" + i.toString());
+        root.fill(300);
+
+        Node inner = Node("inner-" + i.toString());
+        inner.fill(150);
+        root.attachChild(inner);
+
+        String description = root.describe();
+
+        List<String> scratch = List();
+        Int j = 0;
+
+        while (j < 80) {
+            scratch.add("entry-" + j.toString() + "-" + i.toString());
+            j = j + 1;
+        }
+
+        Int scratchLoad = scratch.length();
+
+        Int now = NativeTime.monotonicMillis();
+
+        if (now - lastCheckpoint >= checkpointMillis) {
+            lastCheckpoint = now;
+            Int elapsedMillis = now - start;
+            Int elapsedSeconds = elapsedMillis / 1000;
+            Int elapsedTenths = (elapsedMillis / 100) - (elapsedSeconds * 10);
+            println("t=" + elapsedSeconds.toString() + "." + elapsedTenths.toString() + "s iteration=" + i.toString() + " VmRSS=" + MemoryProbe.rssKb().toString() + " kB");
+        }
+
+        i = i + 1;
+    }
+
+    return 0;
+}

@@ -1,0 +1,180 @@
+namespace emerald::compiler::binding;
+
+use emerald::compiler::debug::DebugLog;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+
+public class ClassBinder {
+    private BindingContext context;
+    private BindingTypeCatalog catalog;
+    private StatementBinder statements;
+
+    public ClassBinder(BindingContext bindingContext, BindingTypeCatalog typeCatalog, StatementBinder statementBinder) {
+        this.context = bindingContext;
+        this.catalog = typeCatalog;
+        this.statements = statementBinder;
+    }
+
+    public Void bind() {
+        this.bindFrom(0);
+    }
+
+    public Void bindFrom(Int classIndex) {
+
+        while (classIndex < this.context.program().classes().length()) {
+            // Binding is read-only. Keep the AST node as a borrowed List view;
+            // shifted(0) deep-copied the complete class and all of its methods.
+            ClassDeclaration declaration = this.context.program().classes().get(classIndex);
+            this.bindClass(declaration);
+            classIndex = classIndex + 1;
+        }
+    }
+
+    private Void bindClass(ClassDeclaration declaration) {
+        DebugLog.log("bind class " + declaration.fullName());
+        this.context.setTypeParameters(declaration.genericParameters());
+        this.bindInheritance(declaration);
+        this.bindFields(declaration);
+        Int methodIndex = 0;
+
+        while (methodIndex < declaration.methods().length()) {
+            // The enclosing declaration owns the method for this whole call.
+            MethodDeclaration method = declaration.methods().get(methodIndex);
+            this.bindMethod(declaration, method);
+            methodIndex = methodIndex + 1;
+        }
+
+        if (!declaration.isInterface()) {
+            this.bindImplementedInterfaces(declaration);
+        }
+    }
+
+
+    private Void bindInheritance(ClassDeclaration declaration) {
+        if (!declaration.parentName().isEmpty() && !this.catalog.isUsableType(declaration.parentName())) {
+            this.context.diagnostics().error("Unknown parent type: " + declaration.parentName(), declaration.line(), declaration.column());
+        }
+
+        Int index = 0;
+
+        while (index < declaration.implementedInterfaces().length()) {
+            String interfaceName = declaration.implementedInterfaces().get(index);
+
+            if (!this.catalog.isUsableType(interfaceName)) {
+                this.context.diagnostics().error("Unknown interface type: " + interfaceName, declaration.line(), declaration.column());
+            }
+
+            index = index + 1;
+        }
+    }
+
+    private Void bindImplementedInterfaces(ClassDeclaration declaration) {
+        Int interfaceIndex = 0;
+
+        while (interfaceIndex < declaration.implementedInterfaces().length()) {
+            this.bindImplementedInterface(declaration, declaration.implementedInterfaces().get(interfaceIndex));
+            interfaceIndex = interfaceIndex + 1;
+        }
+    }
+
+    private Void bindImplementedInterface(ClassDeclaration declaration, String interfaceName) {
+        ClassDeclaration interfaceDeclaration = this.catalog.findClass(interfaceName);
+
+        if (interfaceDeclaration.isMissing()) {
+            return;
+        }
+
+        Int methodIndex = 0;
+
+        while (methodIndex < interfaceDeclaration.methods().length()) {
+            MethodDeclaration contract = interfaceDeclaration.methods().get(methodIndex);
+
+            if (!contract.isConstructor() && !contract.isStatic()) {
+                this.bindInterfaceMethod(declaration, interfaceName, contract);
+            }
+
+            methodIndex = methodIndex + 1;
+        }
+    }
+
+    private Void bindInterfaceMethod(ClassDeclaration declaration, String interfaceName, MethodDeclaration contract) {
+        MethodDeclaration method = this.catalog.findMethod(declaration.name(), contract.name(), contract.parameters().length());
+
+        if (method.isMissing()) {
+            this.context.diagnostics().error("Class " + declaration.name() + " does not implement " + this.catalog.simpleName(interfaceName) + "." + contract.name(), declaration.line(), declaration.column());
+            return;
+        }
+
+        if (!this.catalog.canAssign(method.returnTypeName(), contract.returnTypeName())) {
+            this.context.diagnostics().error("Method " + declaration.name() + "." + method.name() + " returns " + method.returnTypeName() + " but interface requires " + contract.returnTypeName(), method.line(), method.column());
+        }
+    }
+
+    private Void bindFields(ClassDeclaration declaration) {
+        Int fieldIndex = 0;
+
+        while (fieldIndex < declaration.fields().length()) {
+            FieldDeclaration field = declaration.fields().get(fieldIndex);
+
+            if (!this.catalog.isUsableType(field.typeName())) {
+                this.context.diagnostics().error("Unknown field type: " + field.typeName(), field.line(), field.column());
+            }
+
+            if (this.catalog.hasFieldBefore(declaration, field.name(), fieldIndex)) {
+                this.context.diagnostics().error("Field already exists: " + field.name(), field.line(), field.column());
+            }
+
+            fieldIndex = fieldIndex + 1;
+        }
+    }
+
+    private Void bindMethod(ClassDeclaration declaration, MethodDeclaration method) {
+        this.context.clearSymbols();
+
+        if (!method.isStatic()) {
+            this.context.addSymbol("this", declaration.name());
+        }
+
+        this.context.setActiveBody(method.statements());
+        this.bindParameters(method);
+        this.bindReturnType(method);
+
+        if (method.isConstructor()) {
+            this.statements.bind(method.statements(), "Void");
+            return;
+        }
+
+        this.statements.bind(method.statements(), method.returnTypeName());
+    }
+
+    private Void bindParameters(MethodDeclaration method) {
+        Int index = 0;
+
+        while (index < method.parameters().length()) {
+            Parameter parameter = method.parameters().get(index);
+
+            if (!this.catalog.isUsableType(parameter.typeName()) && !(parameter.typeName() == "Any" && method.ownerName() == "NativeHash")) {
+                this.context.diagnostics().error("Unknown parameter type: " + parameter.typeName(), parameter.line(), parameter.column());
+            }
+
+            if (this.context.hasSymbol(parameter.name())) {
+                this.context.diagnostics().error("Parameter already exists: " + parameter.name(), parameter.line(), parameter.column());
+            }
+
+            this.context.addSymbol(parameter.name(), parameter.typeName());
+            index = index + 1;
+        }
+    }
+
+    private Void bindReturnType(MethodDeclaration method) {
+        if (method.isConstructor()) {
+            return;
+        }
+
+        if (!this.catalog.isReturnType(method.returnTypeName())) {
+            this.context.diagnostics().error("Unknown return type: " + method.returnTypeName(), method.line(), method.column());
+        }
+    }
+}

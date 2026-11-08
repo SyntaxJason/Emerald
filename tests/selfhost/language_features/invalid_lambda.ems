@@ -1,0 +1,2 @@
+use Std::Functional::IConsumer;
+main() { IConsumer<String> callback = (a, b) -> println(a); }

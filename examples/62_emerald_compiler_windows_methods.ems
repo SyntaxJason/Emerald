@@ -1,0 +1,15 @@
+public class WindowsSmoke {
+    public WindowsSmoke() {
+    }
+
+    public String message() {
+        return "Windows method smoke works";
+    }
+}
+
+main() {
+    WindowsSmoke smoke = WindowsSmoke();
+    println(smoke.message());
+
+    return 0;
+}

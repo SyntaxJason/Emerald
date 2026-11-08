@@ -1,0 +1,12 @@
+public class HyperAllocFlowV1ReassignedStringFactory {
+    public static String create() {
+        String value = "4";
+        value = (value + "2");
+        return value;
+    }
+}
+
+main() {
+    String value = HyperAllocFlowV1ReassignedStringFactory.create();
+    println(value);
+}

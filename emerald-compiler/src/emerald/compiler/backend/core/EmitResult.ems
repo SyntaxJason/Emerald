@@ -1,0 +1,13 @@
+namespace emerald::compiler::backend;
+
+public class EmitResult {
+    private Bool terminatedValue;
+
+    public EmitResult(Bool terminated) {
+        this.terminatedValue = terminated;
+    }
+
+    public Bool terminated() {
+        return this.terminatedValue;
+    }
+}

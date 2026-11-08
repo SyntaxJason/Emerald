@@ -36,7 +36,7 @@ public class JsonNumber implements IJsonValue {
     }
 
     public String toJson() {
-        return "" + this.value;
+        return this.value.toString();
     }
 
     public String asStringOr(String fallback) {

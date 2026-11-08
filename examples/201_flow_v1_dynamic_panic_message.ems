@@ -1,0 +1,5 @@
+main() {
+    String suffix = 1.toString();
+    String message = "flow-v1-dynamic-panic-" + suffix;
+    panic(message);
+}

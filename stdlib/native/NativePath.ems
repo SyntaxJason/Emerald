@@ -1,0 +1,26 @@
+namespace Std::Native;
+
+public class NativePath {
+    public NativePath() {
+    }
+
+    public static String current() {
+        return "";
+    }
+
+    public static String join(String left, String right) {
+        return left + "/" + right;
+    }
+
+    public static String parent(String path) {
+        return "";
+    }
+
+    public static String fileName(String path) {
+        return path;
+    }
+
+    public static String extension(String path) {
+        return "";
+    }
+}

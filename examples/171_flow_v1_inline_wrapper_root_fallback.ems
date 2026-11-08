@@ -1,0 +1,17 @@
+public data class HyperAllocFlowV1WrapperPoint(Int x, Int y) {
+}
+
+public class HyperAllocFlowV1WrapperFactory {
+    public static HyperAllocFlowV1WrapperPoint create(Int x, Int y) {
+        return HyperAllocFlowV1WrapperPoint(x, y);
+    }
+
+    public static HyperAllocFlowV1WrapperPoint forward(Int x, Int y) {
+        return HyperAllocFlowV1WrapperFactory.create(x, y);
+    }
+}
+
+main() {
+    HyperAllocFlowV1WrapperPoint value = HyperAllocFlowV1WrapperFactory.forward(20, 22);
+    println((value.x + value.y).toString());
+}

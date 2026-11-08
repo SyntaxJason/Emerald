@@ -1,0 +1,20 @@
+namespace Emerald::Examples;
+
+public interface IGreeter {
+    public String message();
+}
+
+public class Greeter implements IGreeter {
+    public Greeter() {
+    }
+
+    public String message() {
+        return "interface-ok";
+    }
+}
+
+main() {
+    Greeter greeter = Greeter();
+    IGreeter contract = greeter;
+    println(greeter.message());
+}

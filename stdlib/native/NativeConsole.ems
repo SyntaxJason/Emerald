@@ -1,0 +1,22 @@
+namespace Std::Native;
+
+public class NativeConsole {
+    public NativeConsole() {
+    }
+
+    public static Int write(String text) {
+        return 0;
+    }
+
+    public static Int writeLine(String text) {
+        return 0;
+    }
+
+    public static Int errorLine(String text) {
+        return 0;
+    }
+
+    public static String readLine() {
+        return "";
+    }
+}

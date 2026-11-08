@@ -1,0 +1,176 @@
+namespace emerald::compiler::hyperallocflow::analysis::fold;
+
+use emerald::compiler::debug::DebugLog;
+use emerald::compiler::hyperallocflow::analysis::escape::HyperAllocFlowEscapeAnalyzer;
+use emerald::compiler::hyperallocflow::analysis::support::HyperAllocFlowProgramCatalog;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class HyperAllocFlowFoldAnalyzer {
+    private HyperAllocFlowProgramCatalog catalog;
+    private HyperAllocFlowEscapeAnalyzer escapes;
+    private HyperAllocFlowFoldMethodAnalyzer methods;
+    private Int cfvCounter;
+
+    public HyperAllocFlowFoldAnalyzer(HyperAllocFlowProgramCatalog programCatalog, HyperAllocFlowEscapeAnalyzer escapeAnalyzer) {
+        this.catalog = programCatalog;
+        this.escapes = escapeAnalyzer;
+        this.methods = HyperAllocFlowFoldMethodAnalyzer(programCatalog);
+        this.cfvCounter = 0;
+    }
+
+    public Bool canFoldVariable(Statement statement, Int startIndex, List<Statement> statements, Expression expression, SyntaxProgram program) {
+        this.cfvCounter = this.cfvCounter + 1;
+
+        if (this.cfvCounter % 2000000 == 0) {
+            DebugLog.flow("canFoldVariable calls=" + this.cfvCounter.toString());
+        }
+
+        ClassDeclaration declaration = this.catalog.findClass(expression.text(), program);
+
+        if (declaration.isMissing() || declaration.isInterface() || !declaration.parentName().isEmpty() || declaration.implementedInterfaces().length() > 0) {
+            return false;
+        }
+
+        if (declaration.fields().length() == 0 || declaration.fields().length() != expression.argumentIndexes().length()) {
+            return false;
+        }
+
+        Int fieldIndex = 0;
+
+        while (fieldIndex < declaration.fields().length()) {
+            FieldDeclaration field = declaration.fields().get(fieldIndex);
+
+            if ((field.typeName() != "Int" && field.typeName() != "Bool") || field.hasInitializer()) {
+                return false;
+            }
+
+            fieldIndex = fieldIndex + 1;
+        }
+
+        MethodDeclaration constructor = this.catalog.findConstructor(expression, program);
+
+        if (!this.constructorIsFoldable(constructor, declaration, program)) {
+            return false;
+        }
+
+        return this.variableUsesOnlyFoldedFieldReads(statement.name(), expression.text(), startIndex, statements, program);
+    }
+
+    public Bool constructorIsFoldable(MethodDeclaration constructor, ClassDeclaration declaration, SyntaxProgram program) {
+        return this.catalog.constructorStoresParametersInOrder(constructor, declaration, program);
+    }
+
+    public Bool variableUsesOnlyFoldedFieldReads(String name, String typeName, Int startIndex, List<Statement> statements, SyntaxProgram program) {
+        Int index = startIndex;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isVariable() && statement.name() == name) {
+                return false;
+            }
+
+            if (statement.isAssign() && statement.name() == name) {
+                return false;
+            }
+
+            if (statement.isFieldAssign()) {
+                if (this.escapes.expressionContainsName(statement.targetIndex(), name, program)) {
+                    return false;
+                }
+
+                if (!this.expressionAllowsFoldedFieldReads(statement.expressionIndex(), name, typeName, program)) {
+                    return false;
+                }
+            } else if (!this.expressionAllowsFoldedFieldReads(statement.expressionIndex(), name, typeName, program)) {
+                return false;
+            }
+
+            if (!this.variableUsesOnlyFoldedFieldReads(name, typeName, 0, statement.bodyStatements(), program)) {
+                return false;
+            }
+
+            if (!this.variableUsesOnlyFoldedFieldReads(name, typeName, 0, statement.elseStatements(), program)) {
+                return false;
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+
+    public Bool expressionAllowsFoldedFieldReads(Int expressionIndex, String name, String typeName, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return true;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "name") {
+            return expression.text() != name;
+        }
+
+        if (expression.kind() == "field") {
+            Expression receiver = program.expression(expression.leftIndex());
+
+            if (receiver.kind() == "name" && receiver.text() == name) {
+                return true;
+            }
+
+            return this.expressionAllowsFoldedFieldReads(expression.leftIndex(), name, typeName, program);
+        }
+
+        if (expression.kind() == "methodcall") {
+            Expression receiver = program.expression(expression.leftIndex());
+
+            if (receiver.kind() == "name" && receiver.text() == name) {
+                if (!this.methods.canInline(typeName, expression.text(), expression.argumentIndexes().length(), program)) {
+                    return false;
+                }
+
+                Int methodArgumentIndex = 0;
+
+                while (methodArgumentIndex < expression.argumentIndexes().length()) {
+                    if (!this.expressionAllowsFoldedFieldReads(expression.argumentIndexes().get(methodArgumentIndex), name, typeName, program)) {
+                        return false;
+                    }
+
+                    methodArgumentIndex = methodArgumentIndex + 1;
+                }
+
+                return true;
+            }
+
+            if (!this.expressionAllowsFoldedFieldReads(expression.leftIndex(), name, typeName, program)) {
+                return false;
+            }
+        } else {
+            if (!this.expressionAllowsFoldedFieldReads(expression.leftIndex(), name, typeName, program)) {
+                return false;
+            }
+        }
+
+        if (!this.expressionAllowsFoldedFieldReads(expression.rightIndex(), name, typeName, program)) {
+            return false;
+        }
+
+        Int index = 0;
+
+        while (index < expression.argumentIndexes().length()) {
+            if (!this.expressionAllowsFoldedFieldReads(expression.argumentIndexes().get(index), name, typeName, program)) {
+                return false;
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+}

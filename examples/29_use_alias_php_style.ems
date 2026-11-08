@@ -1,0 +1,18 @@
+namespace App::Auth;
+
+public class User {
+    public User() {
+    }
+
+    public String name() {
+        return "auth user";
+    }
+}
+
+use App::Auth::User as AuthUser;
+
+main() {
+    AuthUser user = AuthUser();
+
+    println(user.name());
+}

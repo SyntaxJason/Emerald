@@ -19,7 +19,9 @@ jobs:
           mkdir -p dist/linux
           cp compiler/bin/emeraldc dist/linux/emeraldc
           cp -R stdlib dist/linux/stdlib
-          tar -czf Emerald-Latest-Linux.tar.gz -C dist/linux emeraldc stdlib
+          cp -R runtime dist/linux/runtime
+          cp -R emerald-compiler dist/linux/emerald-compiler
+          tar -czf Emerald-Latest-Linux.tar.gz -C dist/linux emeraldc stdlib runtime emerald-compiler
           cp compiler/tools/installer/bin/emerald-installer emerald-installer-linux
       - uses: actions/upload-artifact@v4
         with:
@@ -55,6 +57,8 @@ jobs:
 
           Copy-Item compiler\bin\emeraldc.exe dist\windows\emeraldc.exe
           Copy-Item stdlib dist\windows\stdlib -Recurse
+          Copy-Item runtime dist\windows\runtime -Recurse
+          Copy-Item emerald-compiler dist\windows\emerald-compiler -Recurse
 
           Get-ChildItem $runtimeRoots -Filter *.dll -File -Recurse | ForEach-Object {
             Copy-Item $_.FullName dist\windows -Force

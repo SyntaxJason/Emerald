@@ -1,0 +1,40 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+
+public class NativeNameMangler {
+    public NativeNameMangler() {
+    }
+
+    public String methodName(MethodDeclaration method) {
+        String signature = this.parameterSignature(method);
+
+        if (method.isConstructor()) {
+            return "Emerald_" + method.ownerName() + "___init_" + method.parameters().length().toString() + signature;
+        }
+
+        if (method.isStatic()) {
+            return "Emerald_" + method.ownerName() + "__static_" + method.name() + "_" + method.parameters().length().toString() + signature;
+        }
+
+        return "Emerald_" + method.ownerName() + "_" + method.name() + "_" + method.parameters().length().toString() + signature;
+    }
+
+    private String parameterSignature(MethodDeclaration method) {
+        String signature = "";
+        Int index = 0;
+
+        while (index < method.parameters().length()) {
+            Parameter parameter = method.parameters().get(index);
+            signature = signature + "_" + parameter.typeName().length().toString() + "_" + this.sanitizeType(parameter.typeName());
+            index = index + 1;
+        }
+
+        return signature;
+    }
+
+    private String sanitizeType(String typeName) {
+        return typeName.replace("::", "_ns_").replace("<", "_of_").replace(">", "_end").replace(",", "_and_").replace(" ", "").replace("?", "_optional").replace("[", "_array_").replace("]", "_end").replace("-", "_to_").replace(".", "_dot_");
+    }
+}

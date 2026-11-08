@@ -1,0 +1,141 @@
+namespace emerald::compiler::macro;
+
+use emerald::compiler::diagnostic::DiagnosticBag;
+use emerald::compiler::syntax::Annotation;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::MacroDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class MacroExpander {
+    public MacroExpander() {
+    }
+
+    public Void expand(SyntaxProgram program, MacroInterpreter interpreter, DiagnosticBag diagnostics) {
+        this.validateDuplicateMacros(program, diagnostics);
+
+        if (diagnostics.hasErrors()) {
+            return;
+        }
+
+        Int classIndex = 0;
+
+        while (classIndex < program.classes().length()) {
+            this.expandClass(program, program.classes().get(classIndex), interpreter, diagnostics);
+            classIndex = classIndex + 1;
+        }
+    }
+
+    private Void expandClass(SyntaxProgram program, ClassDeclaration declaration, MacroInterpreter interpreter, DiagnosticBag diagnostics) {
+        this.validateDuplicateAnnotations(declaration.annotations(), "Class", diagnostics);
+
+        if (diagnostics.hasErrors()) {
+            return;
+        }
+
+        Int annotationIndex = 0;
+
+        while (annotationIndex < declaration.annotations().length()) {
+            Annotation annotation = declaration.annotations().get(annotationIndex);
+            MacroDeclaration macroDeclaration = this.resolveMacro(program, annotation, "Class", diagnostics);
+
+            if (!macroDeclaration.isMissing()) {
+                interpreter.runForClass(macroDeclaration, declaration, annotation);
+            }
+
+            annotationIndex = annotationIndex + 1;
+        }
+
+        Int methodIndex = 0;
+
+        while (methodIndex < declaration.methods().length()) {
+            this.expandMethod(program, declaration.methods().get(methodIndex), interpreter, diagnostics);
+            methodIndex = methodIndex + 1;
+        }
+    }
+
+    private Void expandMethod(SyntaxProgram program, MethodDeclaration method, MacroInterpreter interpreter, DiagnosticBag diagnostics) {
+        this.validateDuplicateAnnotations(method.annotations(), "Method", diagnostics);
+
+        if (diagnostics.hasErrors()) {
+            return;
+        }
+
+        Int annotationIndex = 0;
+
+        while (annotationIndex < method.annotations().length()) {
+            Annotation annotation = method.annotations().get(annotationIndex);
+            MacroDeclaration macroDeclaration = this.resolveMacro(program, annotation, "Method", diagnostics);
+
+            if (!macroDeclaration.isMissing()) {
+                interpreter.runForMethod(macroDeclaration, method, annotation);
+            }
+
+            annotationIndex = annotationIndex + 1;
+        }
+    }
+
+    private Void validateDuplicateAnnotations(List<Annotation> annotations, String target, DiagnosticBag diagnostics) {
+        Int index = 0;
+
+        while (index < annotations.length()) {
+            Annotation current = annotations.get(index);
+            Int otherIndex = index + 1;
+
+            while (otherIndex < annotations.length()) {
+                Annotation other = annotations.get(otherIndex);
+
+                if (current.name() == other.name()) {
+                    diagnostics.error("Duplicate annotation '@" + other.name() + "' on same " + target + " target", other.line(), other.column());
+                }
+
+                otherIndex = otherIndex + 1;
+            }
+
+            index = index + 1;
+        }
+    }
+
+    private MacroDeclaration resolveMacro(SyntaxProgram program, Annotation annotation, String target, DiagnosticBag diagnostics) {
+        MacroDeclaration macroDeclaration = program.findMacro(annotation.name());
+
+        if (macroDeclaration.isMissing()) {
+            diagnostics.error("Unknown annotation '@" + annotation.name() + "'. Define macro " + annotation.name() + " or remove the annotation", annotation.line(), annotation.column());
+            return macroDeclaration;
+        }
+
+        if (macroDeclaration.target() != target) {
+            diagnostics.error("Macro '@" + annotation.name() + "' targets " + macroDeclaration.target() + " but was applied to " + target, annotation.line(), annotation.column());
+            return this.missingMacro();
+        }
+
+        return macroDeclaration;
+    }
+
+    private Void validateDuplicateMacros(SyntaxProgram program, DiagnosticBag diagnostics) {
+        Int index = 0;
+
+        while (index < program.macros().length()) {
+            MacroDeclaration current = program.macros().get(index);
+            Int otherIndex = index + 1;
+
+            while (otherIndex < program.macros().length()) {
+                MacroDeclaration other = program.macros().get(otherIndex);
+
+                if (current.name() == other.name()) {
+                    diagnostics.error("Duplicate macro: " + other.name(), other.line(), other.column());
+                }
+
+                otherIndex = otherIndex + 1;
+            }
+
+            index = index + 1;
+        }
+    }
+
+    private MacroDeclaration missingMacro() {
+        List<Statement> statements = List();
+        return MacroDeclaration("", "", statements, 1, 1);
+    }
+}

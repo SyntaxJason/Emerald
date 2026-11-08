@@ -1,0 +1,2 @@
+use Std::Collections::HashMap;
+main() { HashMap<String, Int> values = HashMap(); values.put("age", 42); println(values.get("age")); }

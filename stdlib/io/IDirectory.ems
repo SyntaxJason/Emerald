@@ -1,5 +1,9 @@
 namespace Std::Io;
 
+use Std::Io::IFile;
+use Std::Io::IFileInfo;
+use Std::Io::IFileSystemEntry;
+use Std::Io::IPath;
 public interface IDirectory extends IFileSystemEntry {
     public Bool create();
 

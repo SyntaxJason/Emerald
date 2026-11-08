@@ -96,7 +96,7 @@ module Emerald
       rt = check_expr(expr.right, scope)
       result = case expr.op
                when "+", "-", "*", "/", "%"
-                 if expr.op == "+" && lt == "String" && rt == "String"
+                 if expr.op == "+" && (lt == "String" || rt == "String")
                    "String"
                  elsif !(TypeSystem.numeric?(lt) && TypeSystem.numeric?(rt))
                    raise TypeError.new("Operator '#{expr.op}' requires numeric operands, got #{lt} and #{rt}", expr.line, expr.col)

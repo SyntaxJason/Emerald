@@ -1,0 +1,66 @@
+namespace emerald::compiler::syntax;
+
+public class DataClassEqualityBuilder {
+    private DataClassExpressionBuilder expressions;
+
+    public DataClassEqualityBuilder(SyntaxProgram syntaxProgram) {
+        this.expressions = DataClassExpressionBuilder(syntaxProgram);
+    }
+
+    public MethodDeclaration equalsFor(String ownerName, List<FieldDeclaration> fields, Int line, Int column) {
+        List<Parameter> parameters = List();
+        parameters.add(Parameter("other", ownerName, line, column));
+
+        List<Statement> statements = List();
+        statements.add(Statement("return", "", "", this.equalsExpression(fields, 0, line, column), 0, this.expressions.emptyStatements(), this.expressions.emptyStatements(), line, column));
+
+        return MethodDeclaration(ownerName, "equals", "Bool", parameters, statements, false, false, true, line, column);
+    }
+
+    private Int equalsExpression(List<FieldDeclaration> fields, Int index, Int line, Int column) {
+        if (index >= fields.length()) {
+            return this.expressions.bool(true, line, column);
+        }
+
+        FieldDeclaration field = fields.get(index);
+        Int equal = this.fieldEqualsExpression(field);
+
+        if (index + 1 >= fields.length()) {
+            return equal;
+        }
+
+        Int next = this.equalsExpression(fields, index + 1, field.line(), field.column());
+        return this.expressions.binary("&&", equal, next, field.line(), field.column());
+    }
+
+    private Int fieldEqualsExpression(FieldDeclaration field) {
+        Int left = this.expressions.field("this", field);
+        Int right = this.expressions.field("other", field);
+
+        if (this.isPrimitiveComparable(field.typeName())) {
+            return this.expressions.binary("==", left, right, field.line(), field.column());
+        }
+
+        List<Int> arguments = List();
+        arguments.add(right);
+        return this.expressions.methodCall(left, "equals", arguments, field.line(), field.column());
+    }
+
+    private Bool isPrimitiveComparable(String typeName) {
+        if (typeName == "Int") {
+            return true;
+        }
+
+        if (typeName == "Bool") {
+            return true;
+        }
+
+        // Float and Char are scalars with a native `==` (Float follows IEEE:
+        // NaN is not equal to itself); they have no equals method.
+        if (typeName == "Float" || typeName == "Char") {
+            return true;
+        }
+
+        return typeName == "String";
+    }
+}

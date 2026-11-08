@@ -1,5 +1,7 @@
 namespace Std::Collections;
 
+use Std::Collections::IIterator;
+
 public class ListIterator<T> implements IIterator<T> {
     private List<T> items;
     private Int position;

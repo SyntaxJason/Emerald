@@ -1,0 +1,41 @@
+namespace Std::Llvm;
+
+public class LlvmValue {
+    private Int valueHandle;
+
+    public LlvmValue(Int handle) {
+        this.valueHandle = handle;
+    }
+
+    public Int handle() {
+        return this.valueHandle;
+    }
+
+    public Bool isNull() {
+        return this.valueHandle == 0;
+    }
+
+    public LlvmType type() {
+        return LlvmType(LlvmNative.valueType(this.valueHandle));
+    }
+
+    public String name() {
+        return LlvmNative.valueName(this.valueHandle);
+    }
+
+    public Void setName(String name) {
+        LlvmNative.valueSetName(this.valueHandle, name);
+    }
+
+    public Void setInitializer(LlvmValue value) {
+        LlvmNative.globalSetInitializer(this.valueHandle, value.handle());
+    }
+
+    public Void setGlobalConstant(Bool constant) {
+        LlvmNative.globalSetConstant(this.valueHandle, constant);
+    }
+
+    public String toIr() {
+        return LlvmNative.valueToIr(this.valueHandle);
+    }
+}

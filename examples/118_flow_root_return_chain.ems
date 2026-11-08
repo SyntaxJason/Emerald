@@ -1,0 +1,27 @@
+public class HyperAllocFlowChainedValue {
+    private Int number;
+
+    public HyperAllocFlowChainedValue(Int number) {
+        this.number = number;
+    }
+
+    public Int value() {
+        return this.number;
+    }
+}
+
+public class HyperAllocFlowChainedFactory {
+    public HyperAllocFlowChainedValue buildChainedValue() {
+        return HyperAllocFlowChainedValue(9);
+    }
+
+    public HyperAllocFlowChainedValue forwardChainedValue() {
+        return this.buildChainedValue();
+    }
+}
+
+main() {
+    HyperAllocFlowChainedFactory factory = HyperAllocFlowChainedFactory();
+    HyperAllocFlowChainedValue result = factory.forwardChainedValue();
+    println(result.value().toString());
+}

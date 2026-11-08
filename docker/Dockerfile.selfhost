@@ -1,0 +1,10 @@
+# Sandbox image for `./emerald.sh selfhost`.
+# The selfhost gate stays memory-capped so an ownership regression is OOM-killed
+# inside the container instead of exhausting the host.
+FROM archlinux:latest
+
+RUN pacman -Syu --noconfirm --needed \
+      crystal shards llvm clang base-devel git which procps-ng \
+    && pacman -Scc --noconfirm
+
+WORKDIR /workspace

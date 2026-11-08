@@ -1,0 +1,21 @@
+macro AddLoopLines on Method {
+    for (i in 1..3) {
+        StatementAST line = Stmt::expr(
+            Expr::call("println", [Expr::str("loop " + i.toString())])
+        );
+
+        method.body.append(line);
+    }
+}
+
+public class RangeProbe {
+    @AddLoopLines
+    public Void run() {
+        println("body");
+    }
+}
+
+main() {
+    RangeProbe probe = RangeProbe();
+    probe.run();
+}

@@ -1,0 +1,33 @@
+public class HyperAllocFlowV1ForwardedViewItem {
+    public Int value;
+
+    public HyperAllocFlowV1ForwardedViewItem(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1ForwardedViewSink {
+    public HyperAllocFlowV1ForwardedViewItem storedItem;
+
+    public HyperAllocFlowV1ForwardedViewSink(HyperAllocFlowV1ForwardedViewItem item) {
+        this.storedItem = item;
+    }
+}
+
+public class HyperAllocFlowV1ForwardedViewLookup {
+    public static HyperAllocFlowV1ForwardedViewItem identity(HyperAllocFlowV1ForwardedViewItem item) {
+        return item;
+    }
+
+    public static HyperAllocFlowV1ForwardedViewSink invalid(List<HyperAllocFlowV1ForwardedViewItem> items) {
+        HyperAllocFlowV1ForwardedViewItem view = items.get(0);
+        HyperAllocFlowV1ForwardedViewItem forwarded = HyperAllocFlowV1ForwardedViewLookup.identity(view);
+        return HyperAllocFlowV1ForwardedViewSink(forwarded);
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1ForwardedViewItem> items = List();
+    items.add(HyperAllocFlowV1ForwardedViewItem(42));
+    println(HyperAllocFlowV1ForwardedViewLookup.invalid(items).storedItem.value.toString());
+}

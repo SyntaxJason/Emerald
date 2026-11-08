@@ -1,0 +1,51 @@
+namespace Std::Io;
+
+use Std::Native::NativeConsole;
+use Std::Result::Failure;
+use Std::Result::IResult;
+use Std::Result::Success;
+
+public class Consoles {
+    public Consoles() {
+    }
+
+    public static Void write(String text) {
+        NativeConsole.write(text);
+    }
+
+    public static Void writeLine(String text) {
+        NativeConsole.writeLine(text);
+    }
+
+    public static Void errorLine(String text) {
+        NativeConsole.errorLine(text);
+    }
+
+    public static Void blankLine() {
+        NativeConsole.writeLine("");
+    }
+
+    public static String readLine() {
+        return NativeConsole.readLine();
+    }
+
+    public static String readLineOr(String fallback) {
+        String value = NativeConsole.readLine();
+
+        if (value.equals("")) {
+            return fallback;
+        }
+
+        return value;
+    }
+
+    public static IResult<String, String> tryReadLine() {
+        String value = NativeConsole.readLine();
+
+        if (value.equals("")) {
+            return Failure("Could not read line");
+        }
+
+        return Success(value);
+    }
+}

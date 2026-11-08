@@ -1,0 +1,56 @@
+--- emerald-compiler/src/Emerald/Compiler/Backend/Core/NativeLocal.ems	2026-06-13 12:16:48.000000000 +0000
++++ emerald-compiler/src/Emerald/Compiler/Backend/Core/NativeLocal.ems	2026-09-01 15:13:20.191075676 +0000
+@@ -16,7 +16,7 @@
+     public NativeLocal(String name, String typeName, LlvmNativeVariable variable) {
+         this.nameValue = name;
+         this.typeValue = typeName;
+-        this.variableValue = variable;
++        this.variableValue = LlvmNativeVariable(variable.name(), LlvmType(variable.type().handle()), LlvmValue(variable.pointer().handle()));
+         this.allocationExpressionIndexValue = 0;
+         this.flowKindValue = "Value";
+         this.foldedFieldNameItems = List();
+@@ -26,7 +26,7 @@
+     public NativeLocal(String name, String typeName, LlvmNativeVariable variable, Int allocationExpressionIndex, String flowKind) {
+         this.nameValue = name;
+         this.typeValue = typeName;
+-        this.variableValue = variable;
++        this.variableValue = LlvmNativeVariable(variable.name(), LlvmType(variable.type().handle()), LlvmValue(variable.pointer().handle()));
+         this.allocationExpressionIndexValue = allocationExpressionIndex;
+         this.flowKindValue = flowKind;
+         this.foldedFieldNameItems = List();
+@@ -39,8 +39,15 @@
+         this.variableValue = LlvmNativeVariable("", LlvmType(0), LlvmValue(0));
+         this.allocationExpressionIndexValue = allocationExpressionIndex;
+         this.flowKindValue = flowKind;
+-        this.foldedFieldNameItems = foldedFieldNames;
+-        this.foldedFieldValueItems = foldedFieldValues;
++        this.foldedFieldNameItems = List();
++        this.foldedFieldValueItems = List();
++        Int foldedIndex = 0;
++
++        while (foldedIndex < foldedFieldNames.length() && foldedIndex < foldedFieldValues.length()) {
++            this.foldedFieldNameItems.add(foldedFieldNames.get(foldedIndex));
++            this.foldedFieldValueItems.add(LlvmValue(foldedFieldValues.get(foldedIndex).handle()));
++            foldedIndex = foldedIndex + 1;
++        }
+     }
+ 
+     public String name() {
+@@ -52,7 +59,7 @@
+     }
+ 
+     public LlvmNativeVariable variable() {
+-        return this.variableValue;
++        return LlvmNativeVariable(this.variableValue.name(), LlvmType(this.variableValue.type().handle()), LlvmValue(this.variableValue.pointer().handle()));
+     }
+ 
+     public Int allocationExpressionIndex() {
+@@ -114,7 +121,7 @@
+ 
+         while (index < this.foldedFieldNameItems.length()) {
+             if (this.foldedFieldNameItems.get(index) == name) {
+-                return this.foldedFieldValueItems.get(index);
++                return LlvmValue(this.foldedFieldValueItems.get(index).handle());
+             }
+ 
+             index = index + 1;

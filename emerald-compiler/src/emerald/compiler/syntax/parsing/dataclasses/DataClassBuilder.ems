@@ -1,0 +1,120 @@
+namespace emerald::compiler::syntax;
+
+public class DataClassBuilder {
+    private DataClassConstructorBuilder constructors;
+    private DataClassEqualityBuilder equality;
+    private DataClassStringBuilder strings;
+    private DataClassCopyBuilder copies;
+
+    public DataClassBuilder(SyntaxProgram syntaxProgram) {
+        this.constructors = DataClassConstructorBuilder(syntaxProgram);
+        this.equality = DataClassEqualityBuilder(syntaxProgram);
+        this.strings = DataClassStringBuilder(syntaxProgram);
+        this.copies = DataClassCopyBuilder(syntaxProgram);
+    }
+
+    public Void addGeneratedMethods(String ownerName, List<FieldDeclaration> fields, List<MethodDeclaration> methods, Int line, Int column) {
+        if (!this.hasConstructor(methods)) {
+            methods.add(this.constructors.constructorFor(ownerName, fields, line, column));
+        }
+
+        if (!this.hasMethod(methods, "equals", 1)) {
+            methods.add(this.equality.equalsFor(ownerName, fields, line, column));
+        }
+
+        if (!this.hasMethod(methods, "toString", 0)) {
+            methods.add(this.strings.toStringFor(ownerName, fields, line, column));
+        }
+
+        if (!this.hasFieldConstructor(methods, fields)) {
+            return;
+        }
+
+        if (!this.hasMethod(methods, "copy", 0)) {
+            methods.add(this.copies.copyFor(ownerName, fields, line, column));
+        }
+
+        this.addWithMethods(ownerName, fields, methods, line, column);
+    }
+
+    public Bool hasConstructor(List<MethodDeclaration> methods) {
+        Int index = 0;
+
+        while (index < methods.length()) {
+            if (methods.get(index).isConstructor()) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+
+    public Bool hasFieldConstructor(List<MethodDeclaration> methods, List<FieldDeclaration> fields) {
+        Int index = 0;
+
+        while (index < methods.length()) {
+            MethodDeclaration method = methods.get(index);
+
+            if (method.isConstructor() && this.sameSignature(method, fields)) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    public Bool hasMethod(List<MethodDeclaration> methods, String name, Int parameterCount) {
+        Int index = 0;
+
+        while (index < methods.length()) {
+            MethodDeclaration method = methods.get(index);
+
+            if (!method.isConstructor() && method.name() == name && method.parameters().length() == parameterCount) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+
+    private Bool sameSignature(MethodDeclaration method, List<FieldDeclaration> fields) {
+        if (method.parameters().length() != fields.length()) {
+            return false;
+        }
+
+        Int index = 0;
+
+        while (index < fields.length()) {
+            if (method.parameters().get(index).typeName() != fields.get(index).typeName()) {
+                return false;
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+
+    private Void addWithMethods(String ownerName, List<FieldDeclaration> fields, List<MethodDeclaration> methods, Int line, Int column) {
+        Int index = 0;
+
+        while (index < fields.length()) {
+            FieldDeclaration field = fields.get(index);
+            String methodName = this.copies.withMethodName(field);
+
+            if (!this.hasMethod(methods, methodName, 1)) {
+                methods.add(this.copies.withFor(ownerName, fields, field, line, column));
+            }
+
+            index = index + 1;
+        }
+    }
+}

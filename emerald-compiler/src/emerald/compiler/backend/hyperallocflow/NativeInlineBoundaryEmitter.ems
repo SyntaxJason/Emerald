@@ -1,0 +1,328 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::hyperallocflow::analysis::inline::HyperAllocFlowInlineBoundaryAnalyzer;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Collections::ArrayList;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmType;
+use Std::Llvm::LlvmValue;
+
+public class NativeInlineBoundaryEmitter {
+    private NativeEmitContext context;
+    private NativeLookup lookup;
+    private NativeExpressionEmitter expressions;
+    private HyperAllocFlowInlineBoundaryAnalyzer boundaries;
+
+    public NativeInlineBoundaryEmitter(NativeEmitContext emitContext, NativeExpressionEmitter expressionEmitter) {
+        this.context = emitContext;
+        this.lookup = NativeLookup();
+        this.expressions = expressionEmitter;
+        this.boundaries = HyperAllocFlowInlineBoundaryAnalyzer(emitContext.hyperAllocFlowReport().programCatalog());
+    }
+
+    public Bool supports(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (expression.kind() != "methodcall") {
+            return false;
+        }
+
+        Expression receiver = program.expression(expression.leftIndex());
+
+        if (receiver.kind() == "name") {
+            NativeLocal local = this.lookup.findLocal(receiver.text(), locals, backend);
+
+            if (local.isInlineFlow()) {
+                return this.boundaries.canInlineReceiverCall(local.typeName(), expression.text(), expression.argumentIndexes().length(), program);
+            }
+        }
+
+        if (!this.boundaries.canInlineStaticValueCall(expression, program)) {
+            return false;
+        }
+
+        MethodDeclaration method = this.boundaries.staticMethod(expression, program);
+        Int index = 0;
+
+        while (index < method.parameters().length()) {
+            String typeName = method.parameters().get(index).typeName();
+
+            if (this.boundaries.isInlineType(typeName, program)) {
+                Expression argument = program.expression(expression.argumentIndexes().get(index));
+
+                if (argument.kind() != "name" || !this.lookup.findLocal(argument.text(), locals, backend).isInlineFlow()) {
+                    return false;
+                }
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+
+    public LlvmValue emit(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Expression receiverExpression = program.expression(expression.leftIndex());
+        NativeLocal candidate = this.lookup.findLocal(receiverExpression.text(), locals, backend);
+        MethodDeclaration method = this.resolveBoundaryMethod(candidate, expression, program);
+        NativeLocal receiver = this.resolveBoundaryReceiver(candidate, locals, backend);
+        List<String> primitiveNames = List();
+        List<LlvmValue> primitiveValues = List();
+        List<String> inlineNames = List();
+        List<NativeLocal> inlineValues = List();
+        this.bindArguments(method, expression, primitiveNames, primitiveValues, inlineNames, inlineValues, program, backend, locals);
+        this.context.hyperAllocFlowReport().recordInlineBoundaryCall();
+        return this.emitExpression(method.statements().get(0).expressionIndex(), receiver, primitiveNames, primitiveValues, inlineNames, inlineValues, program, backend);
+    }
+
+    private MethodDeclaration resolveBoundaryMethod(NativeLocal receiver, Expression expression, SyntaxProgram program) {
+        if (receiver.isInlineFlow()) {
+            return this.context.hyperAllocFlowReport().programCatalog().findMethod(receiver.typeName(), expression.text(), expression.argumentIndexes().length(), program);
+        }
+
+        return this.boundaries.staticMethod(expression, program);
+    }
+
+    private NativeLocal resolveBoundaryReceiver(NativeLocal receiver, List<NativeLocal> locals, LlvmNativeBackend backend) {
+        if (receiver.isInlineFlow()) {
+            return receiver;
+        }
+
+        return this.lookup.findLocal("", locals, backend);
+    }
+
+    public Bool supportsInlineReturn(Expression expression, String expectedType, SyntaxProgram program) {
+        return this.boundaries.canInlineReturnCall(expression, expectedType, program);
+    }
+
+    public Bool supportsInlineReturnCall(Expression expression, SyntaxProgram program) {
+        MethodDeclaration method = this.boundaries.staticMethod(expression, program);
+        return this.boundaries.isInlineReturnMethod(method, program);
+    }
+
+    public LlvmValue emitOwnedInlineReturnValue(Int expressionIndex, Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        MethodDeclaration method = this.boundaries.staticMethod(expression, program);
+        String typeName = method.returnTypeName();
+        NativeClassLayout layout = this.context.classTable().find(typeName);
+        ArrayList<LlvmValue> allocationArgs = ArrayList();
+        allocationArgs.add(layout.type().sizeOf());
+        LlvmValue value = backend.callRuntime(backend.runtimeDeclarations().alloc(), allocationArgs, "inline_return_root_" + this.context.nextTemp().toString());
+        List<LlvmValue> fields = this.emitInlineReturnFields(expression, typeName, program, backend, locals);
+        Int index = 0;
+
+        while (index < fields.length()) {
+            ArrayList<LlvmValue> indices = ArrayList();
+            indices.add(backend.int32(0));
+            indices.add(backend.int32(index));
+            LlvmValue pointer = backend.builder().inboundsGep(layout.type(), value, indices, "inline_return_root_field_" + this.context.nextTemp().toString());
+            backend.builder().store(fields.get(index), pointer);
+            index = index + 1;
+        }
+
+        this.context.hyperAllocFlowReport().recordLowering(expressionIndex, "hyperalloc_flow_alloc", "unspecialized return boundary materializes the inline value as one transferable Root to avoid a dangling stack value");
+        return value;
+    }
+
+    public LlvmValue emitInlineReturnValue(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        MethodDeclaration method = this.boundaries.staticMethod(expression, program);
+        String typeName = method.returnTypeName();
+        NativeClassLayout layout = this.context.classTable().find(typeName);
+        LlvmValue value = backend.builder().entryAlloca(layout.type(), "inline_return_" + this.context.nextTemp().toString());
+        List<LlvmValue> fields = this.emitInlineReturnFields(expression, typeName, program, backend, locals);
+        Int index = 0;
+
+        while (index < fields.length()) {
+            ArrayList<LlvmValue> indices = ArrayList();
+            indices.add(backend.int32(0));
+            indices.add(backend.int32(index));
+            LlvmValue pointer = backend.builder().inboundsGep(layout.type(), value, indices, "inline_return_field_" + this.context.nextTemp().toString());
+            backend.builder().store(fields.get(index), pointer);
+            index = index + 1;
+        }
+
+        return value;
+    }
+
+    public List<LlvmValue> emitInlineReturnFields(Expression expression, String expectedType, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        MethodDeclaration method = this.boundaries.inlineReturnMethod(expression, program);
+        Expression creation = this.boundaries.inlineReturnCreation(expression, program);
+        List<String> primitiveNames = List();
+        List<LlvmValue> primitiveValues = List();
+        List<String> inlineNames = List();
+        List<NativeLocal> inlineValues = List();
+        this.bindArguments(method, expression, primitiveNames, primitiveValues, inlineNames, inlineValues, program, backend, locals);
+        List<LlvmValue> values = List();
+        NativeLocal missing = this.lookup.findLocal("", locals, backend);
+        Int index = 0;
+
+        while (index < creation.argumentIndexes().length()) {
+            values.add(this.emitExpression(creation.argumentIndexes().get(index), missing, primitiveNames, primitiveValues, inlineNames, inlineValues, program, backend));
+            index = index + 1;
+        }
+
+        this.context.hyperAllocFlowReport().recordInlineReturn();
+        return values;
+    }
+
+    private Void bindArguments(MethodDeclaration method, Expression call, List<String> primitiveNames, List<LlvmValue> primitiveValues, List<String> inlineNames, List<NativeLocal> inlineValues, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Int index = 0;
+
+        while (index < method.parameters().length()) {
+            Parameter parameter = method.parameters().get(index);
+            Expression argument = program.expression(call.argumentIndexes().get(index));
+
+            if (parameter.typeName() == "Int" || parameter.typeName() == "Bool") {
+                primitiveNames.add(parameter.name());
+                primitiveValues.add(this.expressions.emit(call.argumentIndexes().get(index), program, backend, locals));
+            } else {
+                inlineNames.add(parameter.name());
+                inlineValues.add(this.lookup.findLocal(argument.text(), locals, backend));
+            }
+
+            index = index + 1;
+        }
+    }
+
+    private LlvmValue emitExpression(Int expressionIndex, NativeLocal receiver, List<String> primitiveNames, List<LlvmValue> primitiveValues, List<String> inlineNames, List<NativeLocal> inlineValues, SyntaxProgram program, LlvmNativeBackend backend) {
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "int") {
+            return backend.int64(expression.intValue());
+        }
+
+        if (expression.kind() == "bool") {
+            return backend.boolValue(expression.boolValue());
+        }
+
+        if (expression.kind() == "name") {
+            return this.primitiveValue(expression.text(), primitiveNames, primitiveValues, backend);
+        }
+
+        if (expression.kind() == "field") {
+            Expression fieldReceiver = program.expression(expression.leftIndex());
+            NativeLocal fieldReceiverLocal = this.inlineFieldReceiver(fieldReceiver, receiver, inlineNames, inlineValues, backend);
+            return this.loadInlineField(fieldReceiverLocal, expression.text(), backend);
+        }
+
+        if (expression.kind() == "unary") {
+            LlvmValue operand = this.emitExpression(expression.leftIndex(), receiver, primitiveNames, primitiveValues, inlineNames, inlineValues, program, backend);
+
+            if (expression.text() == "-") {
+                return backend.checkedInteger("neg", operand, backend.int64(0), "inline_boundary_neg_" + this.context.nextTemp().toString());
+            }
+
+            return backend.builder().intEqual(operand, backend.boolValue(false), "inline_boundary_not_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.kind() == "binary") {
+            LlvmValue left = this.emitExpression(expression.leftIndex(), receiver, primitiveNames, primitiveValues, inlineNames, inlineValues, program, backend);
+            LlvmValue right = this.emitExpression(expression.rightIndex(), receiver, primitiveNames, primitiveValues, inlineNames, inlineValues, program, backend);
+            return this.emitBinary(expression.text(), left, right, backend);
+        }
+
+        return backend.int32(0);
+    }
+
+    private LlvmValue loadInlineField(NativeLocal local, String fieldName, LlvmNativeBackend backend) {
+        NativeClassLayout layout = this.context.classTable().find(local.typeName());
+        ArrayList<LlvmValue> indices = ArrayList();
+        indices.add(backend.int32(0));
+        indices.add(backend.int32(this.context.fieldIndex(layout, fieldName)));
+        LlvmValue pointer = backend.builder().inboundsGep(layout.type(), local.pointer(), indices, "inline_boundary_field_ptr_" + this.context.nextTemp().toString());
+        LlvmType fieldType = this.context.typeMapper().llvmType(this.context.fieldTypeName(layout, fieldName), backend);
+        return backend.builder().load(fieldType, pointer, "inline_boundary_field_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue primitiveValue(String name, List<String> names, List<LlvmValue> values, LlvmNativeBackend backend) {
+        Int index = 0;
+
+        while (index < names.length()) {
+            if (names.get(index) == name) {
+                return values.get(index);
+            }
+
+            index = index + 1;
+        }
+
+        return backend.int32(0);
+    }
+
+    private NativeLocal inlineValue(String name, List<String> names, List<NativeLocal> values, LlvmNativeBackend backend) {
+        Int index = 0;
+
+        while (index < names.length()) {
+            if (names.get(index) == name) {
+                return values.get(index);
+            }
+
+            index = index + 1;
+        }
+
+        return NativeLocal("", "Int", backend.local("__missing_inline", backend.context().int64Type()));
+    }
+
+    private NativeLocal inlineFieldReceiver(Expression fieldReceiver, NativeLocal receiver, List<String> inlineNames, List<NativeLocal> inlineValues, LlvmNativeBackend backend) {
+        if (fieldReceiver.text() == "this") {
+            return receiver;
+        }
+
+        return this.inlineValue(fieldReceiver.text(), inlineNames, inlineValues, backend);
+    }
+
+    private LlvmValue emitBinary(String op, LlvmValue left, LlvmValue right, LlvmNativeBackend backend) {
+        if (op == "+") {
+            return backend.checkedInteger("add", left, right, "inline_boundary_add_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "-") {
+            return backend.checkedInteger("sub", left, right, "inline_boundary_sub_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "*") {
+            return backend.checkedInteger("mul", left, right, "inline_boundary_mul_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "/") {
+            return backend.checkedInteger("div", left, right, "inline_boundary_div_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "%") {
+            return backend.checkedInteger("rem", left, right, "inline_boundary_rem_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "&&") {
+            return backend.builder().bitAnd(left, right, "inline_boundary_and_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "||") {
+            return backend.builder().bitOr(left, right, "inline_boundary_or_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "==") {
+            return backend.builder().intEqual(left, right, "inline_boundary_eq_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "!=") {
+            return backend.builder().intNotEqual(left, right, "inline_boundary_ne_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "<") {
+            return backend.builder().intSignedLessThan(left, right, "inline_boundary_lt_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "<=") {
+            return backend.builder().intSignedLessOrEqual(left, right, "inline_boundary_le_" + this.context.nextTemp().toString());
+        }
+
+        if (op == ">") {
+            return backend.builder().intSignedGreaterThan(left, right, "inline_boundary_gt_" + this.context.nextTemp().toString());
+        }
+
+        if (op == ">=") {
+            return backend.builder().intSignedGreaterOrEqual(left, right, "inline_boundary_ge_" + this.context.nextTemp().toString());
+        }
+
+        return backend.int32(0);
+    }
+}

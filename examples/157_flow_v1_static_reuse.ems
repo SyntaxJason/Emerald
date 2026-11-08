@@ -1,0 +1,8 @@
+main() {
+    String first = "42";
+    String second = "42";
+
+    if (first.equals(second)) {
+        println(first);
+    }
+}

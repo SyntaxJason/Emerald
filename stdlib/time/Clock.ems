@@ -1,22 +1,30 @@
 namespace Std::Time;
 
+use Std::Native::NativeTime;
+use Std::Time::IClock;
+use Std::Time::Duration;
+use Std::Time::OffsetDateTime;
+
 public class Clock implements IClock {
     public Clock() {
     }
 
-    public OffsetDateTime now() {
-        return Clock.now();
-    }
+    public static OffsetDateTime now() { return OffsetDateTime.now(); }
+    public static OffsetDateTime utcNow() { return OffsetDateTime.utcNow(); }
 
-    public OffsetDateTime utcNow() {
-        return Clock.utcNow();
-    }
+    // Wall clock milliseconds since the Unix epoch.
+    public static Int millis() { return NativeTime.unixMillis(); }
 
-    public Int millis() {
-        return Clock.millis();
-    }
+    // Monotonic time, suitable for measuring intervals.
+    public static Int nanos() { return NativeTime.monotonicNanos(); }
+    public static Int monotonicMillis() { return NativeTime.monotonicNanos() / 1000000; }
 
-    public Void sleep(Duration duration) {
-        Clock.sleep(duration);
-    }
+    public static Void sleep(Duration duration) { NativeTime.sleepMillis(duration.toMillis()); }
+
+    public OffsetDateTime now() { return OffsetDateTime.now(); }
+    public OffsetDateTime utcNow() { return OffsetDateTime.utcNow(); }
+    public Int millis() { return NativeTime.unixMillis(); }
+    public Int nanos() { return NativeTime.monotonicNanos(); }
+    public Int monotonicMillis() { return NativeTime.monotonicNanos() / 1000000; }
+    public Void sleep(Duration duration) { NativeTime.sleepMillis(duration.toMillis()); }
 }

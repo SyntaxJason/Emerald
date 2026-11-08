@@ -1,0 +1,45 @@
+use Std::Native::NativeUi;
+
+main() {
+    NativeUi.init();
+
+    String backend = NativeUi.backend();
+
+    Int window = NativeUi.createWindow("Emerald Native UI Direct Test", 900, 600);
+
+    String html = "<!doctype html>";
+    html = html + "<html>";
+    html = html + "<head>";
+    html = html + "<meta charset=\"utf-8\">";
+    html = html + "<title>Emerald Native UI</title>";
+    html = html + "<style>";
+    html = html + "body { margin: 0; font-family: Inter, Segoe UI, Arial, sans-serif; background: #101014; color: #f5f5f7; }";
+    html = html + ".page { padding: 32px; }";
+    html = html + ".card { max-width: 760px; border: 1px solid #2d2d36; border-radius: 18px; padding: 28px; background: linear-gradient(135deg, #171720, #111118); box-shadow: 0 20px 70px rgba(0,0,0,.35); }";
+    html = html + ".badge { display: inline-block; padding: 6px 10px; border-radius: 999px; background: #163d2c; color: #8dffbc; font-size: 13px; }";
+    html = html + "h1 { margin: 18px 0 10px 0; font-size: 34px; }";
+    html = html + "p { line-height: 1.6; color: #c9c9d1; }";
+    html = html + "button { margin-top: 18px; padding: 12px 18px; border: 0; border-radius: 10px; background: #52ff9a; color: #08120c; font-weight: 700; }";
+    html = html + "</style>";
+    html = html + "</head>";
+    html = html + "<body>";
+    html = html + "<div class=\"page\">";
+    html = html + "<div class=\"card\">";
+    html = html + "<span class=\"badge\">Backend: " + backend + "</span>";
+    html = html + "<h1>Emerald Native UI läuft</h1>";
+    html = html + "<p>Wenn du diese Datei als HTML-Dump siehst, funktioniert die NativeUi Runtime Bridge auf diesem System.</p>";
+    html = html + "<p>Der echte WebView2/WebKitGTK Backend-Step kommt danach.</p>";
+    html = html + "<button>Emerald Button</button>";
+    html = html + "</div>";
+    html = html + "</div>";
+    html = html + "</body>";
+    html = html + "</html>";
+
+    NativeUi.setHtml(window, html);
+    NativeUi.show(window);
+
+    println("Native UI backend: " + backend);
+    println("Window handle: " + window.toString());
+
+    NativeUi.run();
+}

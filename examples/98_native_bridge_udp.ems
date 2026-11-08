@@ -1,0 +1,14 @@
+use Std::Native::NativeUdp;
+
+main() {
+    Int socket = NativeUdp.bind("127.0.0.1", 0);
+    Int port = NativeUdp.localPort(socket);
+
+    println(NativeUdp.isOpen(socket));
+    println(port > 0);
+    println(NativeUdp.sendText(socket, "127.0.0.1", port, "ping"));
+    println(NativeUdp.receiveText(socket));
+    println(NativeUdp.lastSenderHost(socket));
+    println(NativeUdp.lastSenderPort(socket) > 0);
+    println(NativeUdp.close(socket));
+}

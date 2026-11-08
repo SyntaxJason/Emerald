@@ -1,0 +1,10 @@
+use Demo::Counter;
+
+main() {
+    Counter counter = Counter(39);
+    counter.tick();
+    counter.tick();
+    counter.tick();
+    println(counter.getValue());
+    return 0;
+}

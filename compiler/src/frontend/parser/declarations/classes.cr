@@ -100,6 +100,7 @@ module Emerald
       is_override = false
       is_synchronized = false
       is_async = false
+      is_static = false
       deprecated_message : String? = nil
       user_annotations = [] of AST::Annotation
       while peek.type == TokenType::At
@@ -128,6 +129,11 @@ module Emerald
       end
       vis = parse_visibility
       mutability = parse_mutability
+      if peek.type == TokenType::Identifier && peek.value == "static"
+        consume
+        is_static = true
+      end
+
       is_abstract_method = false
       if peek.type == TokenType::KwAbstract
         consume
@@ -163,6 +169,7 @@ module Emerald
         method = AST::MethodDecl.new(vis, name_tok.value, params, ret_or_field_type, body,
                             is_override, false, is_abstract_method)
           .at(start_tok.line, start_tok.col).as(AST::MethodDecl)
+        method.is_static = is_static
         method.is_synchronized = is_synchronized
         method.is_async = is_async
         method.deprecated_message = deprecated_message

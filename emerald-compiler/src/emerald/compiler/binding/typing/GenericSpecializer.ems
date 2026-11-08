@@ -1,0 +1,169 @@
+namespace emerald::compiler::binding;
+
+use emerald::compiler::syntax::Annotation;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class GenericSpecializer {
+    private SyntaxProgram program;
+    private List<String> names;
+    private List<String> values;
+    private List<String> unbound;
+
+    public GenericSpecializer(SyntaxProgram syntax, List<String> unbound) {
+        this.program = syntax;
+        this.unbound = unbound;
+        this.names = List();
+        this.values = List();
+    }
+
+    public ClassDeclaration instantiate(ClassDeclaration template, String requested) {
+        List<String> arguments = this.typeArguments(requested);
+        if (template.isMissing() || arguments.length() != template.genericParameters().length()) { return template; }
+        List<String> remainingParameters = List();
+        Int index = 0;
+        while (index < arguments.length()) {
+            String argument = arguments.get(index);
+            this.collectTypeParameters(argument, remainingParameters);
+            index = index + 1;
+        }
+        String name = template.name() + "<";
+        index = 0;
+        while (index < arguments.length()) {
+            if (index > 0) { name = name + ","; }
+            name = name + arguments.get(index);
+            index = index + 1;
+        }
+        name = name + ">";
+        String fullName = name;
+        if (!template.namespaceName().isEmpty()) { fullName = template.namespaceName() + "::" + name; }
+        index = 0;
+        while (index < this.program.classCount()) {
+            ClassDeclaration existing = this.program.classAt(index);
+            if (existing.fullName() == fullName) { return existing; }
+            index = index + 1;
+        }
+        this.names = template.genericParameters();
+        this.values = arguments;
+        List<FieldDeclaration> fields = List();
+        index = 0;
+        while (index < template.fieldCount()) {
+            FieldDeclaration field = template.fieldAt(index);
+            fields.add(FieldDeclaration(field.name(), this.replaceType(field.typeName()), this.cloneExpression(field.initializerIndex()), field.line(), field.column()));
+            index = index + 1;
+        }
+        List<MethodDeclaration> methods = List();
+        index = 0;
+        while (index < template.methodCount()) {
+            MethodDeclaration method = template.methodAt(index);
+            List<Parameter> parameters = List();
+            Int parameterIndex = 0;
+            while (parameterIndex < method.parameterCount()) {
+                Parameter parameter = method.parameterAt(parameterIndex);
+                parameters.add(Parameter(parameter.name(), this.replaceType(parameter.typeName()), parameter.line(), parameter.column()));
+                parameterIndex = parameterIndex + 1;
+            }
+            methods.add(MethodDeclaration(fullName, method.name(), this.replaceType(method.returnTypeName()), method.annotations(), parameters, this.cloneStatements(method.statements()), method.isConstructor(), method.isStatic(), method.isGenerated(), method.line(), method.column()));
+            index = index + 1;
+        }
+        List<String> interfaces = List();
+        index = 0;
+        while (index < template.implementedInterfaces().length()) {
+            interfaces.add(this.replaceType(template.implementedInterfaces().get(index)));
+            index = index + 1;
+        }
+        ClassDeclaration concrete = ClassDeclaration(template.namespaceName(), name, template.isData(), template.isInterface(), this.replaceType(template.parentName()), interfaces, template.annotations(), fields, methods, template.line(), template.column()).withGenericParameters(remainingParameters);
+        this.program.addClass(concrete);
+        return concrete;
+    }
+
+    private Void collectTypeParameters(String text, List<String> parameters) {
+        Int index = 0;
+        while (index < text.length()) {
+            if (text.charAt(index).isLetter() || text.substring(index, index + 1) == "_") {
+                Int end = index + 1;
+                while (end < text.length() && (text.charAt(end).isLetter() || text.charAt(end).isDigit() || text.substring(end, end + 1) == "_")) { end = end + 1; }
+                String token = text.substring(index, end);
+                if (this.unbound.contains(token) && !parameters.contains(token)) { parameters.add(token + ""); }
+                index = end;
+            } else { index = index + 1; }
+        }
+    }
+
+    public List<String> typeArguments(String typeName) {
+        List<String> result = List();
+        Int start = typeName.indexOf("<") + 1;
+        if (start <= 0 || !typeName.endsWith(">")) { return result; }
+        Int depth = 0;
+        Int index = start;
+        while (index < typeName.length() - 1) {
+            String symbol = typeName.substring(index, index + 1);
+            if (symbol == "<") { depth = depth + 1; }
+            if (symbol == ">") { depth = depth - 1; }
+            if (symbol == "," && depth == 0) {
+                result.add(typeName.substring(start, index).trim());
+                start = index + 1;
+            }
+            index = index + 1;
+        }
+        result.add(typeName.substring(start, typeName.length() - 1).trim());
+        return result;
+    }
+
+    private String replaceType(String text) {
+        String result = "";
+        Int index = 0;
+        while (index < text.length()) {
+            String symbol = text.substring(index, index + 1);
+            if (symbol.charAt(0).isLetter() || symbol == "_") {
+                Int end = index + 1;
+                while (end < text.length() && (text.charAt(end).isLetter() || text.charAt(end).isDigit() || text.substring(end, end + 1) == "_")) { end = end + 1; }
+                String token = text.substring(index, end);
+                Int parameter = 0;
+                while (parameter < this.names.length()) {
+                    if (token == this.names.get(parameter)) { token = this.values.get(parameter) + ""; break; }
+                    parameter = parameter + 1;
+                }
+                result = result + token;
+                index = end;
+            } else {
+                result = result + symbol;
+                index = index + 1;
+            }
+        }
+        return result;
+    }
+
+    private List<Statement> cloneStatements(List<Statement> source) {
+        List<Statement> result = List();
+        Int index = 0;
+        while (index < source.length()) {
+            Statement statement = source.get(index);
+            result.add(Statement(statement.kind(), statement.name(), this.replaceType(statement.typeName()), this.cloneExpression(statement.expressionIndex()), this.cloneExpression(statement.targetIndex()), this.cloneStatements(statement.bodyStatements()), this.cloneStatements(statement.elseStatements()), statement.line(), statement.column()));
+            index = index + 1;
+        }
+        return result;
+    }
+
+    private Int cloneExpression(Int expressionIndex) {
+        if (expressionIndex == 0) { return 0; }
+        Expression expression = this.program.expression(expressionIndex);
+        List<Int> arguments = List();
+        Int index = 0;
+        while (index < expression.argumentCount()) {
+            arguments.add(this.cloneExpression(expression.argumentIndexAt(index)));
+            index = index + 1;
+        }
+        return this.program.addExpression(Expression(expression.kind(), this.expressionText(expression), expression.intValue(), expression.boolValue(), this.cloneExpression(expression.leftIndex()), this.cloneExpression(expression.rightIndex()), arguments, this.cloneStatements(expression.quoteStatements()), expression.quoteMethod(), expression.quoteField(), expression.isGenerated(), expression.line(), expression.column()));
+    }
+    private String expressionText(Expression expression) {
+        if (expression.kindIs("call") || expression.kindIs("staticcall")) { return this.replaceType(expression.text()); }
+        return expression.text();
+    }
+
+}

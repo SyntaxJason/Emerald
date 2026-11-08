@@ -1,0 +1,21 @@
+public class HyperAllocFlowPoolText {
+    private String value;
+
+    public HyperAllocFlowPoolText(String value) {
+        this.value = value;
+    }
+
+    public String text() {
+        return this.value;
+    }
+}
+
+main() {
+    Int index = 0;
+
+    while (index < 2) {
+        HyperAllocFlowPoolText text = HyperAllocFlowPoolText("Emerald");
+        println(text.text());
+        index = index + 1;
+    }
+}

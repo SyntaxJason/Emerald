@@ -1,0 +1,24 @@
+public abstract class Animal {
+    public abstract String sound();
+}
+
+public class Dog extends Animal {
+    @Override
+    public String sound() {
+        return "Woof";
+    }
+}
+
+public class Cat extends Animal {
+    @Override
+    public String sound() {
+        return "Meow";
+    }
+}
+
+main() {
+    Dog d = Dog();
+    Cat c = Cat();
+    println("Dog says: $(d.sound())");
+    println("Cat says: $(c.sound())");
+}

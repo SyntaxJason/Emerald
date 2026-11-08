@@ -1,0 +1,26 @@
+public interface INamed {
+    public String name();
+
+    public String label();
+}
+
+public class NamedUser implements INamed {
+    public NamedUser() {
+    }
+
+    @Override
+    public String name() {
+        return "Jason";
+    }
+
+    @Override
+    public String label() {
+        return "name:";
+    }
+}
+
+main() {
+    NamedUser user = NamedUser();
+
+    println(user.label() + user.name());
+}

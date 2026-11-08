@@ -1,0 +1,21 @@
+public class HyperAllocFlowV1ViewBox {
+    public Int value;
+
+    public HyperAllocFlowV1ViewBox(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1ViewFactory {
+    public static HyperAllocFlowV1ViewBox unsafe() {
+        List<HyperAllocFlowV1ViewBox> values = List();
+        HyperAllocFlowV1ViewBox value = HyperAllocFlowV1ViewBox(42);
+        values.add(value);
+        HyperAllocFlowV1ViewBox borrowed = values.get(0);
+        return borrowed;
+    }
+}
+
+main() {
+    println(HyperAllocFlowV1ViewFactory.unsafe().value.toString());
+}

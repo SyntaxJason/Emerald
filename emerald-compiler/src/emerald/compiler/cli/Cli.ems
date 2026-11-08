@@ -1,0 +1,327 @@
+namespace emerald::compiler::cli;
+
+use emerald::compiler::Compiler;
+use emerald::compiler::diagnostic::DiagnosticBag;
+use emerald::compiler::platform::Platform;
+use Std::Process::Process;
+use Std::System::System;
+
+public class Cli {
+    private Platform platform;
+
+    public Cli() {
+        this.platform = Platform();
+    }
+
+    public Int run() {
+        List<String> args = Process.args();
+
+        if (args.length() < 1) {
+            this.printUsage();
+            return 1;
+        }
+
+        if (args.get(0) == "help") {
+            this.printUsage();
+            return 0;
+        }
+
+        if (args.get(0) == "--help") {
+            this.printUsage();
+            return 0;
+        }
+
+        if (args.get(0) == "build") {
+            return this.runBuild(args, 1);
+        }
+
+        if (args.get(0) == "analyze") {
+            return this.runAnalyze(args);
+        }
+
+        return this.runLegacy(args);
+    }
+
+
+    private Int runAnalyze(List<String> args) {
+        if (args.length() < 2) {
+            println("Usage: emerald-compiler analyze <source.ems> --ram");
+            return 1;
+        }
+
+        Int index = 2;
+        while (index < args.length()) {
+            String arg = args.get(index);
+            if (arg != "--ram" && arg != "--explain-hyperalloc-flow" && arg != "--explain-flow") {
+                println("Unknown analyze option: " + arg);
+                return 1;
+            }
+            index = index + 1;
+        }
+
+        DiagnosticBag diagnostics = DiagnosticBag();
+        Compiler compiler = Compiler();
+
+        if (!compiler.analyze(args.get(1), diagnostics)) {
+            diagnostics.printAll();
+            return 1;
+        }
+
+        return 0;
+    }
+
+    private Int runLegacy(List<String> args) {
+        String sourcePath = args.get(0) + "";
+        String outputBase = this.platform.defaultOutputBase(sourcePath);
+        String target = "native";
+        String normalizedOutput = outputBase;
+
+        if (args.length() >= 2) {
+            normalizedOutput = this.platform.normalizeOutputBase(args.get(1));
+        }
+
+        Options options = this.createOptions(sourcePath, normalizedOutput, target, "exe", false, false, false, "", "", false, false);
+        return this.compile(options);
+    }
+
+    private Int runBuild(List<String> args, Int startIndex) {
+        if (args.length() <= startIndex) {
+            this.printUsage();
+            return 1;
+        }
+
+        String sourcePath = args.get(startIndex) + "";
+        String outputBase = this.platform.defaultOutputBase(sourcePath);
+        String target = "native";
+        String emitMode = "exe";
+        Bool keepTemps = false;
+        Bool writeIr = false;
+        Bool verbose = false;
+        String cc = "";
+        String sysroot = "";
+        Bool explainFlow = false;
+        Bool hyperAllocFlowStrict = false;
+        Int index = startIndex + 1;
+
+        while (index < args.length()) {
+            String arg = args.get(index);
+
+            if (arg == "-o") {
+                if (index + 1 >= args.length()) {
+                    println("Missing value after -o");
+                    return 1;
+                }
+
+                outputBase = this.platform.normalizeOutputBase(args.get(index + 1));
+                index = index + 2;
+                continue;
+            }
+
+            if (arg == "--output") {
+                if (index + 1 >= args.length()) {
+                    println("Missing value after --output");
+                    return 1;
+                }
+
+                outputBase = this.platform.normalizeOutputBase(args.get(index + 1));
+                index = index + 2;
+                continue;
+            }
+
+            if (arg == "--target") {
+                if (index + 1 >= args.length()) {
+                    println("Missing value after --target");
+                    return 1;
+                }
+
+                target = this.platform.normalizeTarget(args.get(index + 1));
+                index = index + 2;
+                continue;
+            }
+
+            if (arg == "--emit") {
+                if (index + 1 >= args.length()) {
+                    println("Missing value after --emit");
+                    return 1;
+                }
+
+                emitMode = args.get(index + 1) + "";
+                index = index + 2;
+                continue;
+            }
+
+            if (arg == "--emit-ir") {
+                writeIr = true;
+                index = index + 1;
+                continue;
+            }
+
+            if (arg == "--no-ir") {
+                writeIr = false;
+                index = index + 1;
+                continue;
+            }
+
+            if (arg == "--keep-temps") {
+                keepTemps = true;
+                index = index + 1;
+                continue;
+            }
+
+            if (arg == "--cc") {
+                if (index + 1 >= args.length()) {
+                    println("Missing value after --cc");
+                    return 1;
+                }
+
+                cc = args.get(index + 1) + "";
+                index = index + 2;
+                continue;
+            }
+
+            if (arg == "--sysroot") {
+                if (index + 1 >= args.length()) {
+                    println("Missing value after --sysroot");
+                    return 1;
+                }
+
+                sysroot = args.get(index + 1) + "";
+                index = index + 2;
+                continue;
+            }
+
+            if (arg == "--verbose") {
+                verbose = true;
+                index = index + 1;
+                continue;
+            }
+
+            if (arg == "--explain-hyperalloc-flow" || arg == "--explain-flow") {
+                explainFlow = true;
+                index = index + 1;
+                continue;
+            }
+
+            if (arg == "--hyperalloc-flow-strict" || arg == "--flow-strict") {
+                explainFlow = true;
+                hyperAllocFlowStrict = true;
+                index = index + 1;
+                continue;
+            }
+
+            println("Unknown option: " + arg);
+            return 1;
+        }
+
+        if (!this.platform.isKnownTarget(target)) {
+            println("Unsupported target: " + target);
+            println("Supported targets: native, linux-x64, linux-arm64, windows-x64");
+            return 1;
+        }
+
+        if (!this.isEmitMode(emitMode)) {
+            println("Unsupported emit mode: " + emitMode);
+            println("Supported emit modes: exe, obj, asm, llvm-ir");
+            return 1;
+        }
+
+        if (emitMode == "llvm-ir") {
+            writeIr = true;
+        }
+
+        Options options = this.createOptions(sourcePath, outputBase, target, emitMode, writeIr, verbose, keepTemps, cc, sysroot, explainFlow, hyperAllocFlowStrict);
+        return this.compile(options);
+    }
+
+    private Bool isEmitMode(String value) {
+        if (value == "exe") {
+            return true;
+        }
+
+        if (value == "obj") {
+            return true;
+        }
+
+        if (value == "asm") {
+            return true;
+        }
+
+        if (value == "llvm-ir") {
+            return true;
+        }
+
+        return false;
+    }
+
+    private Options createOptions(String sourcePath, String outputBase, String target, String emitMode, Bool writeIr, Bool verbose, Bool keepTemps, String cc, String sysroot, Bool explainFlow, Bool hyperAllocFlowStrict) {
+        String normalizedTarget = this.platform.normalizeTarget(target);
+        String targetTriple = this.platform.targetTriple(normalizedTarget);
+        String irPath = this.platform.irPathFor(outputBase);
+        String tempBase = this.platform.tempBuildBase(outputBase);
+        String executableExtension = this.platform.targetExecutableExtension(normalizedTarget);
+        String objectExtension = this.platform.targetObjectExtension(normalizedTarget);
+
+        return Options(sourcePath, outputBase, writeIr, irPath, verbose, normalizedTarget, targetTriple, emitMode, keepTemps, tempBase, executableExtension, objectExtension, cc, sysroot, explainFlow, hyperAllocFlowStrict);
+    }
+
+    private Int compile(Options options) {
+        DiagnosticBag diagnostics = DiagnosticBag();
+        Compiler compiler = Compiler();
+
+        if (!compiler.compile(options, diagnostics)) {
+            diagnostics.printAll();
+            return 1;
+        }
+
+        println("Emerald Compiler target: " + options.target());
+        println("Emerald Compiler triple: " + options.targetTriple());
+
+        if (options.writeIr()) {
+            println("Wrote IR: " + options.irPath());
+        }
+
+        if (options.emitLlvmIrOnly()) {
+            return 0;
+        }
+
+        if (options.emitObject()) {
+            println("Wrote object: " + this.platform.objectPathFor(options.outputBase(), options.target()));
+            return 0;
+        }
+
+        if (options.emitAssembly()) {
+            println("Wrote assembly: " + this.platform.assemblyPathFor(options.outputBase()));
+            return 0;
+        }
+
+        println("Wrote executable: " + this.platform.executablePathFor(options.outputBase(), options.target()));
+        return 0;
+    }
+
+    private Void printUsage() {
+        println("Emerald Compiler");
+        println("Usage:");
+        println("  emerald-compiler build <source.ems> -o <output>");
+        println("  emerald-compiler analyze <source.ems> --ram");
+        println("  emerald-compiler <source.ems> [output]");
+        println("");
+        println("Options:");
+        println("  -o <path>             Output base path");
+        println("  --emit <mode>         exe, obj, asm, llvm-ir");
+        println("  --emit-ir             Also write LLVM IR next to the output");
+        println("  --no-ir               Do not write LLVM IR");
+        println("  --keep-temps          Keep temporary .o/.ll build files");
+        println("  --target <target>     native, linux-x64, linux-arm64, windows-x64");
+        println("  --cc <path>           Override C compiler/linker command");
+        println("  --sysroot <path>      Pass --sysroot to runtime compile and link steps");
+        println("  --verbose             Print extra compiler diagnostics later");
+        println("  --explain-hyperalloc-flow Print HyperAlloc Flow allocation decisions");
+        println("  --hyperalloc-flow-strict  Reject unresolved Flow fallbacks while allowing intentional Root allocations");
+        println("");
+        println("Default build mode writes only the final binary. Object files stay in a temp build directory and are deleted afterwards.");
+        println("Windows targets automatically receive .exe.");
+        println("Linux and Windows are first-class targets. macOS is intentionally not supported yet.");
+        println("Set EMERALD_CC=clang or clang.exe if your host compiler is not on PATH.");
+        println("HyperAlloc Flow is built into the runtime and does not require an external GC library.");
+    }
+}

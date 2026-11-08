@@ -1,0 +1,18 @@
+public class Computation {
+    @Async
+    public Int slowSquare(Int x) {
+        Time::sleep(50);
+        return x * x;
+    }
+}
+
+main() {
+    Computation comp = Computation();
+
+    Fiber<Int> a = comp.slowSquare(5);
+    Fiber<Int> b = comp.slowSquare(10);
+    Fiber<Int> c = comp.slowSquare(15);
+
+    Int sum = a.await() + b.await() + c.await();
+    println("Sum of squares: $(sum)");
+}

@@ -1,0 +1,6 @@
+main() {
+    String value = "initial";
+    value = 20.toString();
+    value = (40 + 2).toString();
+    println(value);
+}

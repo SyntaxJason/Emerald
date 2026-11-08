@@ -1,0 +1,26 @@
+public class HyperAllocFlowV1FieldViewItem {
+    public Int value;
+
+    public HyperAllocFlowV1FieldViewItem(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1FieldViewShelf {
+    private List<HyperAllocFlowV1FieldViewItem> items;
+
+    public HyperAllocFlowV1FieldViewShelf() {
+        this.items = List();
+        this.items.add(HyperAllocFlowV1FieldViewItem(42));
+    }
+
+    public HyperAllocFlowV1FieldViewItem first() {
+        HyperAllocFlowV1FieldViewItem view = this.items.get(0);
+        return view;
+    }
+}
+
+main() {
+    HyperAllocFlowV1FieldViewShelf shelf = HyperAllocFlowV1FieldViewShelf();
+    println(shelf.first().value.toString());
+}

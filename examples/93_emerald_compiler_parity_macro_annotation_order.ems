@@ -1,0 +1,32 @@
+macro InsertOrderMarker on Method {
+    StatementAST line = quote stmt {
+        println("first");
+    };
+
+    method.body.insertAt(1, line);
+}
+
+macro RequireOrderMarker on Method {
+    StatementAST existing = method.body.get(1);
+
+    StatementAST line = quote stmt {
+        println("second");
+    };
+
+    method.body.append(line);
+}
+
+public class AnnotationOrderProbe {
+    public AnnotationOrderProbe() {
+    }
+
+    @InsertOrderMarker
+    @RequireOrderMarker
+    public Void run() {
+        println("body");
+    }
+}
+
+main() {
+    AnnotationOrderProbe probe = AnnotationOrderProbe();
+}

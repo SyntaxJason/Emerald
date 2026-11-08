@@ -1,0 +1,11 @@
+main() {
+    Int minimum = "-9223372036854775808".toInt();
+    println(minimum % -1);
+    println(minimum / 1);
+    println(minimum + 9223372036854775807);
+    println(-7 % 3);
+    println(7 % -3);
+    println(-7 / 3);
+    println(7 / -3);
+    println(3037000499 * 3037000499);
+}

@@ -1,0 +1,333 @@
+namespace emerald::compiler::syntax;
+
+public class Expression {
+    private String kindValue;
+    private String textValue;
+    private Int intValueValue;
+    private Bool boolValueValue;
+    private Int leftIndexValue;
+    private Int rightIndexValue;
+    private List<Int> argumentIndexItems;
+    private List<Statement> quoteStatementItems;
+    private MethodDeclaration quoteMethodValue;
+    private FieldDeclaration quoteFieldValue;
+    private Int lineValue;
+    private Int columnValue;
+    private Bool generatedValue;
+    private Int resolvedConstructorIndexValue;
+    private String resolvedMethodOwnerValue;
+    private List<String> resolvedMethodParameterTypeItems;
+    private Bool resolvedMethodStaticValue;
+    private Int hyperAllocFlowSummaryIndexValue;
+
+    public Expression(String kind, String text, Int intValue, Bool boolValue, Int leftIndex, Int rightIndex, List<Int> argumentIndexes, Int line, Int column) {
+        this.kindValue = kind;
+        this.textValue = text;
+        this.intValueValue = intValue;
+        this.boolValueValue = boolValue;
+        this.leftIndexValue = leftIndex;
+        this.rightIndexValue = rightIndex;
+        this.argumentIndexItems = List();
+        this.copyArgumentIndexes(argumentIndexes);
+        this.quoteStatementItems = List();
+        this.quoteMethodValue = this.missingMethod();
+        this.quoteFieldValue = this.missingField();
+        this.lineValue = line;
+        this.columnValue = column;
+        this.generatedValue = false;
+        this.resolvedConstructorIndexValue = -1;
+        this.resolvedMethodOwnerValue = "";
+        this.resolvedMethodParameterTypeItems = List();
+        this.resolvedMethodStaticValue = false;
+        this.hyperAllocFlowSummaryIndexValue = -1;
+    }
+
+    public Expression(String kind, String text, Int intValue, Bool boolValue, Int leftIndex, Int rightIndex, List<Int> argumentIndexes, Bool generated, Int line, Int column) {
+        this.kindValue = kind;
+        this.textValue = text;
+        this.intValueValue = intValue;
+        this.boolValueValue = boolValue;
+        this.leftIndexValue = leftIndex;
+        this.rightIndexValue = rightIndex;
+        this.argumentIndexItems = List();
+        this.copyArgumentIndexes(argumentIndexes);
+        this.quoteStatementItems = List();
+        this.quoteMethodValue = this.missingMethod();
+        this.quoteFieldValue = this.missingField();
+        this.lineValue = line;
+        this.columnValue = column;
+        this.generatedValue = generated;
+        this.resolvedConstructorIndexValue = -1;
+        this.resolvedMethodOwnerValue = "";
+        this.resolvedMethodParameterTypeItems = List();
+        this.resolvedMethodStaticValue = false;
+        this.hyperAllocFlowSummaryIndexValue = -1;
+    }
+
+    public Expression(String kind, String text, Int intValue, Bool boolValue, Int leftIndex, Int rightIndex, List<Int> argumentIndexes, List<Statement> quoteStatements, MethodDeclaration quoteMethod, FieldDeclaration quoteField, Int line, Int column) {
+        this.kindValue = kind;
+        this.textValue = text;
+        this.intValueValue = intValue;
+        this.boolValueValue = boolValue;
+        this.leftIndexValue = leftIndex;
+        this.rightIndexValue = rightIndex;
+        this.argumentIndexItems = List();
+        this.copyArgumentIndexes(argumentIndexes);
+        this.quoteStatementItems = List();
+        this.copyQuoteStatements(quoteStatements);
+        this.quoteMethodValue = quoteMethod.shifted(0);
+        this.quoteFieldValue = quoteField.shifted(0);
+        this.lineValue = line;
+        this.columnValue = column;
+        this.generatedValue = false;
+        this.resolvedConstructorIndexValue = -1;
+        this.resolvedMethodOwnerValue = "";
+        this.resolvedMethodParameterTypeItems = List();
+        this.resolvedMethodStaticValue = false;
+        this.hyperAllocFlowSummaryIndexValue = -1;
+    }
+
+    public Expression(String kind, String text, Int intValue, Bool boolValue, Int leftIndex, Int rightIndex, List<Int> argumentIndexes, List<Statement> quoteStatements, MethodDeclaration quoteMethod, FieldDeclaration quoteField, Bool generated, Int line, Int column) {
+        this.kindValue = kind;
+        this.textValue = text;
+        this.intValueValue = intValue;
+        this.boolValueValue = boolValue;
+        this.leftIndexValue = leftIndex;
+        this.rightIndexValue = rightIndex;
+        this.argumentIndexItems = List();
+        this.copyArgumentIndexes(argumentIndexes);
+        this.quoteStatementItems = List();
+        this.copyQuoteStatements(quoteStatements);
+        this.quoteMethodValue = quoteMethod.shifted(0);
+        this.quoteFieldValue = quoteField.shifted(0);
+        this.lineValue = line;
+        this.columnValue = column;
+        this.generatedValue = generated;
+        this.resolvedConstructorIndexValue = -1;
+        this.resolvedMethodOwnerValue = "";
+        this.resolvedMethodParameterTypeItems = List();
+        this.resolvedMethodStaticValue = false;
+        this.hyperAllocFlowSummaryIndexValue = -1;
+    }
+
+    public String kind() {
+        return this.kindValue + "";
+    }
+
+    public Bool kindIs(String kind) {
+        return this.kindValue == kind;
+    }
+
+    public String text() {
+        return this.textValue + "";
+    }
+
+    public Bool textIs(String text) {
+        return this.textValue == text;
+    }
+
+    public Int intValue() {
+        return this.intValueValue;
+    }
+
+    public Bool boolValue() {
+        return this.boolValueValue;
+    }
+
+    public Int leftIndex() {
+        return this.leftIndexValue;
+    }
+
+    public Int rightIndex() {
+        return this.rightIndexValue;
+    }
+
+    public List<Int> argumentIndexes() {
+        return this.argumentIndexItems;
+    }
+
+    public Int argumentCount() {
+        return this.argumentIndexItems.length();
+    }
+
+    public Int argumentIndexAt(Int index) {
+        return this.argumentIndexItems.get(index);
+    }
+
+    public List<Statement> quoteStatements() {
+        return this.quoteStatementItems;
+    }
+
+    public MethodDeclaration quoteMethod() {
+        return this.quoteMethodValue;
+    }
+
+    public FieldDeclaration quoteField() {
+        return this.quoteFieldValue;
+    }
+
+    public Int line() {
+        return this.lineValue;
+    }
+
+    public Int column() {
+        return this.columnValue;
+    }
+
+    public Void resolveConstructor(Int index) {
+        this.resolvedConstructorIndexValue = index;
+    }
+
+    public Int resolvedConstructorIndex() {
+        return this.resolvedConstructorIndexValue;
+    }
+
+    public Int hyperAllocFlowSummaryIndex() {
+        return this.hyperAllocFlowSummaryIndexValue;
+    }
+
+    public Void setFlowSummaryIndex(Int index) {
+        this.hyperAllocFlowSummaryIndexValue = index;
+    }
+
+    public Void resolveMethod(MethodDeclaration method) {
+        this.resolvedMethodOwnerValue = method.ownerName();
+        this.resolvedMethodParameterTypeItems = List();
+        this.resolvedMethodStaticValue = method.isStatic();
+        Int index = 0;
+
+        while (index < method.parameters().length()) {
+            this.resolvedMethodParameterTypeItems.add(method.parameters().get(index).typeName());
+            index = index + 1;
+        }
+    }
+
+    public Void resolveBuiltinMethod(String ownerName) {
+        this.resolvedMethodOwnerValue = ownerName;
+        this.resolvedMethodParameterTypeItems = List();
+        this.resolvedMethodStaticValue = false;
+        this.hyperAllocFlowSummaryIndexValue = -1;
+    }
+
+    public Void resolveMethodSignature(String ownerName, List<String> parameterTypes, Bool staticMethod) {
+        this.resolvedMethodOwnerValue = ownerName;
+        this.resolvedMethodParameterTypeItems = List();
+        this.resolvedMethodStaticValue = staticMethod;
+        Int index = 0;
+
+        while (index < parameterTypes.length()) {
+            this.resolvedMethodParameterTypeItems.add(parameterTypes.get(index));
+            index = index + 1;
+        }
+    }
+
+    public Bool hasResolvedMethod() {
+        return !this.resolvedMethodOwnerValue.isEmpty();
+    }
+
+    public String resolvedMethodOwner() {
+        return this.resolvedMethodOwnerValue + "";
+    }
+
+    public List<String> resolvedMethodParameterTypes() {
+        return this.resolvedMethodParameterTypeItems;
+    }
+
+    public Bool resolvedMethodStatic() {
+        return this.resolvedMethodStaticValue;
+    }
+
+    public Bool isGenerated() {
+        return this.generatedValue;
+    }
+
+    public Expression shifted(Int offset) {
+        Expression result = Expression(this.kindValue + "", this.textValue + "", this.intValueValue, this.boolValueValue, this.shiftIndex(this.leftIndexValue, offset), this.shiftIndex(this.rightIndexValue, offset), this.shiftArguments(offset), this.shiftStatements(offset), this.quoteMethodValue.shifted(offset), this.quoteFieldValue.shifted(offset), this.generatedValue, this.lineValue, this.columnValue);
+        result.resolveConstructor(this.resolvedConstructorIndexValue);
+        result.resolveMethodSignature(this.resolvedMethodOwnerValue + "", this.resolvedMethodParameterTypeItems, this.resolvedMethodStaticValue);
+        return result;
+    }
+
+    private List<Int> shiftArguments(Int offset) {
+        List<Int> shiftedItems = List();
+        Int index = 0;
+
+        while (index < this.argumentIndexItems.length()) {
+            shiftedItems.add(this.shiftIndex(this.argumentIndexItems.get(index), offset));
+            index = index + 1;
+        }
+
+        return shiftedItems;
+    }
+
+    private List<Statement> shiftStatements(Int offset) {
+        List<Statement> shiftedItems = List();
+        Int index = 0;
+
+        while (index < this.quoteStatementItems.length()) {
+            shiftedItems.add(this.quoteStatementItems.get(index).shifted(offset));
+            index = index + 1;
+        }
+
+        return shiftedItems;
+    }
+
+    private Void copyArgumentIndexes(List<Int> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            this.argumentIndexItems.add(source.get(index));
+            index = index + 1;
+        }
+    }
+
+    private Void copyQuoteStatements(List<Statement> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            this.quoteStatementItems.add(source.get(index).shifted(0));
+            index = index + 1;
+        }
+    }
+
+    private Int shiftIndex(Int value, Int offset) {
+        if (value == 0) {
+            return 0;
+        }
+
+        return value + offset;
+    }
+
+    private MethodDeclaration missingMethod() {
+        List<Annotation> annotations = List();
+        List<Parameter> parameters = List();
+        List<Statement> statements = List();
+        return MethodDeclaration("", "", "Void", annotations, parameters, statements, false, false, 1, 1);
+    }
+
+    private FieldDeclaration missingField() {
+        return FieldDeclaration("", "Void", 1, 1);
+    }
+
+    public Bool isMissing() {
+        return this.kindValue == "missing";
+    }
+    public Void becomeCall(String name, List<Int> arguments) {
+        this.kindValue = "call";
+        this.textValue = name;
+        this.leftIndexValue = 0;
+        this.rightIndexValue = 0;
+        this.argumentIndexItems = List();
+        this.copyArgumentIndexes(arguments);
+        this.quoteStatementItems = List();
+    }
+
+    public Void becomeCapture(String field, Int selfIndex) {
+        this.kindValue = "field";
+        this.textValue = field;
+        this.leftIndexValue = selfIndex;
+    }
+
+    public Void setText(String text) { this.textValue = text; }
+
+}

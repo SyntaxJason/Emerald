@@ -1,0 +1,4 @@
+main() {
+    41.toString();
+    println(42.toString());
+}

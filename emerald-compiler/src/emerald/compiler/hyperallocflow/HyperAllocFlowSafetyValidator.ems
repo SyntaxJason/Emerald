@@ -1,0 +1,24 @@
+namespace emerald::compiler::hyperallocflow;
+
+use emerald::compiler::debug::DebugLog;
+use emerald::compiler::diagnostic::DiagnosticBag;
+
+public class HyperAllocFlowSafetyValidator {
+    public HyperAllocFlowSafetyValidator() {
+    }
+
+    public Void validate(HyperAllocFlowReport report, DiagnosticBag diagnostics) {
+        Int index = 0;
+
+        while (index < report.decisions().length()) {
+            HyperAllocFlowDecision decision = report.decisions().get(index);
+
+            if (decision.isSafetyIssue()) {
+                DebugLog.log("flow: safety issue at " + decision.line().toString() + ":" + decision.column().toString() + " (" + decision.typeName() + "): " + decision.safetyReason());
+                diagnostics.error("HyperAlloc Flow rejected unsafe " + decision.typeName() + " lifetime: " + decision.safetyReason(), decision.line(), decision.column());
+            }
+
+            index = index + 1;
+        }
+    }
+}

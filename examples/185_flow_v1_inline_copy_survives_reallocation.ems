@@ -1,0 +1,15 @@
+public data class HyperAllocFlowV1ReallocatedPair(Int left, Int right) {
+}
+
+main() {
+    List<HyperAllocFlowV1ReallocatedPair> values = List();
+    HyperAllocFlowV1ReallocatedPair source = HyperAllocFlowV1ReallocatedPair(20, 22);
+    values.add(source);
+    HyperAllocFlowV1ReallocatedPair copy = values.get(0);
+    values.add(HyperAllocFlowV1ReallocatedPair(1, 1));
+    values.add(HyperAllocFlowV1ReallocatedPair(2, 2));
+    values.add(HyperAllocFlowV1ReallocatedPair(3, 3));
+    values.add(HyperAllocFlowV1ReallocatedPair(4, 4));
+    values.add(HyperAllocFlowV1ReallocatedPair(5, 5));
+    println((copy.left + copy.right).toString());
+}

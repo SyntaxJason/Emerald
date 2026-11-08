@@ -1,0 +1,30 @@
+namespace emerald::compiler::hyperallocflow;
+
+use emerald::compiler::debug::DebugLog;
+use emerald::compiler::hyperallocflow::analysis::allocation::HyperAllocFlowAllocationAnalyzer;
+use emerald::compiler::hyperallocflow::analysis::assignment::HyperAllocFlowAssignmentSafetyAnalyzer;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class HyperAllocFlowAnalyzer {
+    private HyperAllocFlowAllocationAnalyzer allocations;
+    private HyperAllocFlowAssignmentSafetyAnalyzer assignments;
+    private HyperAllocFlowViewEscapeAuditor viewEscapes;
+
+    public HyperAllocFlowAnalyzer() {
+        this.allocations = HyperAllocFlowAllocationAnalyzer();
+        this.assignments = HyperAllocFlowAssignmentSafetyAnalyzer();
+        this.viewEscapes = HyperAllocFlowViewEscapeAuditor();
+    }
+
+    public HyperAllocFlowReport analyze(SyntaxProgram program) {
+        DebugLog.flow("flow: view escape audit");
+        this.viewEscapes.audit(program);
+        DebugLog.log("flow: allocation analysis");
+        HyperAllocFlowReport report = this.allocations.analyze(program);
+        DebugLog.log("flow: allocation analysis produced " + report.decisions().length().toString() + " decisions");
+        DebugLog.log("flow: assignment safety analysis");
+        this.assignments.analyze(program, report);
+        DebugLog.log("flow: analysis complete with " + report.decisions().length().toString() + " decisions");
+        return report;
+    }
+}

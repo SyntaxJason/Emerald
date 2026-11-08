@@ -1,0 +1,36 @@
+namespace emerald::compiler::binding;
+
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class BoundProgram {
+    private SyntaxProgram syntaxValue;
+    private List<VariableSymbol> symbolItems;
+
+    public BoundProgram(SyntaxProgram syntax, List<VariableSymbol> symbols) {
+        this.syntaxValue = syntax;
+        this.symbolItems = List();
+        this.copySymbols(symbols);
+    }
+
+    public SyntaxProgram syntax() {
+        return this.syntaxValue;
+    }
+
+    public List<VariableSymbol> symbols() {
+        return this.symbolItems;
+    }
+
+    private Void copySymbols(List<VariableSymbol> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            VariableSymbol symbol = source.get(index);
+            this.symbolItems.add(VariableSymbol(symbol.name(), symbol.typeName()));
+            index = index + 1;
+        }
+    }
+
+    public Int size() {
+        return this.syntaxValue.size();
+    }
+}

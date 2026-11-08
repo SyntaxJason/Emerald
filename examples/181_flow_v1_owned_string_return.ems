@@ -1,0 +1,10 @@
+public class HyperAllocFlowV1StringFactory {
+    public static String create(Int value) {
+        return value.toString();
+    }
+}
+
+main() {
+    String value = HyperAllocFlowV1StringFactory.create(42);
+    println(value);
+}

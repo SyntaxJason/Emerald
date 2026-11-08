@@ -1,0 +1,10 @@
+main() {
+    Float tenth = 0.1;
+    println(tenth);
+    println(tenth + 0.2);
+    println(1.0 / 3.0);
+    println(100.0);
+    println(2.5e-7);
+    println(1e16);
+    println(tenth.toString() + "|");
+}

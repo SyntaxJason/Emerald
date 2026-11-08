@@ -1,0 +1,11 @@
+use emerald::prism::cli::PrismCli;
+use Std::Process::Processes;
+
+main() {
+    PrismCli cli = PrismCli();
+    Int code = cli.run();
+
+    if (code != 0) {
+        Processes.exit(code);
+    }
+}

@@ -1,0 +1,24 @@
+use Std::Functional::IConsumer;
+use Std::Functional::IPredicate;
+use Std::Functional::IFunction;
+use Std::Functional::ISupplier;
+use Std::Collections::ArrayList;
+main() {
+    ArrayList<String> names = ArrayList();
+    names.add("Ada"); names.add("Grace");
+    names.forEach((name) -> println(name));
+    names.forEach((name) -> println("hello " + name));
+    println(names.any((name) -> name == "Grace").toString());
+    println(names.all((name) -> name == "Ada").toString());
+    String prefix = "captured: ";
+    IConsumer<String> captured = (name) -> println(prefix + name);
+    captured.accept("Ada");
+    Int threshold = 4000000000;
+    IPredicate<Int> wide = (value) -> value >= threshold;
+    println(wide.test(5000000000).toString());
+    println(wide.test(1).toString());
+    IFunction<Int, Int> twice = (value) -> { Int result = value * 2; return result; };
+    println(twice.apply(3000000000));
+    ISupplier<String> supplier = () -> prefix;
+    println(supplier.get());
+}

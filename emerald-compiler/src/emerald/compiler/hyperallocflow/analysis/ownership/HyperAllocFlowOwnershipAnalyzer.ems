@@ -1,0 +1,968 @@
+namespace emerald::compiler::hyperallocflow::analysis::ownership;
+
+use emerald::compiler::debug::DebugLog;
+use emerald::compiler::hyperallocflow::analysis::escape::HyperAllocFlowEscapeAnalyzer;
+use emerald::compiler::hyperallocflow::analysis::support::HyperAllocFlowProgramCatalog;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class HyperAllocFlowOwnershipAnalyzer {
+    private HyperAllocFlowProgramCatalog catalog;
+    private HyperAllocFlowEscapeAnalyzer escapes;
+    private Int vpiocCounter;
+    private Int opeCounter;
+    private Int vosc2Counter;
+    private Int vuoosCounter;
+    private Int euaovCounter;
+    private Int eonCounter;
+    private MethodDeclaration missingMethodValue;
+
+    public HyperAllocFlowOwnershipAnalyzer(HyperAllocFlowProgramCatalog programCatalog, HyperAllocFlowEscapeAnalyzer escapeAnalyzer) {
+        this.catalog = programCatalog;
+        this.escapes = escapeAnalyzer;
+        this.vpiocCounter = 0;
+        this.opeCounter = 0;
+        this.vosc2Counter = 0;
+        this.vuoosCounter = 0;
+        this.euaovCounter = 0;
+        this.eonCounter = 0;
+        List<Parameter> parameters = List();
+        List<Statement> statements = List();
+        this.missingMethodValue = MethodDeclaration("", "", "Void", parameters, statements, false, false, 1, 1);
+    }
+
+    public Bool variableParticipatesInOwnershipCycle(String name, List<Statement> statements, SyntaxProgram program) {
+        this.vpiocCounter = this.vpiocCounter + 1;
+
+        if (this.vpiocCounter % 2000000 == 0) {
+            DebugLog.flow("variableParticipatesInOwnershipCycle calls=" + this.vpiocCounter.toString());
+        }
+
+        List<String> visited = List();
+        return this.ownershipPathExists(name, name, statements, program, visited, 0);
+    }
+
+    public Bool ownershipPathExists(String current, String target, List<Statement> statements, SyntaxProgram program, List<String> visited, Int depth) {
+        this.opeCounter = this.opeCounter + 1;
+
+        if (this.opeCounter % 2000000 == 0) {
+            DebugLog.flow("ownershipPathExists calls=" + this.opeCounter.toString());
+        }
+
+        if (depth > 0 && current == target) {
+            return true;
+        }
+
+        if (depth >= 64 || visited.contains(current)) {
+            return false;
+        }
+
+        visited.add(current);
+        List<String> nextItems = this.ownershipTargets(current, statements, program);
+        Int index = 0;
+
+        while (index < nextItems.length()) {
+            List<String> nextVisited = List();
+            Int visitedIndex = 0;
+
+            while (visitedIndex < visited.length()) {
+                nextVisited.add(visited.get(visitedIndex));
+                visitedIndex = visitedIndex + 1;
+            }
+
+            if (this.ownershipPathExists(nextItems.get(index), target, statements, program, nextVisited, depth + 1)) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    public List<String> ownershipTargets(String ownerName, List<Statement> statements, SyntaxProgram program) {
+        List<String> targetItems = List();
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isFieldAssign()) {
+                Expression target = program.expression(statement.targetIndex());
+                String currentOwner = this.directExpressionName(target.leftIndex(), program);
+                String childName = this.directExpressionName(statement.expressionIndex(), program);
+
+                if (currentOwner == ownerName && childName != "" && !targetItems.contains(childName)) {
+                    targetItems.add(childName);
+                }
+            }
+
+            if (statement.isIf() || statement.isWhile() || statement.isFor()) {
+                this.addOwnershipTargets(targetItems, ownerName, statement.bodyStatements(), program);
+                this.addOwnershipTargets(targetItems, ownerName, statement.elseStatements(), program);
+            }
+
+            index = index + 1;
+        }
+
+        return targetItems;
+    }
+
+    public Void addOwnershipTargets(List<String> targetItems, String ownerName, List<Statement> statements, SyntaxProgram program) {
+        List<String> nestedItems = this.ownershipTargets(ownerName, statements, program);
+        Int index = 0;
+
+        while (index < nestedItems.length()) {
+            if (!targetItems.contains(nestedItems.get(index))) {
+                targetItems.add(nestedItems.get(index));
+            }
+
+            index = index + 1;
+        }
+    }
+
+    public String directExpressionName(Int expressionIndex, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return "";
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "name") {
+            return expression.text();
+        }
+
+        return "";
+    }
+
+    public Int variableOwnedStorageCount(String name, Int startIndex, List<Statement> statements, SyntaxProgram program) {
+        this.vosc2Counter = this.vosc2Counter + 1;
+
+        if (this.vosc2Counter % 2000000 == 0) {
+            DebugLog.flow("variableOwnedStorageCount calls=" + this.vosc2Counter.toString());
+        }
+
+        Int total = 0;
+        Int index = startIndex;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isFieldAssign() && this.escapes.expressionContainsName(statement.expressionIndex(), name, program)) {
+                total = total + 1;
+            }
+
+            if (statement.isVariable() || statement.isAssign() || statement.isExpression()) {
+                total = total + this.expressionOwnedStorageCount(statement.expressionIndex(), name, program);
+            }
+
+            if (statement.isIf() || statement.isWhile() || statement.isFor()) {
+                total = total + this.variableOwnedStorageCount(name, 0, statement.bodyStatements(), program);
+                total = total + this.variableOwnedStorageCount(name, 0, statement.elseStatements(), program);
+            }
+
+            index = index + 1;
+        }
+
+        return total;
+    }
+
+    public Int expressionOwnedStorageCount(Int expressionIndex, String name, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return 0;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+        Int total = 0;
+
+        if (this.containerOwnsName(expression, name, program)) {
+            total = total + 1;
+        }
+
+        if (this.catalog.isObjectCreation(expression, program)) {
+            Int argumentIndex = 0;
+
+            while (argumentIndex < expression.argumentIndexes().length()) {
+                Int valueIndex = expression.argumentIndexes().get(argumentIndex);
+
+                if (this.escapes.expressionContainsName(valueIndex, name, program) && this.constructorArgumentIsOwned(expression, argumentIndex, program)) {
+                    total = total + 1;
+                }
+
+                argumentIndex = argumentIndex + 1;
+            }
+        }
+
+        if (expression.kind() == "field" || expression.kind() == "unary" || expression.kind() == "quote") {
+            return total + this.expressionOwnedStorageCount(expression.leftIndex(), name, program);
+        }
+
+        if (expression.kind() == "index" || expression.kind() == "binary" || expression.kind() == "range") {
+            total = total + this.expressionOwnedStorageCount(expression.leftIndex(), name, program);
+            total = total + this.expressionOwnedStorageCount(expression.rightIndex(), name, program);
+        }
+
+        Int argumentIndex = 0;
+
+        while (argumentIndex < expression.argumentIndexes().length()) {
+            total = total + this.expressionOwnedStorageCount(expression.argumentIndexes().get(argumentIndex), name, program);
+            argumentIndex = argumentIndex + 1;
+        }
+
+        return total;
+    }
+
+    public Bool variableUsesOnlyOwnedStorage(String name, Int startIndex, List<Statement> statements, SyntaxProgram program) {
+        this.vuoosCounter = this.vuoosCounter + 1;
+
+        if (this.vuoosCounter % 2000000 == 0) {
+            DebugLog.flow("variableUsesOnlyOwnedStorage calls=" + this.vuoosCounter.toString());
+        }
+
+        Int index = startIndex;
+        Bool foundOwnedStorage = false;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isReturn() && this.escapes.expressionContainsName(statement.expressionIndex(), name, program)) {
+                return false;
+            }
+
+            if (statement.isFieldAssign() && this.escapes.expressionContainsName(statement.expressionIndex(), name, program)) {
+                foundOwnedStorage = true;
+            }
+
+            if ((statement.isVariable() || statement.isAssign() || statement.isExpression()) && this.escapes.expressionContainsName(statement.expressionIndex(), name, program)) {
+                if (!this.expressionUsesNameAsOwnedOrView(statement.expressionIndex(), name, program)) {
+                    return false;
+                }
+
+                if (this.expressionOwnsName(statement.expressionIndex(), name, program)) {
+                    foundOwnedStorage = true;
+                }
+            }
+
+            if (statement.isPrintln() && this.escapes.expressionEscapesNameInViewContext(statement.expressionIndex(), name, program)) {
+                return false;
+            }
+
+            if (statement.isIf() || statement.isWhile() || statement.isFor()) {
+                if (!this.expressionUsesNameAsOwnedOrView(statement.expressionIndex(), name, program) || !this.statementsUseNameAsOwnedOrView(statement.bodyStatements(), name, program)) {
+                    return false;
+                }
+
+                if (!this.statementsUseNameAsOwnedOrView(statement.elseStatements(), name, program)) {
+                    return false;
+                }
+
+                if (this.statementsOwnName(statement.bodyStatements(), name, program) || this.statementsOwnName(statement.elseStatements(), name, program)) {
+                    foundOwnedStorage = true;
+                }
+            }
+
+            index = index + 1;
+        }
+
+        return foundOwnedStorage;
+    }
+
+    public Bool statementsUseNameAsOwnedOrView(List<Statement> statements, String name, SyntaxProgram program) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isReturn() && this.escapes.expressionContainsName(statement.expressionIndex(), name, program)) {
+                return false;
+            }
+
+            if ((statement.isVariable() || statement.isAssign() || statement.isExpression()) && this.escapes.expressionContainsName(statement.expressionIndex(), name, program)) {
+                if (!this.expressionUsesNameAsOwnedOrView(statement.expressionIndex(), name, program)) {
+                    return false;
+                }
+            }
+
+            if (statement.isPrintln() && this.escapes.expressionEscapesNameInViewContext(statement.expressionIndex(), name, program)) {
+                return false;
+            }
+
+            if (statement.isIf() || statement.isWhile() || statement.isFor()) {
+                if (!this.expressionUsesNameAsOwnedOrView(statement.expressionIndex(), name, program) || !this.statementsUseNameAsOwnedOrView(statement.bodyStatements(), name, program) || !this.statementsUseNameAsOwnedOrView(statement.elseStatements(), name, program)) {
+                    return false;
+                }
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+
+    public Bool statementsOwnName(List<Statement> statements, String name, SyntaxProgram program) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isFieldAssign() && this.escapes.expressionContainsName(statement.expressionIndex(), name, program)) {
+                return true;
+            }
+
+            if ((statement.isVariable() || statement.isAssign() || statement.isExpression()) && this.expressionOwnsName(statement.expressionIndex(), name, program)) {
+                return true;
+            }
+
+            if (statement.isIf() || statement.isWhile() || statement.isFor()) {
+                if (this.statementsOwnName(statement.bodyStatements(), name, program) || this.statementsOwnName(statement.elseStatements(), name, program)) {
+                    return true;
+                }
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    public Bool expressionUsesNameAsOwnedOrView(Int expressionIndex, String name, SyntaxProgram program) {
+        this.euaovCounter = this.euaovCounter + 1;
+
+        if (this.euaovCounter % 2000000 == 0) {
+            DebugLog.flow("expressionUsesNameAsOwnedOrView calls=" + this.euaovCounter.toString());
+        }
+
+        if (expressionIndex == 0) {
+            return true;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (!this.escapes.expressionContainsName(expressionIndex, name, program)) {
+            return true;
+        }
+
+        if (expression.kind() == "name") {
+            return false;
+        }
+
+        if (this.catalog.isObjectCreation(expression, program)) {
+            Int argumentIndex = 0;
+
+            while (argumentIndex < expression.argumentIndexes().length()) {
+                Int valueIndex = expression.argumentIndexes().get(argumentIndex);
+
+                if (this.escapes.expressionContainsName(valueIndex, name, program)) {
+                    if (!this.constructorArgumentIsOwnedOrView(expression, argumentIndex, program)) {
+                        return false;
+                    }
+                }
+
+                argumentIndex = argumentIndex + 1;
+            }
+
+            return true;
+        }
+
+        if (expression.kind() == "call" || expression.kind() == "staticcall" || expression.kind() == "methodcall") {
+            if (this.containerOwnsName(expression, name, program)) {
+                return true;
+            }
+
+            return !this.escapes.callEscapesName(expression, name, program);
+        }
+
+        if (expression.kind() == "field") {
+            return this.expressionUsesNameAsOwnedOrView(expression.leftIndex(), name, program);
+        }
+
+        if (expression.kind() == "index") {
+            return this.expressionUsesNameAsOwnedOrView(expression.leftIndex(), name, program) && this.expressionUsesNameAsOwnedOrView(expression.rightIndex(), name, program);
+        }
+
+        if (expression.kind() == "binary" || expression.kind() == "range") {
+            return this.expressionUsesNameAsOwnedOrView(expression.leftIndex(), name, program) && this.expressionUsesNameAsOwnedOrView(expression.rightIndex(), name, program);
+        }
+
+        if (expression.kind() == "unary" || expression.kind() == "quote") {
+            return this.expressionUsesNameAsOwnedOrView(expression.leftIndex(), name, program);
+        }
+
+        return false;
+    }
+
+    public Bool expressionOwnsName(Int expressionIndex, String name, SyntaxProgram program) {
+        this.eonCounter = this.eonCounter + 1;
+
+        if (this.eonCounter % 2000000 == 0) {
+            DebugLog.flow("expressionOwnsName calls=" + this.eonCounter.toString());
+        }
+
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (this.containerOwnsName(expression, name, program)) {
+            return true;
+        }
+
+        if (!this.catalog.isObjectCreation(expression, program)) {
+            return false;
+        }
+
+        Int argumentIndex = 0;
+
+        while (argumentIndex < expression.argumentIndexes().length()) {
+            Int valueIndex = expression.argumentIndexes().get(argumentIndex);
+
+            if (this.escapes.expressionContainsName(valueIndex, name, program) && this.constructorArgumentIsOwned(expression, argumentIndex, program)) {
+                return true;
+            }
+
+            argumentIndex = argumentIndex + 1;
+        }
+
+        return false;
+    }
+
+    private Bool containerOwnsName(Expression expression, String name, SyntaxProgram program) {
+        Int argumentIndex = this.containerOwnedArgumentIndex(expression);
+
+        if (argumentIndex < 0 || argumentIndex >= expression.argumentIndexes().length()) {
+            return false;
+        }
+
+        return this.escapes.expressionContainsName(expression.argumentIndexes().get(argumentIndex), name, program);
+    }
+
+    private Int containerOwnedArgumentIndex(Expression expression) {
+        if (expression.kind() != "methodcall") {
+            return -1;
+        }
+
+        if (expression.text() == "add") {
+            return 0;
+        }
+
+        if (expression.text() == "addAt" || expression.text() == "set") {
+            return 1;
+        }
+
+        return -1;
+    }
+
+    // A caller-owned Root that a callee stores into one of its own objects is
+    // adopted by that object and freed when it dies. If the caller still uses
+    // the variable or one of its aliases afterwards (or the call repeats in a
+    // loop), the variable needs a counted reference instead of a plain Root.
+    public Bool variableUsedAfterCallEscape(String name, Int startIndex, List<Statement> statements, SyntaxProgram program) {
+        List<String> names = List();
+        names.add(name);
+        return this.callEscapeState(names, startIndex, statements, false, program) == 2;
+    }
+
+    // Arguments and receivers that hand `name` or an alias of it to a call
+    // that may take ownership while the current method keeps using it. The
+    // emitter turns an unparented Root value there into a counted reference,
+    // for values the current method cannot re-classify: parameters, `this`,
+    // aliases and container-transferred elements.
+    public Void collectSharedArguments(String name, Int startIndex, List<Statement> statements, List<String> borrowedNames, SyntaxProgram program, List<Int> arguments) {
+        List<String> names = List();
+        names.add(name);
+
+        if (this.callEscapeState(names, startIndex, statements, false, program) != 2) {
+            return;
+        }
+
+        List<String> collectedNames = List();
+        collectedNames.add(name);
+        this.collectSharedCallArguments(collectedNames, startIndex, statements, borrowedNames, program, arguments);
+    }
+
+    // 0: no ownership-taking call, 1: escapes into a call, 2: used after that call.
+    // `names` grows with the aliases declared or assigned from a tracked name.
+    private Int callEscapeState(List<String> names, Int startIndex, List<Statement> statements, Bool repeated, SyntaxProgram program) {
+        Bool escaped = false;
+        Int index = startIndex;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (escaped && this.statementMentionsAny(statement, names, program)) {
+                return 2;
+            }
+
+            if (statement.isIf() || statement.isWhile() || statement.isFor()) {
+                Bool loop = statement.isWhile() || statement.isFor();
+
+                if (this.expressionEscapesThroughCall(statement.expressionIndex(), names, program)) {
+                    if (loop || this.nameOccurrences(statement.expressionIndex(), names, program) > 1 || this.statementsMentionAny(statement.bodyStatements(), names, program) || this.statementsMentionAny(statement.elseStatements(), names, program)) {
+                        return 2;
+                    }
+
+                    escaped = true;
+                }
+
+                Int bodyState = this.callEscapeState(names, 0, statement.bodyStatements(), loop, program);
+                Int elseState = this.callEscapeState(names, 0, statement.elseStatements(), loop, program);
+
+                if (bodyState == 2 || elseState == 2) {
+                    return 2;
+                }
+
+                if (bodyState == 1 || elseState == 1) {
+                    escaped = true;
+                }
+            } else if (this.expressionEscapesThroughCall(statement.expressionIndex(), names, program) || this.expressionEscapesThroughCall(statement.targetIndex(), names, program)) {
+                if (this.nameOccurrences(statement.expressionIndex(), names, program) + this.nameOccurrences(statement.targetIndex(), names, program) > 1) {
+                    return 2;
+                }
+
+                escaped = true;
+            }
+
+            this.addAlias(statement, names, program);
+            index = index + 1;
+        }
+
+        if (escaped && repeated) {
+            return 2;
+        }
+
+        if (escaped) {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    // `T alias = name;` or `alias = name;` makes `alias` another handle on the
+    // same object.
+    private Void addAlias(Statement statement, List<String> names, SyntaxProgram program) {
+        if (statement.isVariable() && !this.isCopiedValueType(statement.typeName()) && this.expressionCarriesAny(statement.expressionIndex(), names, program) && !names.contains(statement.name())) {
+            names.add(statement.name());
+            return;
+        }
+
+        if (!statement.isAssign() || statement.targetIndex() == 0 || !this.expressionCarriesAny(statement.expressionIndex(), names, program)) {
+            return;
+        }
+
+        Expression target = program.expression(statement.targetIndex());
+
+        if (target.kindIs("name") && !names.contains(target.text())) {
+            names.add(target.text());
+        }
+    }
+
+    private Bool isCopiedValueType(String typeName) {
+        return typeName == "Int" || typeName == "Bool" || typeName == "Float" || typeName == "Char" || typeName == "Void";
+    }
+
+    private Void collectSharedCallArguments(List<String> names, Int startIndex, List<Statement> statements, List<String> borrowedNames, SyntaxProgram program, List<Int> arguments) {
+        Int index = startIndex;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+            this.collectSharedExpressionArguments(statement.expressionIndex(), names, borrowedNames, program, arguments);
+            this.collectSharedExpressionArguments(statement.targetIndex(), names, borrowedNames, program, arguments);
+            this.collectSharedCallArguments(names, 0, statement.bodyStatements(), borrowedNames, program, arguments);
+            this.collectSharedCallArguments(names, 0, statement.elseStatements(), borrowedNames, program, arguments);
+            this.addAlias(statement, names, program);
+            index = index + 1;
+        }
+    }
+
+    // Only plain name operands are recorded; they are the tracked reference
+    // values themselves, never inline aggregates or scalars.
+    private Void collectSharedExpressionArguments(Int expressionIndex, List<String> names, List<String> borrowedNames, SyntaxProgram program, List<Int> arguments) {
+        if (expressionIndex == 0) {
+            return;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if ((expression.kindIs("call") || expression.kindIs("methodcall") || expression.kindIs("staticcall")) && !this.isBuiltinContainerCall(expression)) {
+            Int argumentIndex = 0;
+
+            while (argumentIndex < expression.argumentCount()) {
+                Int valueIndex = expression.argumentIndexAt(argumentIndex);
+
+                if (this.isTrackedName(valueIndex, names, program) && this.callArgumentMayTakeOwnership(expression, argumentIndex, program) && !this.callStoresArgumentInOutsideReceiver(expression, argumentIndex, borrowedNames, program)) {
+                    arguments.add(valueIndex);
+                }
+
+                argumentIndex = argumentIndex + 1;
+            }
+
+            if (expression.kindIs("methodcall") && this.isTrackedName(expression.leftIndex(), names, program) && !this.escapes.methodReceiverIsView(expression)) {
+                arguments.add(expression.leftIndex());
+            }
+        }
+
+        this.collectSharedExpressionArguments(expression.leftIndex(), names, borrowedNames, program, arguments);
+        this.collectSharedExpressionArguments(expression.rightIndex(), names, borrowedNames, program, arguments);
+        Int nestedIndex = 0;
+
+        while (nestedIndex < expression.argumentCount()) {
+            this.collectSharedExpressionArguments(expression.argumentIndexAt(nestedIndex), names, borrowedNames, program, arguments);
+            nestedIndex = nestedIndex + 1;
+        }
+    }
+
+    // `registry.add(item)`: the callee only stores the argument in its own
+    // receiver, and that receiver is owned outside the current method (`this`,
+    // a parameter or a field), so the adoption outlives the method's later uses
+    // and sharing would only leave an uncounted reference behind.
+    private Bool callStoresArgumentInOutsideReceiver(Expression expression, Int argumentIndex, List<String> borrowedNames, SyntaxProgram program) {
+        if (!expression.kindIs("methodcall") || !expression.hasResolvedMethod() || expression.resolvedMethodStatic() || this.escapes.callIsInterfaceContract(expression)) {
+            return false;
+        }
+
+        if (!this.isOutsideOwnedReceiver(expression.leftIndex(), borrowedNames, program)) {
+            return false;
+        }
+
+        MethodDeclaration method = this.uniqueInstanceMethod(expression.resolvedMethodOwner(), expression.text(), expression.argumentCount(), program);
+
+        if (method.isMissing() || argumentIndex >= method.parameters().length()) {
+            return false;
+        }
+
+        List<String> names = List();
+        names.add(method.parameters().get(argumentIndex).name());
+        return this.statementsStoreOnlyInReceiver(method.statements(), names, program);
+    }
+
+    private Bool isOutsideOwnedReceiver(Int expressionIndex, List<String> borrowedNames, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kindIs("name")) {
+            return expression.text() == "this" || borrowedNames.contains(expression.text());
+        }
+
+        return expression.kindIs("field") && this.isOutsideOwnedReceiver(expression.leftIndex(), borrowedNames, program);
+    }
+
+    // The single non-static method with this name and arity, and only when no
+    // other class with a parent declares one that could override it.
+    private MethodDeclaration uniqueInstanceMethod(String ownerName, String name, Int parameterCount, SyntaxProgram program) {
+        Int classIndex = this.catalog.classIndex(ownerName, program);
+
+        if (classIndex < 0) {
+            return this.missingMethodValue;
+        }
+
+        ClassDeclaration declaration = program.classAt(classIndex);
+        Int foundIndex = -1;
+        Int matches = 0;
+        Int index = 0;
+
+        while (index < declaration.methodCount()) {
+            MethodDeclaration method = declaration.methodAt(index);
+
+            if (!method.isConstructor() && !method.isStatic() && method.name() == name && method.parameterCount() == parameterCount) {
+                foundIndex = index;
+                matches = matches + 1;
+            }
+
+            index = index + 1;
+        }
+
+        if (matches != 1 || this.methodMayBeOverridden(declaration, name, parameterCount, program)) {
+            return this.missingMethodValue;
+        }
+
+        return declaration.methodAt(foundIndex);
+    }
+
+    private Bool methodMayBeOverridden(ClassDeclaration owner, String name, Int parameterCount, SyntaxProgram program) {
+        Int classIndex = 0;
+
+        while (classIndex < program.classes().length()) {
+            ClassDeclaration candidate = program.classes().get(classIndex);
+
+            if (candidate.name() != owner.name() && !candidate.parentName().isEmpty()) {
+                Int index = 0;
+
+                while (index < candidate.methodCount()) {
+                    MethodDeclaration method = candidate.methodAt(index);
+
+                    if (method.name() == name && method.parameterCount() == parameterCount) {
+                        return true;
+                    }
+
+                    index = index + 1;
+                }
+            }
+
+            classIndex = classIndex + 1;
+        }
+
+        return false;
+    }
+
+    // Every possible adoption of the tracked names is a `this.field = name`
+    // store or a builtin container store into a field of `this`.
+    private Bool statementsStoreOnlyInReceiver(List<Statement> statements, List<String> names, SyntaxProgram program) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isFieldAssign() && this.expressionCarriesAny(statement.expressionIndex(), names, program) && !this.isThisField(statement.targetIndex(), program)) {
+                return false;
+            }
+
+            if (this.expressionEscapesThroughCall(statement.expressionIndex(), names, program) || this.expressionEscapesThroughCall(statement.targetIndex(), names, program) || this.storesInForeignContainer(statement.expressionIndex(), names, program)) {
+                return false;
+            }
+
+            if (!this.statementsStoreOnlyInReceiver(statement.bodyStatements(), names, program) || !this.statementsStoreOnlyInReceiver(statement.elseStatements(), names, program)) {
+                return false;
+            }
+
+            this.addAlias(statement, names, program);
+            index = index + 1;
+        }
+
+        return true;
+    }
+
+    private Bool isThisField(Int expressionIndex, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (!expression.kindIs("field") || expression.leftIndex() == 0) {
+            return false;
+        }
+
+        Expression receiver = program.expression(expression.leftIndex());
+        return receiver.kindIs("name") && receiver.text() == "this";
+    }
+
+    private Bool storesInForeignContainer(Int expressionIndex, List<String> names, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (this.isBuiltinContainerCall(expression) && !this.isThisField(expression.leftIndex(), program)) {
+            Int argumentIndex = 0;
+
+            while (argumentIndex < expression.argumentCount()) {
+                if (this.expressionCarriesAny(expression.argumentIndexAt(argumentIndex), names, program)) {
+                    return true;
+                }
+
+                argumentIndex = argumentIndex + 1;
+            }
+        }
+
+        if (this.storesInForeignContainer(expression.leftIndex(), names, program) || this.storesInForeignContainer(expression.rightIndex(), names, program)) {
+            return true;
+        }
+
+        Int nestedIndex = 0;
+
+        while (nestedIndex < expression.argumentCount()) {
+            if (this.storesInForeignContainer(expression.argumentIndexAt(nestedIndex), names, program)) {
+                return true;
+            }
+
+            nestedIndex = nestedIndex + 1;
+        }
+
+        return false;
+    }
+
+    private Bool isTrackedName(Int expressionIndex, List<String> names, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+        return expression.kindIs("name") && names.contains(expression.text());
+    }
+
+    private Bool expressionEscapesThroughCall(Int expressionIndex, List<String> names, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if ((expression.kindIs("call") || expression.kindIs("methodcall") || expression.kindIs("staticcall")) && !this.isBuiltinContainerCall(expression)) {
+            Int argumentIndex = 0;
+
+            while (argumentIndex < expression.argumentCount()) {
+                if (this.expressionCarriesAny(expression.argumentIndexAt(argumentIndex), names, program) && this.callArgumentMayTakeOwnership(expression, argumentIndex, program)) {
+                    return true;
+                }
+
+                argumentIndex = argumentIndex + 1;
+            }
+
+            if (expression.kindIs("methodcall") && this.expressionCarriesAny(expression.leftIndex(), names, program) && !this.escapes.methodReceiverIsView(expression)) {
+                return true;
+            }
+        }
+
+        if (this.expressionEscapesThroughCall(expression.leftIndex(), names, program) || this.expressionEscapesThroughCall(expression.rightIndex(), names, program)) {
+            return true;
+        }
+
+        Int nestedIndex = 0;
+
+        while (nestedIndex < expression.argumentCount()) {
+            if (this.expressionEscapesThroughCall(expression.argumentIndexAt(nestedIndex), names, program)) {
+                return true;
+            }
+
+            nestedIndex = nestedIndex + 1;
+        }
+
+        return false;
+    }
+
+    private Bool callArgumentMayTakeOwnership(Expression expression, Int argumentIndex, SyntaxProgram program) {
+        if (!this.catalog.isObjectCreation(expression, program)) {
+            return !this.escapes.callArgumentIsView(expression, argumentIndex, program);
+        }
+
+        MethodDeclaration constructor = this.catalog.findConstructor(expression, program);
+
+        if (constructor.isMissing() || argumentIndex >= constructor.parameters().length()) {
+            return true;
+        }
+
+        Parameter parameter = constructor.parameters().get(argumentIndex);
+        return this.escapes.parameterEscapesTypedInStatements(constructor.statements(), parameter.name(), parameter.typeName(), program);
+    }
+
+    // Builtin List storage belongs to a container that is visible in the
+    // current method; its adoption is tracked by the container analysis.
+    private Bool isBuiltinContainerCall(Expression expression) {
+        return expression.kindIs("methodcall") && expression.hasResolvedMethod() && expression.resolvedMethodOwner() == "List";
+    }
+
+    // The value of the expression is a tracked name itself or a result that
+    // borrows it.
+    private Bool expressionCarriesAny(Int expressionIndex, List<String> names, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kindIs("name")) {
+            return names.contains(expression.text());
+        }
+
+        if (!expression.kindIs("methodcall") && !expression.kindIs("staticcall")) {
+            return false;
+        }
+
+        if (expression.kindIs("methodcall") && this.escapes.callReturnBorrowsReceiver(expression) && this.expressionCarriesAny(expression.leftIndex(), names, program)) {
+            return true;
+        }
+
+        Int argumentIndex = 0;
+
+        while (argumentIndex < expression.argumentCount()) {
+            if (this.escapes.callReturnBorrowsParameter(expression, argumentIndex) && this.expressionCarriesAny(expression.argumentIndexAt(argumentIndex), names, program)) {
+                return true;
+            }
+
+            argumentIndex = argumentIndex + 1;
+        }
+
+        return false;
+    }
+
+    private Bool statementMentionsAny(Statement statement, List<String> names, SyntaxProgram program) {
+        if (this.nameOccurrences(statement.expressionIndex(), names, program) > 0 || this.nameOccurrences(statement.targetIndex(), names, program) > 0) {
+            return true;
+        }
+
+        return this.statementsMentionAny(statement.bodyStatements(), names, program) || this.statementsMentionAny(statement.elseStatements(), names, program);
+    }
+
+    private Bool statementsMentionAny(List<Statement> statements, List<String> names, SyntaxProgram program) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            if (this.statementMentionsAny(statements.get(index), names, program)) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    private Int nameOccurrences(Int expressionIndex, List<String> names, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return 0;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+        Int total = 0;
+
+        if (expression.kindIs("name") && names.contains(expression.text())) {
+            total = 1;
+        }
+
+        total = total + this.nameOccurrences(expression.leftIndex(), names, program) + this.nameOccurrences(expression.rightIndex(), names, program);
+        Int argumentIndex = 0;
+
+        while (argumentIndex < expression.argumentCount()) {
+            total = total + this.nameOccurrences(expression.argumentIndexAt(argumentIndex), names, program);
+            argumentIndex = argumentIndex + 1;
+        }
+
+        return total;
+    }
+
+    public Bool constructorArgumentIsOwnedOrView(Expression expression, Int argumentIndex, SyntaxProgram program) {
+        if (this.constructorArgumentIsOwned(expression, argumentIndex, program)) {
+            return true;
+        }
+
+        MethodDeclaration constructor = this.catalog.findConstructor(expression, program);
+
+        if (constructor.isMissing() || argumentIndex >= constructor.parameters().length()) {
+            return false;
+        }
+
+        String parameterName = constructor.parameters().get(argumentIndex).name();
+        return !this.escapes.parameterEscapesInStatements(constructor.statements(), parameterName, program);
+    }
+
+    public Bool constructorArgumentIsOwned(Expression expression, Int argumentIndex, SyntaxProgram program) {
+        MethodDeclaration constructor = this.catalog.findConstructor(expression, program);
+
+        if (constructor.isMissing() || argumentIndex >= constructor.parameters().length()) {
+            return false;
+        }
+
+        String parameterName = constructor.parameters().get(argumentIndex).name();
+        return this.escapes.parameterStoredInField(constructor.statements(), parameterName, program) && !this.escapes.parameterHasNonFieldEscape(constructor.statements(), parameterName, program);
+    }
+}

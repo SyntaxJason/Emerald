@@ -1,0 +1,29 @@
+namespace emerald::compiler::binding;
+
+use emerald::compiler::diagnostic::DiagnosticBag;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class Binder {
+    public Binder() {
+    }
+
+    public BoundProgram bind(SyntaxProgram syntax, DiagnosticBag bag) {
+        BindingContext context = BindingContext(syntax, bag);
+        BindingTypeCatalog catalog = BindingTypeCatalog(context);
+        ExpressionBinder expressions = ExpressionBinder(context, catalog);
+        StatementBinder statements = StatementBinder(context, catalog, expressions);
+        ClassBinder classes = ClassBinder(context, catalog, statements);
+
+        classes.bind();
+        Int boundClassCount = syntax.classCount();
+        List<String> noTypeParameters = List();
+        context.setTypeParameters(noTypeParameters);
+        context.clearSymbols();
+        context.setActiveBody(syntax.statements());
+        statements.bind(syntax.statements(), "Int");
+
+        BoundProgram result = BoundProgram(syntax, context.symbols());
+        classes.bindFrom(boundClassCount);
+        return result;
+    }
+}

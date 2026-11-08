@@ -1,0 +1,29 @@
+namespace Std::Result;
+
+public class BoolSuccess implements IResult<Bool, String> {
+    private Bool value;
+
+    public BoolSuccess(Bool value) {
+        this.value = value;
+    }
+
+    public Bool isSuccess() {
+        return true;
+    }
+
+    public Bool isFailure() {
+        return false;
+    }
+
+    public Bool unwrapOr(Bool fallback) {
+        return this.value;
+    }
+
+    public String errorOr(String fallback) {
+        return fallback;
+    }
+
+    public Bool value() {
+        return this.value;
+    }
+}

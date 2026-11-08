@@ -1,0 +1,80 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Collections::ArrayList;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmValue;
+
+public class NativePrintFormatter {
+    private NativeEmitContext context;
+    private NativeLookup lookup;
+    private NativeExpressionTyper typer;
+    private NativeExpressionEmitter expressions;
+
+    public NativePrintFormatter(NativeEmitContext emitContext, NativeExpressionTyper expressionTyper, NativeExpressionEmitter expressionEmitter) {
+        this.context = emitContext;
+        this.lookup = NativeLookup();
+        this.typer = expressionTyper;
+        this.expressions = expressionEmitter;
+    }
+
+    public Bool createsOwnedTemporary(Int expressionIndex, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        String typeName = this.typer.typeOf(expressionIndex, program, locals, backend);
+
+        if (typeName == "Int" || typeName == "Float" || typeName == "Char") {
+            return true;
+        }
+
+        if (typeName == "Bool") {
+            return false;
+        }
+
+        if (typeName == "String") {
+            return this.expressions.createsOwnedStringTemporary(expressionIndex, program, backend, locals);
+        }
+
+        return this.context.hyperAllocFlowReport().methodCallReturnsOwnedString(this.lookup.findMethod(program, typeName, "toString", 0));
+    }
+
+    public LlvmValue printable(Int expressionIndex, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        String typeName = this.typer.typeOf(expressionIndex, program, locals, backend);
+        LlvmValue value = this.expressions.emit(expressionIndex, program, backend, locals);
+
+        if (typeName == "String") {
+            return value;
+        }
+
+        if (typeName == "Bool") {
+            return this.boolText(value, backend);
+        }
+
+        if (typeName == "Float") { return backend.floatToString(value, "float_text_" + this.context.nextTemp().toString()); }
+        if (typeName == "Int") {
+            return backend.intToString(value, "int_text_" + this.context.nextTemp().toString());
+        }
+        if (typeName == "Char") { return backend.charToString(value, "char_text_" + this.context.nextTemp().toString()); }
+
+        return this.objectText(value, typeName, program, backend);
+    }
+
+    private LlvmValue boolText(LlvmValue value, LlvmNativeBackend backend) {
+        LlvmValue trueText = backend.runtimeStaticString("true", "bool_true_" + this.context.nextTemp().toString());
+        LlvmValue falseText = backend.runtimeStaticString("false", "bool_false_" + this.context.nextTemp().toString());
+        return backend.builder().select(value, trueText, falseText, "bool_text_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue objectText(LlvmValue value, String typeName, SyntaxProgram program, LlvmNativeBackend backend) {
+        MethodDeclaration method = this.lookup.findMethod(program, typeName, "toString", 0);
+
+        if (method.isMissing()) {
+            return backend.runtimeStaticString("<object>", "object_text_" + this.context.nextTemp().toString());
+        }
+
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        NativeVirtualDispatchEmitter virtualCalls = NativeVirtualDispatchEmitter(this.context);
+        return backend.builder().callFunction(this.context.typeMapper().methodType(method, backend), virtualCalls.target(typeName, method, program, backend), args, "to_string_" + this.context.nextTemp().toString());
+    }
+}

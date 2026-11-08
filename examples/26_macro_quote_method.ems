@@ -1,0 +1,23 @@
+macro AddQuotedMethod on Class {
+    ExpressionAST message = Expr::str("hello from " + class.name);
+
+    MethodAST method = quote method {
+        public String generated() {
+            return $(message);
+        }
+    };
+
+    class.addMethod(method);
+}
+
+@AddQuotedMethod
+public class QuoteMethodProbe {
+    public QuoteMethodProbe() {
+    }
+}
+
+main() {
+    QuoteMethodProbe probe = QuoteMethodProbe();
+
+    println(probe.generated());
+}

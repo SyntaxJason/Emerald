@@ -1,0 +1,55 @@
+use Std::Ui::UiApplication;
+use Std::Ui::UiMacros;
+use Std::Ui::UiWindow;
+
+@UiState
+@EmHtml("examples/ui/counter.emhtml")
+public class NativeCounterView {
+    private String titleValue;
+    private Int clicksValue;
+
+    public NativeCounterView() {
+        this.titleValue = "Emerald Native UI";
+        this.clicksValue = 0;
+    }
+
+    @UiBind("title")
+    public String title() {
+        return this.titleValue;
+    }
+
+    @UiBind("clicks")
+    public String clicks() {
+        return this.clicksValue.toString();
+    }
+
+    @UiAction("increment")
+    public Void increment() {
+        this.clicksValue = this.clicksValue + 1;
+    }
+
+    public Bool onUiAction(String action) {
+        if (action == "increment") {
+            this.increment();
+            return true;
+        }
+
+        return false;
+    }
+}
+
+main() {
+    UiApplication application = UiApplication();
+    UiWindow window = application.window("Emerald Native UI", 900, 600);
+    NativeCounterView view = NativeCounterView();
+
+    view.mount(window);
+    window.show();
+
+    println(application.backend());
+    println(view.dispatchAndRefresh(window, "increment").toString());
+    println(view.clicks());
+
+    application.pump();
+    application.run();
+}

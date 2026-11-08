@@ -1,0 +1,7 @@
+main() {
+    List<String> values = List();
+    String value = 42.toString();
+    values.add(value);
+    String removed = values.removeAt(0);
+    println(removed);
+}

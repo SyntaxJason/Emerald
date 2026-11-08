@@ -1,0 +1,50 @@
+namespace emerald::compiler::syntax;
+
+public class DataClassExpressionBuilder {
+    private SyntaxProgram programValue;
+
+    public DataClassExpressionBuilder(SyntaxProgram syntaxProgram) {
+        this.programValue = syntaxProgram;
+    }
+
+    public SyntaxProgram program() {
+        return this.programValue;
+    }
+
+    public Int name(String value, Int line, Int column) {
+        return this.programValue.addExpression(Expression("name", value, 0, false, 0, 0, this.emptyArguments(), true, line, column));
+    }
+
+    public Int field(String receiver, FieldDeclaration field) {
+        Int receiverIndex = this.name(receiver, field.line(), field.column());
+        return this.programValue.addExpression(Expression("field", field.name(), 0, false, receiverIndex, 0, this.emptyArguments(), true, field.line(), field.column()));
+    }
+
+    public Int string(String value, Int line, Int column) {
+        return this.programValue.addExpression(Expression("string", value, 0, false, 0, 0, this.emptyArguments(), true, line, column));
+    }
+
+    public Int bool(Bool value, Int line, Int column) {
+        return this.programValue.addExpression(Expression("bool", "", 0, value, 0, 0, this.emptyArguments(), true, line, column));
+    }
+
+    public Int binary(String op, Int left, Int right, Int line, Int column) {
+        return this.programValue.addExpression(Expression("binary", op, 0, false, left, right, this.emptyArguments(), true, line, column));
+    }
+
+    public Int methodCall(Int receiver, String name, List<Int> arguments, Int line, Int column) {
+        return this.programValue.addExpression(Expression("methodcall", name, 0, false, receiver, 0, arguments, true, line, column));
+    }
+
+    public Int constructorCall(String ownerName, List<Int> arguments, Int line, Int column) {
+        return this.programValue.addExpression(Expression("call", ownerName, 0, false, 0, 0, arguments, true, line, column));
+    }
+
+    public List<Int> emptyArguments() {
+        return List();
+    }
+
+    public List<Statement> emptyStatements() {
+        return List();
+    }
+}

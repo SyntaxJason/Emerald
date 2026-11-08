@@ -1,0 +1,9 @@
+namespace Std::Ui;
+
+public interface IUiView {
+    public String emhtmlPath();
+
+    public String render();
+
+    public Bool dispatch(String action);
+}

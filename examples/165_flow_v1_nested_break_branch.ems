@@ -1,0 +1,31 @@
+public class HyperAllocFlowV1NestedBreakLeft {
+    public Int value;
+
+    public HyperAllocFlowV1NestedBreakLeft(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1NestedBreakRight {
+    public Int value;
+
+    public HyperAllocFlowV1NestedBreakRight(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    Int result = 0;
+
+    while (true) {
+        HyperAllocFlowV1NestedBreakLeft left = HyperAllocFlowV1NestedBreakLeft(20);
+        HyperAllocFlowV1NestedBreakRight right = HyperAllocFlowV1NestedBreakRight(22);
+
+        if (left.value + right.value == 42) {
+            result = left.value + right.value;
+            break;
+        }
+    }
+
+    println(result.toString());
+}

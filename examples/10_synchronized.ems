@@ -1,0 +1,37 @@
+public class Counter {
+    private Int count;
+
+    public Counter() {
+        this.count = 0;
+    }
+
+    @Synchronized
+    public Void increment() {
+        this.count = this.count + 1;
+    }
+
+    @Synchronized
+    public Int value() {
+        return this.count;
+    }
+}
+
+main() {
+    Counter counter = Counter();
+
+    Fiber<Void> a = Fiber.spawn {
+        for (i in 1..1000) {
+            counter.increment();
+        }
+    };
+
+    Fiber<Void> b = Fiber.spawn {
+        for (j in 1..1000) {
+            counter.increment();
+        }
+    };
+
+    a.await();
+    b.await();
+    println("Final count: $(counter.value())");
+}

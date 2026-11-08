@@ -1,0 +1,33 @@
+namespace Std::Llvm;
+
+public class LlvmNativeVariable {
+    private String variableName;
+    private LlvmType variableType;
+    private LlvmValue pointerValue;
+
+    public LlvmNativeVariable(String name, LlvmType type, LlvmValue pointer) {
+        this.variableName = name;
+        this.variableType = LlvmType(type.handle());
+        this.pointerValue = LlvmValue(pointer.handle());
+    }
+
+    public String name() {
+        return this.variableName;
+    }
+
+    public LlvmType type() {
+        return LlvmType(this.variableType.handle());
+    }
+
+    public LlvmValue pointer() {
+        return LlvmValue(this.pointerValue.handle());
+    }
+
+    public LlvmValue load(LlvmBuilder builder) {
+        return builder.load(this.variableType, this.pointerValue, this.variableName + "_value");
+    }
+
+    public Void store(LlvmBuilder builder, LlvmValue value) {
+        builder.store(value, this.pointerValue);
+    }
+}

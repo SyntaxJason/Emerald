@@ -1,0 +1,101 @@
+namespace emerald::compiler::macro;
+
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+
+public class MacroValueFactory {
+    public MacroValueFactory() {
+    }
+
+    public MacroValue voidValue() {
+        return MacroValue("void", "", 0, false, 0, this.missingStatement(), this.missingMethod(), this.missingClass(), this.missingField(), this.emptyStatements(), this.emptyParameters(), this.emptyValues());
+    }
+
+    public MacroValue stringValue(String value) {
+        return MacroValue("string", value, 0, false, 0, this.missingStatement(), this.missingMethod(), this.missingClass(), this.missingField(), this.emptyStatements(), this.emptyParameters(), this.emptyValues());
+    }
+
+    public MacroValue intValue(Int value) {
+        return MacroValue("int", "", value, false, 0, this.missingStatement(), this.missingMethod(), this.missingClass(), this.missingField(), this.emptyStatements(), this.emptyParameters(), this.emptyValues());
+    }
+
+    public MacroValue boolValue(Bool value) {
+        return MacroValue("bool", "", 0, value, 0, this.missingStatement(), this.missingMethod(), this.missingClass(), this.missingField(), this.emptyStatements(), this.emptyParameters(), this.emptyValues());
+    }
+
+    public MacroValue expressionValue(Int expressionIndex) {
+        return MacroValue("expression", "", 0, false, expressionIndex, this.missingStatement(), this.missingMethod(), this.missingClass(), this.missingField(), this.emptyStatements(), this.emptyParameters(), this.emptyValues());
+    }
+
+    public MacroValue statementValue(Statement statement) {
+        return MacroValue("statement", "", 0, false, 0, statement, this.missingMethod(), this.missingClass(), this.missingField(), this.emptyStatements(), this.emptyParameters(), this.emptyValues());
+    }
+
+    public MacroValue methodValue(MethodDeclaration method) {
+        return MacroValue("method", "", 0, false, 0, this.missingStatement(), method, this.missingClass(), this.missingField(), this.emptyStatements(), this.emptyParameters(), this.emptyValues());
+    }
+
+    public MacroValue classValue(ClassDeclaration declaration) {
+        return MacroValue("class", "", 0, false, 0, this.missingStatement(), this.missingMethod(), declaration, this.missingField(), this.emptyStatements(), this.emptyParameters(), this.emptyValues());
+    }
+
+    public MacroValue fieldValue(FieldDeclaration field) {
+        return MacroValue("field", "", 0, false, 0, this.missingStatement(), this.missingMethod(), this.missingClass(), field, this.emptyStatements(), this.emptyParameters(), this.emptyValues());
+    }
+
+    public MacroValue blockValue(List<Statement> statements) {
+        return MacroValue("block", "", 0, false, 0, this.missingStatement(), this.missingMethod(), this.missingClass(), this.missingField(), statements, this.emptyParameters(), this.emptyValues());
+    }
+
+    public MacroValue parameterValue(Parameter parameter) {
+        List<Parameter> parameters = List();
+        parameters.add(parameter);
+        return MacroValue("parameter", "", 0, false, 0, this.missingStatement(), this.missingMethod(), this.missingClass(), this.missingField(), this.emptyStatements(), parameters, this.emptyValues());
+    }
+
+    public MacroValue listValue(List<MacroValue> values) {
+        return MacroValue("list", "", 0, false, 0, this.missingStatement(), this.missingMethod(), this.missingClass(), this.missingField(), this.emptyStatements(), this.emptyParameters(), values);
+    }
+
+
+    private List<Statement> emptyStatements() {
+        List<Statement> result = List();
+        return result;
+    }
+
+    private List<Parameter> emptyParameters() {
+        List<Parameter> result = List();
+        return result;
+    }
+
+    private List<MacroValue> emptyValues() {
+        List<MacroValue> result = List();
+        return result;
+    }
+
+    private Statement missingStatement() {
+        List<Statement> body = List();
+        List<Statement> other = List();
+        return Statement("missing", "", "", 0, 0, body, other, 1, 1);
+    }
+
+    private MethodDeclaration missingMethod() {
+        List<Parameter> parameters = List();
+        List<Statement> statements = List();
+        return MethodDeclaration("", "", "Void", parameters, statements, false, false, 1, 1);
+    }
+
+    private ClassDeclaration missingClass() {
+        List<FieldDeclaration> fields = List();
+        List<MethodDeclaration> methods = List();
+        return ClassDeclaration("", fields, methods, 1, 1);
+    }
+
+    private FieldDeclaration missingField() {
+        return FieldDeclaration("", "Void", 1, 1);
+    }
+}

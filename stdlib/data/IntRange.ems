@@ -1,5 +1,7 @@
 namespace Std::Data;
 
+use Std::Data::IIntRange;
+
 public class IntRange implements IIntRange {
     private Int startValue;
     private Int finishValue;

@@ -24,10 +24,12 @@ module Emerald
         cr_file = File.join(tmpdir, "main.cr")
         File.write(cr_file, crystal_code)
 
-        result = Process.run("crystal", ["build", cr_file, "-o", output],
-                             output: STDOUT, error: STDERR)
+        args = crystal_build_args(cr_file, output)
+        result = Process.run("crystal", args, output: STDOUT, error: STDERR)
+
         unless result.success?
-          STDERR.puts "Compilation failed: Crystal compilation failed (exit #{result.exit_code})"
+          STDERR.puts "Compilation failed: Crystal compilation failed (#{process_status(result)})"
+          STDERR.puts "Generated Crystal source kept at: #{cr_file}"
           return false
         end
 
@@ -69,9 +71,36 @@ module Emerald
       end
     end
 
+
+    private def self.crystal_build_args(cr_file : String, output : String) : Array(String)
+      args = ["build", cr_file, "-o", output]
+
+      extra = ENV["EMERALD_CRYSTAL_ARGS"]?
+
+      if extra
+        extra.split(" ").each do |entry|
+          clean = entry.strip
+          next if clean.empty?
+
+          args << clean
+        end
+
+        return args
+      end
+
+      args << "--no-debug"
+      args
+    end
+
+    private def self.process_status(status : Process::Status) : String
+      return "exit #{status.exit_code}" if status.normal_exit?
+
+      status.to_s
+    end
+
     private def self.checked_program(source_file : String)
       program = ProjectLoader.load(source_file)
-      StdlibLoader.load_into(program)
+      StdlibLoader.load_into(program, source_file)
 
       resolver = Resolver.new
       resolver.resolve(program)

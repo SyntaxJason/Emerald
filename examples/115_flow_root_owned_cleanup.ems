@@ -1,0 +1,29 @@
+public class HyperAllocFlowOwnedSession {
+    private String name;
+
+    public HyperAllocFlowOwnedSession(String name) {
+        this.name = name;
+    }
+
+    public String label() {
+        return this.name;
+    }
+}
+
+public class HyperAllocFlowOwnedBox {
+    private HyperAllocFlowOwnedSession session;
+
+    public HyperAllocFlowOwnedBox(HyperAllocFlowOwnedSession session) {
+        this.session = session;
+    }
+
+    public String label() {
+        return this.session.label();
+    }
+}
+
+main() {
+    HyperAllocFlowOwnedSession session = HyperAllocFlowOwnedSession("owned");
+    HyperAllocFlowOwnedBox box = HyperAllocFlowOwnedBox(session);
+    println(box.label());
+}

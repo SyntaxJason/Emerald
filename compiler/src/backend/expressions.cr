@@ -8,7 +8,7 @@ module Emerald
       when AST::CharLiteral
         io << "'" << escape_char(expr.value) << "'"
       when AST::BoolLiteral   then io << (expr.value ? "true" : "false")
-      when AST::Identifier    then io << expr.name
+      when AST::Identifier    then io << crystal_local_name(expr.name)
       when AST::ThisExpr      then io << "self"
       when AST::BinaryOp      then emit_binary(io, expr)
       when AST::UnaryOp       then io << expr.op; emit_expr(io, expr.operand)
@@ -41,6 +41,14 @@ module Emerald
     end
 
     private def emit_binary(io : IO, expr : AST::BinaryOp)
+      if expr.op == "+" && expr.result_type == "String"
+        io << "( ("
+        emit_expr(io, expr.left)
+        io << ").to_s + ("
+        emit_expr(io, expr.right)
+        io << ").to_s )"
+        return
+      end
       crystal_op = if expr.op == "/" && expr.result_type == "Int"
                      "//"
                    else

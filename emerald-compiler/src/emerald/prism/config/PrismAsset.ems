@@ -1,0 +1,19 @@
+namespace emerald::prism::config;
+
+public class PrismAsset {
+    private String assetName;
+    private String assetVersion;
+
+    public PrismAsset(String name, String version) {
+        this.assetName = name;
+        this.assetVersion = version;
+    }
+
+    public String name() {
+        return this.assetName;
+    }
+
+    public String version() {
+        return this.assetVersion;
+    }
+}

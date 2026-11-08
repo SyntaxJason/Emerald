@@ -1,0 +1,15 @@
+public data class Score(Int value);
+
+public class ScorePrinter {
+    public static Void printScore(Score score) {
+        println(score.toString());
+    }
+}
+
+main() {
+    Score score = Score(42);
+    Score other = Score(42);
+    ScorePrinter.printScore(score);
+    println(score.equals(other));
+    return 0;
+}

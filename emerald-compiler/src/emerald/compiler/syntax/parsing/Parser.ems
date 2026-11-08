@@ -1,0 +1,23 @@
+namespace emerald::compiler::syntax;
+
+use emerald::compiler::diagnostic::DiagnosticBag;
+
+public class Parser {
+    private ParserState state;
+    private Bool entryValue;
+
+    public Parser(List<Token> tokenItems, DiagnosticBag bag) {
+        this.state = ParserState(tokenItems, bag);
+        this.entryValue = true;
+    }
+
+    public Parser(List<Token> tokenItems, DiagnosticBag bag, Bool entry) {
+        this.state = ParserState(tokenItems, bag);
+        this.entryValue = entry;
+    }
+
+    public SyntaxProgram parse() {
+        ClassParser parser = ClassParser(this.state, this.entryValue);
+        return parser.parse();
+    }
+}

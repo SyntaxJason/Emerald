@@ -1,0 +1,52 @@
+use Std::Env::Env;
+use Std::Io::Directories;
+use Std::Io::File;
+use Std::Io::Files;
+use Std::Io::Paths;
+use Std::Net::Endpoint;
+use Std::Net::Tcp;
+use Std::Net::TcpListener;
+use Std::Net::Udp;
+use Std::Net::UdpSocket;
+use Std::System::Platform;
+
+main() {
+    println(Platform.os());
+    println(Platform.arch());
+    println(Platform.processorCount() > 0);
+    println(Platform.homeDirectory().length() > 0);
+    println(Env.currentDirectory().length() > 0);
+
+    String root = Paths.join(Paths.current().value(), "test-results-native");
+    String directory = Paths.join(root, "high_level_runtime");
+    String file = Paths.join(directory, "hello.txt");
+
+    Directories.create(root);
+    Directories.create(directory);
+
+    Files.writeText(file, "hello");
+    Files.appendText(file, " runtime");
+
+    println(Files.exists(file));
+    println(Files.isFile(file));
+    println(Files.readText(file));
+
+    File handle = File(file);
+    println(handle.name());
+    println(handle.size() > 0);
+
+    Int listener = Tcp.listenHandle("127.0.0.1", 0);
+    println(Tcp.listenerIsOpen(listener));
+    println(Tcp.closeListener(listener));
+
+    Int socketHandle = Udp.bindHandle("127.0.0.1", 0);
+    UdpSocket socket = UdpSocket(socketHandle, Endpoint("127.0.0.1", Udp.localPort(socketHandle)));
+    println(socket.isOpen());
+    println(socket.sendText("127.0.0.1", socket.localPort(), "ping"));
+    println(socket.receiveText());
+    println(socket.lastSender().port() > 0);
+    println(socket.close());
+
+    Files.delete(file);
+    Directories.delete(directory);
+}

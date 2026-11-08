@@ -1,0 +1,212 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::cli::Options;
+use emerald::compiler::hyperallocflow::HyperAllocFlowReport;
+use emerald::compiler::platform::Platform;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Llvm::LlvmBasicBlock;
+use Std::Llvm::LlvmFunction;
+use Std::Llvm::LlvmValue;
+
+public class NativeEmitContext {
+    private Platform platformValue;
+    private String outputBaseValue;
+    private String moduleNameValue;
+    private Int tempIndex;
+    private NativeClassTable classTableValue;
+    private NativeNameMangler manglerValue;
+    private NativeTypeMapper typeMapperValue;
+    private HyperAllocFlowReport hyperAllocFlowReportValue;
+    private List<NativeLoopFrame> loopFrames;
+    private LlvmFunction currentFunctionValue;
+    private Bool parentIndexReady;
+    private List<String> parentClassNames;
+    private List<String> listReceiverTypes;
+    private List<Bool> listReceiverResults;
+    private List<String> errorItems;
+    private List<Int> statelessLocalItems;
+
+    public NativeEmitContext(Options options, HyperAllocFlowReport hyperAllocFlowReport) {
+        this.platformValue = Platform();
+        this.outputBaseValue = this.platformValue.normalizeOutputBase(options.outputBase());
+        this.moduleNameValue = this.platformValue.moduleName(options.sourcePath());
+        this.tempIndex = 0;
+        this.classTableValue = NativeClassTable(this);
+        this.manglerValue = NativeNameMangler();
+        this.typeMapperValue = NativeTypeMapper(this);
+        this.hyperAllocFlowReportValue = hyperAllocFlowReport;
+        this.loopFrames = List();
+        this.currentFunctionValue = LlvmFunction(0, 0);
+        this.parentIndexReady = false;
+        this.parentClassNames = List();
+        this.listReceiverTypes = List();
+        this.listReceiverResults = List();
+        this.errorItems = List();
+        this.statelessLocalItems = List();
+    }
+
+    public Void markStatelessLocal(Int allocationExpressionIndex) {
+        if (!this.statelessLocalItems.contains(allocationExpressionIndex)) {
+            this.statelessLocalItems.add(allocationExpressionIndex);
+        }
+    }
+
+    public Bool isStatelessLocal(Int allocationExpressionIndex) {
+        return this.statelessLocalItems.contains(allocationExpressionIndex);
+    }
+
+    // Lowering inconsistencies (for example a field the binder accepted but
+    // the class layout does not have) fail the build instead of silently
+    // emitting a wrong access.
+    public Void reportError(String message) {
+        if (!this.errorItems.contains(message)) {
+            this.errorItems.add(message + "");
+        }
+    }
+
+    public List<String> errors() {
+        return this.errorItems;
+    }
+
+    public Int fieldIndex(NativeClassLayout layout, String fieldName) {
+        Int index = layout.fieldIndex(fieldName);
+
+        if (index < 0) {
+            this.reportError("Internal compiler error: unknown field '" + fieldName + "' on class '" + layout.fullName() + "'");
+            return 0;
+        }
+
+        return index;
+    }
+
+    public String fieldTypeName(NativeClassLayout layout, String fieldName) {
+        String typeName = layout.fieldTypeName(fieldName);
+
+        if (typeName.isEmpty()) {
+            this.reportError("Internal compiler error: unknown field '" + fieldName + "' on class '" + layout.fullName() + "'");
+            return "Int";
+        }
+
+        return typeName;
+    }
+
+    // Whether list operations on a receiver of this static type may read the
+    // runtime list directly. `List<T>` is the runtime list itself. `ArrayList<T>`
+    // and `IList<T>` qualify only when the receiver is provably the stdlib
+    // ArrayList (sole implementor, never subclassed); any other implementation
+    // goes through normal method or interface dispatch.
+    public Bool isRuntimeListReceiver(String receiverType, SyntaxProgram program) {
+        if (receiverType.startsWith("List<")) {
+            return true;
+        }
+
+        Int index = this.listReceiverTypes.indexOf(receiverType);
+
+        if (index >= 0) {
+            return this.listReceiverResults.get(index);
+        }
+
+        NativeLookup lookup = NativeLookup();
+        ClassDeclaration target = lookup.findClass(program, lookup.dispatchClassName(program, receiverType));
+        Bool result = !target.isMissing() && !target.isInterface() && target.namespaceName() == "Std::Collections" && target.name().startsWith("ArrayList<") && !this.hasSubclasses(target.fullName(), program);
+        this.listReceiverTypes.add(receiverType + "");
+        this.listReceiverResults.add(result);
+        return result;
+    }
+
+    // Full names of classes that some other class extends, collected once per
+    // emit; everything else is a leaf whose instance calls stay direct.
+    public Bool hasAnySubclasses(SyntaxProgram program) {
+        this.hasSubclasses("", program);
+        return this.parentClassNames.length() > 0;
+    }
+
+    public Bool hasSubclasses(String fullName, SyntaxProgram program) {
+        if (!this.parentIndexReady) {
+            this.parentIndexReady = true;
+            NativeLookup lookup = NativeLookup();
+            Int index = 0;
+
+            while (index < program.classCount()) {
+                ClassDeclaration declaration = program.classAt(index);
+
+                if (!declaration.parentName().isEmpty()) {
+                    ClassDeclaration parent = lookup.findClass(program, declaration.parentName());
+
+                    if (!parent.isMissing() && !this.parentClassNames.contains(parent.fullName())) {
+                        this.parentClassNames.add(parent.fullName() + "");
+                    }
+                }
+
+                index = index + 1;
+            }
+        }
+
+        return this.parentClassNames.contains(fullName);
+    }
+
+    public Void setCurrentFunction(LlvmFunction function) {
+        this.currentFunctionValue = function;
+        return;
+    }
+
+    public LlvmFunction currentFunction() {
+        return this.currentFunctionValue;
+    }
+
+    public String outputBase() {
+        return this.outputBaseValue + "";
+    }
+
+    public String moduleName() {
+        return this.moduleNameValue + "";
+    }
+
+    public NativeClassTable classTable() {
+        return this.classTableValue;
+    }
+
+    public NativeNameMangler mangler() {
+        return this.manglerValue;
+    }
+
+    public NativeTypeMapper typeMapper() {
+        return this.typeMapperValue;
+    }
+
+    public HyperAllocFlowReport hyperAllocFlowReport() {
+        return this.hyperAllocFlowReportValue;
+    }
+
+    public Void pushLoop(NativeLoopFrame frame) {
+        this.loopFrames.add(frame);
+    }
+
+    public Void popLoop() {
+        if (this.loopFrames.length() > 0) {
+            this.loopFrames.removeAt(this.loopFrames.length() - 1);
+        }
+    }
+
+    public Bool hasLoop() {
+        return this.loopFrames.length() > 0;
+    }
+
+    public NativeLoopFrame currentLoop() {
+        if (this.loopFrames.length() > 0) {
+            return this.loopFrames.get(this.loopFrames.length() - 1);
+        }
+
+        return NativeLoopFrame(LlvmBasicBlock(0), LlvmBasicBlock(0), 0, LlvmValue(0), false);
+    }
+
+    public List<NativeLoopFrame> activeLoops() {
+        return this.loopFrames;
+    }
+
+    public Int nextTemp() {
+        this.tempIndex = this.tempIndex + 1;
+        return this.tempIndex;
+    }
+}

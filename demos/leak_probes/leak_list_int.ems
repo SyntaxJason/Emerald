@@ -1,0 +1,58 @@
+namespace LeakProbe;
+
+use Std::Io::File;
+
+class MemoryProbe {
+    public MemoryProbe() {
+    }
+
+    public static Int rssKb() {
+        File status = File("/proc/self/status");
+        String content = status.readOr("");
+        List<String> lines = content.split("\n");
+        Int index = 0;
+
+        while (index < lines.length()) {
+            String line = lines.get(index);
+
+            if (line.startsWith("VmRSS:")) {
+                String rest = line.replace("VmRSS:", "").replace("kB", "").trim();
+                return rest.toInt();
+            }
+
+            index = index + 1;
+        }
+
+        return -1;
+    }
+}
+
+main() {
+    Int total = 3000000;
+    Int i = 0;
+    Int startRss = 0;
+    Int warmup = 50000;
+
+    while (i < total) {
+        List<Int> values = List();
+        Int j = 0;
+
+        while (j < 300) {
+            values.add(j * j);
+            j = j + 1;
+        }
+
+        Int len = values.length();
+
+        if (i == warmup) {
+            startRss = MemoryProbe.rssKb();
+            println("warmup done, len sample=" + len.toString() + " startRss=" + startRss.toString());
+        }
+
+        i = i + 1;
+    }
+
+    Int endRss = MemoryProbe.rssKb();
+    println("start=" + startRss.toString() + " end=" + endRss.toString() + " delta=" + (endRss - startRss).toString() + " iters=" + (total - warmup).toString());
+    return 0;
+}

@@ -23,6 +23,7 @@ module Emerald
 
     private def build_all : Hash(String, BuiltinFunction)
       m = {} of String => BuiltinFunction
+      add(m, "panic", ["String"], "Void", "raise(%a0%)")
       add_math(m)
       add_io(m)
       add_time(m)

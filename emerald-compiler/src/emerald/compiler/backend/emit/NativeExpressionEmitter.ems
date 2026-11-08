@@ -1,0 +1,280 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Collections::ArrayList;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmType;
+use Std::Llvm::LlvmValue;
+
+public class NativeExpressionEmitter {
+    private NativeEmitContext context;
+    private NativeLookup lookup;
+    private NativeExpressionTyper typer;
+    private List<Int> pendingTemporaryHandles;
+
+    public NativeExpressionEmitter(NativeEmitContext emitContext) {
+        this.context = emitContext;
+        this.lookup = NativeLookup();
+        this.typer = NativeExpressionTyper(emitContext);
+        this.pendingTemporaryHandles = List();
+    }
+
+    public NativeExpressionTyper typer() {
+        return this.typer;
+    }
+
+    public Bool createsOwnedStringTemporary(Int expressionIndex, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kindIs("binary")) {
+            return expression.textIs("+");
+        }
+
+        if (expression.kindIs("methodcall")) {
+            String receiverType = this.typer.typeOf(expression.leftIndex(), program, locals, backend);
+            String name = expression.text();
+
+            if (receiverType == "String") {
+                if (name == "toString") {
+                    return this.createsOwnedStringTemporary(expression.leftIndex(), program, backend, locals);
+                }
+
+                return name == "replace" || name == "substring" || name == "trim" || name == "toLower" || name == "toLowerCase" || name == "toUpper" || name == "toUpperCase" || name == "repeat" || name == "trimStart" || name == "trimEnd";
+            }
+
+            if (receiverType == "Int" || receiverType == "Char" || receiverType == "Float") {
+                return name == "toString";
+            }
+
+            if (receiverType == "List" || receiverType.startsWith("List<")) {
+                return name == "removeAt";
+            }
+        }
+
+        return this.context.hyperAllocFlowReport().callReturnsOwnedString(expression);
+    }
+
+    public Void releaseOwnedStringTemporary(Int expressionIndex, LlvmValue value, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (!this.createsOwnedStringTemporary(expressionIndex, program, backend, locals)) {
+            return;
+        }
+
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        backend.callRuntime(backend.runtimeDeclarations().rootRelease(), args, "");
+        this.context.hyperAllocFlowReport().recordTemporaryStringRelease();
+    }
+
+    public Void releaseOwnedReferenceTemporary(Int expressionIndex, LlvmValue value, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (this.context.hyperAllocFlowReport().kindForExpression(expressionIndex).isLocal()) { return; }
+        String typeName = this.typer.typeOf(expressionIndex, program, locals, backend);
+        if (typeName == "String") {
+            this.releaseOwnedStringTemporary(expressionIndex, value, program, backend, locals);
+            return;
+        }
+        if (!this.context.hyperAllocFlowReport().callReturnsOwnedReference(program.expression(expressionIndex)) && !this.context.hyperAllocFlowReport().isReleasableTemporary(expressionIndex)) { return; }
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        backend.callRuntime(backend.runtimeDeclarations().rootRelease(), args, "");
+    }
+
+    // A bare `List()` has no element type of its own; where the target type is
+    // known (return, argument, assignment, element) it decides the storage
+    // mode so primitive lists never fall back to Flow-owning REFERENCE mode.
+    public LlvmValue emitAs(Int expressionIndex, String expectedType, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kindIs("call") && expression.textIs("List") && expectedType.startsWith("List<")) {
+            NativeListEmitter lists = NativeListEmitter(this.context, this.typer, this);
+            return lists.newTypedList(expectedType, program, backend);
+        }
+
+        return this.emit(expressionIndex, program, backend, locals);
+    }
+
+    // A temporary whose call result still borrows it stays alive until the
+    // enclosing expression produces a scalar; then nothing can refer to it.
+    public Void deferOwnedTemporary(Int expressionIndex, LlvmValue value, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        String typeName = this.typer.typeOf(expressionIndex, program, locals, backend);
+        Bool owned = false;
+
+        if (typeName == "String") {
+            owned = this.createsOwnedStringTemporary(expressionIndex, program, backend, locals);
+        } else {
+            owned = this.context.hyperAllocFlowReport().callReturnsOwnedReference(program.expression(expressionIndex)) || this.context.hyperAllocFlowReport().isReleasableTemporary(expressionIndex);
+        }
+
+        if (owned) {
+            this.pendingTemporaryHandles.add(value.handle());
+        }
+    }
+
+    public LlvmValue emit(Int expressionIndex, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Int pendingStart = this.pendingTemporaryHandles.length();
+        LlvmValue value = this.emitWidened(expressionIndex, program, backend, locals);
+
+        if (this.pendingTemporaryHandles.length() > pendingStart) {
+            this.settleTemporaries(expressionIndex, pendingStart, program, backend, locals);
+        }
+
+        if (this.context.hyperAllocFlowReport().sharesArgument(expressionIndex)) {
+            this.shareBorrowedArgument(value, backend);
+        }
+
+        return value;
+    }
+
+    // The method keeps using this reference after handing it to a call that
+    // may adopt it; an unparented Root becomes a counted reference first.
+    private Void shareBorrowedArgument(LlvmValue value, LlvmNativeBackend backend) {
+        if (value.type().toIr() != "ptr") {
+            return;
+        }
+
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+        backend.callRuntime(backend.runtimeDeclarations().shareBorrowed(), args, "");
+    }
+
+    // Scalar results end every borrow of the temporaries created while
+    // evaluating them. A reference-valued result keeps them pending for the
+    // enclosing expression or, at statement level, for the statement emitter.
+    private Void settleTemporaries(Int expressionIndex, Int pendingStart, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        String typeName = this.typer.typeOf(expressionIndex, program, locals, backend);
+
+        if (typeName == "Int" || typeName == "Bool" || typeName == "Float" || typeName == "Char" || typeName == "Void") {
+            this.releaseTemporariesFrom(pendingStart, backend);
+        }
+    }
+
+    // The statement consumed its value (printed, discarded or copied); no
+    // borrow of the pending temporaries survives it.
+    public Void releasePendingTemporaries(LlvmNativeBackend backend) {
+        this.releaseTemporariesFrom(0, backend);
+    }
+
+    // The statement stored or returned a value that may borrow the pending
+    // temporaries; they keep the previous leak-safe lifetime.
+    public Void discardPendingTemporaries() {
+        while (this.pendingTemporaryHandles.length() > 0) {
+            this.pendingTemporaryHandles.removeAt(this.pendingTemporaryHandles.length() - 1);
+        }
+    }
+
+    private Void releaseTemporariesFrom(Int pendingStart, LlvmNativeBackend backend) {
+        while (this.pendingTemporaryHandles.length() > pendingStart) {
+            Int handle = this.pendingTemporaryHandles.get(this.pendingTemporaryHandles.length() - 1);
+            this.pendingTemporaryHandles.removeAt(this.pendingTemporaryHandles.length() - 1);
+            ArrayList<LlvmValue> args = ArrayList();
+            args.add(LlvmValue(handle));
+            backend.callRuntime(backend.runtimeDeclarations().rootRelease(), args, "");
+        }
+    }
+
+    private LlvmValue emitWidened(Int expressionIndex, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        LlvmValue value = this.emitValue(expressionIndex, program, backend, locals);
+        Expression expression = program.expression(expressionIndex);
+        if (expression.kindIs("methodcall") && value.type().toIr() == "i32" && this.typer.typeOf(expressionIndex, program, locals, backend) == "Int") {
+            return backend.builder().signExtend(value, backend.context().int64Type(), "int_result_" + this.context.nextTemp().toString());
+        }
+        return value;
+    }
+
+    private LlvmValue emitValue(Int expressionIndex, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "float") {
+            return backend.floatLiteral(expression.text());
+        }
+        if (expression.kind() == "int") {
+            return backend.int64(expression.intValue());
+        }
+
+        if (expression.kind() == "string") {
+            this.context.hyperAllocFlowReport().recordLowering(expressionIndex, "static string literal", "Static Flow interns the literal without Root, Bond, or cleanup traffic");
+            return backend.runtimeStaticString(expression.text(), "literal_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.kind() == "bool") {
+            return backend.boolValue(expression.boolValue());
+        }
+
+        if (expression.kind() == "name") {
+            NativeLocal local = this.lookup.findLocal(expression.text(), locals, backend);
+            return local.load(backend.builder());
+        }
+
+        if (expression.kind() == "field") {
+            return this.emitField(expressionIndex, program, backend, locals);
+        }
+
+        if (expression.kind() == "call") {
+            NativeCallEmitter callEmitter = NativeCallEmitter(this.context, this.typer, this);
+            return callEmitter.emitCall(expressionIndex, expression, program, backend, locals);
+        }
+
+        if (expression.kind() == "methodcall") {
+            NativeCallEmitter methodCallEmitter = NativeCallEmitter(this.context, this.typer, this);
+            return methodCallEmitter.emitMethodCall(expressionIndex, expression, program, backend, locals);
+        }
+
+        if (expression.kind() == "unary") {
+            NativeOperatorEmitter unaryEmitter = NativeOperatorEmitter(this.context, this.typer, this);
+            return unaryEmitter.emitUnary(expression, program, backend, locals);
+        }
+
+        if (expression.kind() == "binary") {
+            NativeOperatorEmitter binaryEmitter = NativeOperatorEmitter(this.context, this.typer, this);
+            return binaryEmitter.emitBinary(expressionIndex, expression, program, backend, locals);
+        }
+
+        return backend.int32(0);
+    }
+
+    public LlvmValue emitFieldPointer(Int expressionIndex, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Expression expression = program.expression(expressionIndex);
+        LlvmValue receiver = this.emit(expression.leftIndex(), program, backend, locals);
+        return this.emitFieldPointerWithReceiver(expressionIndex, receiver, program, backend, locals);
+    }
+
+    public LlvmValue emitFieldPointerWithReceiver(Int expressionIndex, LlvmValue receiver, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Expression expression = program.expression(expressionIndex);
+        String receiverType = this.typer.typeOf(expression.leftIndex(), program, locals, backend);
+        NativeClassLayout layout = this.context.classTable().find(receiverType);
+        ArrayList<LlvmValue> indices = ArrayList();
+        indices.add(backend.int32(0));
+        indices.add(backend.int32(this.context.fieldIndex(layout, expression.text())));
+
+        return backend.builder().inboundsGep(layout.type(), receiver, indices, "field_ptr_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue emitField(Int expressionIndex, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Expression expression = program.expression(expressionIndex);
+        Expression receiver = program.expression(expression.leftIndex());
+
+        if (receiver.kind() == "name") {
+            NativeLocal local = this.lookup.findLocal(receiver.text(), locals, backend);
+
+            if (local.isFoldedFlow() && local.hasFoldedField(expression.text())) {
+                return local.foldedFieldValue(expression.text());
+            }
+
+            if (local.isInlineFlow()) {
+                NativeClassLayout layout = this.context.classTable().find(local.typeName());
+                ArrayList<LlvmValue> indices = ArrayList();
+                indices.add(backend.int32(0));
+                indices.add(backend.int32(this.context.fieldIndex(layout, expression.text())));
+                LlvmValue pointer = backend.builder().inboundsGep(layout.type(), local.pointer(), indices, "inline_field_ptr_" + this.context.nextTemp().toString());
+                String fieldTypeName = this.context.fieldTypeName(layout, expression.text());
+                LlvmType fieldType = this.context.typeMapper().llvmType(fieldTypeName, backend);
+                return backend.builder().load(fieldType, pointer, "inline_field_" + this.context.nextTemp().toString());
+            }
+        }
+
+        LlvmValue fieldPointer = this.emitFieldPointer(expressionIndex, program, backend, locals);
+        String fieldTypeName = this.typer.typeOf(expressionIndex, program, locals, backend);
+        LlvmType fieldType = this.context.typeMapper().llvmType(fieldTypeName, backend);
+        return backend.builder().load(fieldType, fieldPointer, "field_" + this.context.nextTemp().toString());
+    }
+}

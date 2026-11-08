@@ -1,0 +1,26 @@
+main() {
+    Console.println("console");
+    Console.print("emer");
+    Console.println("ald");
+
+    Int abs = Math.abs(-5);
+    Int min = Math.min(3, 7);
+    Int max = Math.max(3, 7);
+    Int clampLow = Math.clamp(-5, 0, 10);
+    Int clampHigh = Math.clamp(15, 0, 10);
+
+    String padded = "  Emerald  ";
+    String upper = "emerald".toUpperCase();
+    String lower = "EMERALD".toLowerCase();
+
+    println(abs.toString());
+    println(min.toString());
+    println(max.toString());
+    println(clampLow.toString());
+    println(clampHigh.toString());
+    println(padded.trim());
+    println(upper);
+    println(lower);
+    println("   ".isBlank().toString());
+    println("Emerald".equals("Emerald").toString());
+}

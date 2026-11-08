@@ -1,0 +1,64 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Collections::ArrayList;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmType;
+
+public class NativeClassTable {
+    private NativeEmitContext context;
+    private List<NativeClassLayout> layoutItems;
+
+    public NativeClassTable(NativeEmitContext emitContext) {
+        this.context = emitContext;
+        this.layoutItems = List();
+    }
+
+    public Void create(SyntaxProgram program, LlvmNativeBackend backend) {
+        this.layoutItems = List();
+        Int classIndex = 0;
+
+        while (classIndex < program.classCount()) {
+            this.createClass(program.classAt(classIndex), backend);
+            classIndex = classIndex + 1;
+        }
+    }
+
+    public NativeClassLayout find(String className) {
+        Int index = 0;
+
+        while (index < this.layoutItems.length()) {
+            NativeClassLayout layout = this.layoutItems.get(index);
+
+            if (layout.matchesName(className)) {
+                return layout.viewCopy();
+            }
+
+            index = index + 1;
+        }
+
+        List<FieldDeclaration> fields = List();
+        return NativeClassLayout("", "", LlvmType(0), fields);
+    }
+
+    private Void createClass(ClassDeclaration declaration, LlvmNativeBackend backend) {
+        LlvmType objectType = backend.context().namedStructType("Emerald_" + declaration.name());
+        ArrayList<LlvmType> fieldTypes = ArrayList();
+        Int fieldIndex = 0;
+
+        while (fieldIndex < declaration.fieldCount()) {
+            FieldDeclaration field = declaration.fieldAt(fieldIndex);
+            fieldTypes.add(this.context.typeMapper().llvmType(field.typeName(), backend));
+            fieldIndex = fieldIndex + 1;
+        }
+
+        if (fieldTypes.size() == 0) {
+            fieldTypes.add(backend.context().int8Type());
+        }
+
+        objectType.setStructBody(fieldTypes, false);
+        this.layoutItems.add(NativeClassLayout(declaration.name() + "", declaration.fullName() + "", objectType, declaration.fields()));
+    }
+}

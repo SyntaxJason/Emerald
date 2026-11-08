@@ -1,0 +1,147 @@
+namespace emerald::compiler::syntax;
+
+use emerald::compiler::diagnostic::DiagnosticBag;
+
+public class ParserState {
+    private List<Token> tokens;
+    private Int index;
+    private DiagnosticBag diagnosticBag;
+    private SyntaxProgram syntaxProgram;
+
+    public ParserState(List<Token> tokenItems, DiagnosticBag diagnostics) {
+        this.tokens = List();
+        this.copyTokens(tokenItems);
+        this.index = 0;
+        this.diagnosticBag = diagnostics;
+        this.syntaxProgram = SyntaxProgram();
+    }
+
+    private Void copyTokens(List<Token> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            Token token = source.get(index);
+            this.tokens.add(Token(token.kind(), token.text(), token.line(), token.column()));
+            index = index + 1;
+        }
+    }
+
+    public SyntaxProgram program() {
+        return this.syntaxProgram;
+    }
+
+    public DiagnosticBag diagnostics() {
+        return this.diagnosticBag;
+    }
+
+    public Token current() {
+        return this.tokens.get(this.index);
+    }
+
+    public Token peek(Int offset) {
+        Int target = this.index + offset;
+
+        if (target >= this.tokens.length()) {
+            return this.tokens.get(this.tokens.length() - 1);
+        }
+
+        return this.tokens.get(target);
+    }
+
+    public Token advance() {
+        Token result = this.current();
+
+        if (!this.isAtEnd()) {
+            this.index = this.index + 1;
+        }
+
+        return result;
+    }
+
+    public Bool isAtEnd() {
+        return this.current().kindIs("eof");
+    }
+
+    public Bool checkText(String text) {
+        if (this.isAtEnd()) {
+            return false;
+        }
+
+        return this.current().textIs(text);
+    }
+
+    public Bool checkSymbol(String text) {
+        if (this.isAtEnd()) {
+            return false;
+        }
+
+        return this.current().kindIs("symbol") && this.current().textIs(text);
+    }
+
+    public Token consumeIdentifier(String name, String message) {
+        if (this.current().isIdentifier(name)) {
+            return this.advance();
+        }
+
+        Token failedToken = this.current();
+        this.diagnosticBag.error(message, failedToken.line(), failedToken.column());
+        return failedToken;
+    }
+
+    public Token consumeText(String text, String message) {
+        if (this.checkText(text)) {
+            return this.advance();
+        }
+
+        Token failedToken = this.current();
+        this.diagnosticBag.error(message, failedToken.line(), failedToken.column());
+        return failedToken;
+    }
+
+    public Token consumeSymbol(String text, String message) {
+        if (this.checkSymbol(text)) {
+            return this.advance();
+        }
+
+        Token failedToken = this.current();
+        this.diagnosticBag.error(message, failedToken.line(), failedToken.column());
+        return failedToken;
+    }
+
+    public Token consumeKind(String kind, String message) {
+        if (this.current().kindIs(kind)) {
+            return this.advance();
+        }
+
+        Token failedToken = this.current();
+        this.diagnosticBag.error(message, failedToken.line(), failedToken.column());
+        return failedToken;
+    }
+
+    public Void synchronize() {
+        while (!this.isAtEnd()) {
+            if (this.checkSymbol(";")) {
+                this.advance();
+                return;
+            }
+
+            if (this.checkSymbol("}")) {
+                return;
+            }
+
+            this.advance();
+        }
+    }
+
+    public Statement missingStatement(Int line, Int column) {
+        return Statement("missing", "", "", 0, 0, this.emptyStatements(), this.emptyStatements(), line, column);
+    }
+
+    public List<Statement> emptyStatements() {
+        return List();
+    }
+
+    public List<Int> emptyArguments() {
+        return List();
+    }
+}

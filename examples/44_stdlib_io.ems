@@ -1,0 +1,48 @@
+use Std::Io::Path;
+use Std::Io::File;
+use Std::Io::Directory;
+use Std::Io::TextReader;
+use Std::Io::TextWriter;
+use Std::Io::IPath;
+use Std::Io::IFile;
+use Std::Io::IDirectory;
+use Std::Io::ITextReader;
+use Std::Io::ITextWriter;
+use Std::Io::FileInfo;
+use Std::Io::IFileInfo;
+use Std::Result::IResult;
+use Std::Collections::IList;
+
+main() {
+    IPath current = Path.current();
+    IPath outputPath = current.join("emerald_io_example.txt");
+
+    IFile file = File(outputPath);
+    ITextWriter writer = file.writer();
+
+    writer.writeText("emerald");
+    writer.appendText("\nio");
+
+    ITextReader reader = file.reader();
+    String text = reader.readText();
+    IList<String> lines = reader.readLines();
+
+    println(outputPath.fileName());
+    println(file.exists().toString());
+    println(file.isFile().toString());
+    println(text.contains("emerald").toString());
+    println(lines.size().toString());
+
+    IResult<String, String> result = file.tryReadText();
+    println(result.isSuccess().toString());
+    println(result.unwrapOr("missing"));
+
+    IDirectory directory = Directory(current);
+    println(directory.exists().toString());
+
+    IFileInfo info = FileInfo(outputPath);
+    println(info.name());
+    println(info.size().toString());
+
+    println(file.delete().toString());
+}

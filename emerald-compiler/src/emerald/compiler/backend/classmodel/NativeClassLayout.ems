@@ -1,0 +1,115 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::syntax::FieldDeclaration;
+use Std::Llvm::LlvmType;
+
+public class NativeClassLayout {
+    private String nameValue;
+    private String fullNameValue;
+    private Int typeHandleValue;
+    private List<FieldDeclaration> fieldItems;
+
+    public NativeClassLayout(String name, String fullName, LlvmType type, List<FieldDeclaration> fields) {
+        this.nameValue = name;
+        this.fullNameValue = fullName;
+        this.typeHandleValue = type.handle();
+        this.fieldItems = List();
+        this.copyFields(fields);
+    }
+
+    public NativeClassLayout(String name, String fullName, Int typeHandle, List<FieldDeclaration> fields, Bool view) {
+        this.nameValue = name;
+        this.fullNameValue = fullName;
+        this.typeHandleValue = typeHandle;
+        this.fieldItems = List();
+        Int index = 0;
+
+        while (index < fields.length()) {
+            this.fieldItems.add(fields.get(index));
+            index = index + 1;
+        }
+    }
+
+    public NativeClassLayout viewCopy() {
+        return NativeClassLayout(this.nameValue, this.fullNameValue, this.typeHandleValue, this.fieldItems, true);
+    }
+
+    public Bool matchesName(String name) {
+        return this.nameValue == name || this.fullNameValue == name;
+    }
+
+    private Void copyFields(List<FieldDeclaration> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            this.fieldItems.add(source.get(index).shifted(0));
+            index = index + 1;
+        }
+    }
+
+    public String name() {
+        return this.nameValue + "";
+    }
+
+    public String fullName() {
+        return this.fullNameValue + "";
+    }
+
+    public LlvmType type() {
+        return LlvmType(this.typeHandleValue);
+    }
+
+    public List<FieldDeclaration> fields() {
+        return this.fieldItems;
+    }
+
+    // Returns -1 for a name that is not a field of this class; callers go
+    // through NativeEmitContext.fieldIndex, which turns that into an error.
+    public Int fieldIndex(String name) {
+        Int index = 0;
+
+        while (index < this.fieldItems.length()) {
+            if (this.fieldItems.get(index).name() == name) {
+                return index;
+            }
+
+            index = index + 1;
+        }
+
+        return -1;
+    }
+
+    public Bool hasField(String name) {
+        return this.fieldIndex(name) >= 0;
+    }
+
+    public String fieldTypeName(String name) {
+        Int index = this.fieldIndex(name);
+
+        if (index < 0) {
+            return "";
+        }
+
+        return this.fieldItems.get(index).typeName();
+    }
+
+    public Bool hasFlowOwnedFields() {
+        Int index = 0;
+
+        while (index < this.fieldItems.length()) {
+            String typeName = this.fieldItems.get(index).typeName();
+
+            if (typeName != "Int" && typeName != "Bool" && typeName != "Float" && typeName != "Char") {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    public Bool isMissing() {
+        return this.nameValue.isEmpty();
+    }
+}

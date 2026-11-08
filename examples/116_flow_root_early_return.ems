@@ -1,0 +1,37 @@
+public class HyperAllocFlowReturnSession {
+    private String name;
+
+    public HyperAllocFlowReturnSession(String name) {
+        this.name = name;
+    }
+
+    public String label() {
+        return this.name;
+    }
+}
+
+public class HyperAllocFlowReturnBox {
+    private HyperAllocFlowReturnSession session;
+
+    public HyperAllocFlowReturnBox(HyperAllocFlowReturnSession session) {
+        this.session = session;
+    }
+
+    public String label() {
+        return this.session.label();
+    }
+}
+
+public class HyperAllocFlowReturnRunner {
+    public Int run() {
+        HyperAllocFlowReturnSession session = HyperAllocFlowReturnSession("return");
+        HyperAllocFlowReturnBox box = HyperAllocFlowReturnBox(session);
+        println(box.label());
+        return 7;
+    }
+}
+
+main() {
+    HyperAllocFlowReturnRunner runner = HyperAllocFlowReturnRunner();
+    println(runner.run().toString());
+}

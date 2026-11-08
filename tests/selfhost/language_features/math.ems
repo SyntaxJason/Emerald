@@ -1,0 +1,23 @@
+use Std::Math::Math;
+
+main() {
+    println(Math.sqrt(4.0));
+    println(Math.sqrt(0.0));
+    println(Math.sqrt(-0.0).toString());
+    println(Math.sqrt(0.0000000000000000000000000000000000000001));
+    println(Math.sqrt(10000000000000000000000000000000000000000.0));
+    println(Math.sqrt(-1.0) != Math.sqrt(-1.0));
+    println(Math.pow(2.0, 10.0));
+    println(Math.absFloat(-3.5));
+    println(Math.floor(-2.25));
+    println(Math.ceil(-2.25));
+    println(Math.round(-2.5));
+    println(Math.sin(0.0));
+    println(Math.cos(0.0));
+    println(Math.tan(0.0));
+    println(Math.log(1.0));
+    println(Math.log10(100.0));
+    println(Math.exp(0.0));
+    println(Math.abs(-4000000000));
+    println(Math.clamp(8, 2, 5));
+}

@@ -1,0 +1,45 @@
+namespace emerald::compiler::hyperallocflow;
+
+public class AllocationKind {
+    private String nameValue;
+
+    public AllocationKind(String name) {
+        this.nameValue = name;
+    }
+
+    public String name() {
+        return this.nameValue;
+    }
+
+    public Bool isFolded() {
+        return this.nameValue == "Folded";
+    }
+
+    public Bool isLocal() {
+        return this.nameValue == "Local";
+    }
+
+    public Bool isInline() {
+        return this.nameValue == "Inline";
+    }
+
+    public Bool isShard() {
+        return this.nameValue == "Shard";
+    }
+
+    public Bool isPool() {
+        return this.nameValue == "Pool";
+    }
+
+    public Bool isRoot() {
+        return this.nameValue == "Root";
+    }
+
+    public Bool isBond() {
+        return this.nameValue == "Bond";
+    }
+
+    public Bool isStatic() {
+        return this.nameValue == "Static";
+    }
+}

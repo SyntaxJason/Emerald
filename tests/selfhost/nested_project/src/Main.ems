@@ -1,0 +1,5 @@
+use Selfhost::Nested::Value;
+
+main() {
+    println(Value.answer());
+}

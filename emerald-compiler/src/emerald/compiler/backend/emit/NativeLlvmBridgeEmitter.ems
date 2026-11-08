@@ -1,0 +1,592 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Collections::ArrayList;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmRuntimeFunction;
+use Std::Llvm::LlvmType;
+use Std::Llvm::LlvmValue;
+
+public class NativeLlvmBridgeEmitter {
+    private NativeEmitContext context;
+    private NativeExpressionEmitter expressions;
+    private NativeLookup lookup;
+
+    public NativeLlvmBridgeEmitter(NativeEmitContext emitContext, NativeExpressionEmitter expressionEmitter) {
+        this.context = emitContext;
+        this.expressions = expressionEmitter;
+        this.lookup = NativeLookup();
+    }
+
+    public Bool supports(String receiver, String method) {
+        if (receiver != "LlvmNative") {
+            return false;
+        }
+
+        return !this.nativeName(method).isEmpty();
+    }
+
+    public LlvmValue emit(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        MethodDeclaration method = this.lookup.findStaticMethod(program, "LlvmNative", expression.text(), expression.argumentIndexes().length());
+
+        if (method.isMissing()) {
+            return backend.int32(0);
+        }
+
+        ArrayList<LlvmType> parameterTypes = ArrayList();
+        ArrayList<LlvmValue> arguments = ArrayList();
+        Int index = 0;
+
+        while (index < method.parameters().length()) {
+            String typeName = method.parameters().get(index).typeName();
+            LlvmValue argument = this.expressions.emit(expression.argumentIndexes().get(index), program, backend, locals);
+
+            if (typeName == "Bool") {
+                parameterTypes.add(backend.context().int32Type());
+                arguments.add(backend.builder().zeroExtend(argument, backend.context().int32Type(), "llvm_bool_arg_" + this.context.nextTemp().toString()));
+            } else if (typeName == "Int" && expression.textIs("constInt") && index == 1) {
+                parameterTypes.add(backend.context().int64Type());
+                arguments.add(LlvmValue(argument.handle()));
+            } else if (typeName == "Int") {
+                parameterTypes.add(backend.context().int32Type());
+                arguments.add(LlvmValue(argument.handle()));
+            } else {
+                parameterTypes.add(backend.context().opaquePointerType());
+                arguments.add(LlvmValue(argument.handle()));
+            }
+
+            index = index + 1;
+        }
+
+        LlvmType returnType = this.bridgeReturnType(method.returnTypeName(), backend);
+        LlvmRuntimeFunction function = backend.runtimeDeclarations().declare(this.nativeName(expression.text()), returnType, parameterTypes);
+        String resultName = "llvm_bridge_" + this.context.nextTemp().toString();
+
+        if (method.returnTypeName() == "Void") {
+            resultName = "";
+        }
+
+        LlvmValue result = backend.callRuntime(function, arguments, resultName);
+
+        if (method.returnTypeName() == "Bool") {
+            return backend.builder().intNotEqual(result, backend.int32(0), "llvm_bool_" + this.context.nextTemp().toString());
+        }
+
+        if (method.returnTypeName() == "Void") {
+            return backend.int32(0);
+        }
+
+        return result;
+    }
+
+    private LlvmType bridgeReturnType(String typeName, LlvmNativeBackend backend) {
+        if (typeName == "Void") {
+            return backend.context().voidType();
+        }
+
+        if (typeName == "Bool" || typeName == "Int") {
+            return backend.context().int32Type();
+        }
+
+        return backend.context().opaquePointerType();
+    }
+
+    private String nativeName(String method) {
+        if (method == "constIntegerText") { return "emerald_llvm_const_integer_text"; }
+        if (method == "constFloatText") { return "emerald_llvm_const_float_text"; }
+        if (method == "buildExtractValue") { return "emerald_llvm_build_extract_value"; }
+        if (method == "buildFloatOperation") { return "emerald_llvm_build_float_operation"; }
+
+        if (method == "initializeNativeTarget") {
+            return "emerald_llvm_initialize_native_target";
+        }
+
+        if (method == "initializeTarget") {
+            return "emerald_llvm_initialize_target";
+        }
+
+        if (method == "defaultTargetTriple") {
+            return "emerald_llvm_default_target_triple";
+        }
+
+        if (method == "normalizeTargetTriple") {
+            return "emerald_llvm_normalize_target_triple";
+        }
+
+        if (method == "lookupTarget") {
+            return "emerald_llvm_lookup_target";
+        }
+
+        if (method == "lastError") {
+            return "emerald_llvm_last_error";
+        }
+
+        if (method == "nativeObjectExtension") {
+            return "emerald_llvm_native_object_extension";
+        }
+
+        if (method == "nativeExecutableExtension") {
+            return "emerald_llvm_native_executable_extension";
+        }
+
+        if (method == "targetName") {
+            return "emerald_llvm_target_name";
+        }
+
+        if (method == "targetDescription") {
+            return "emerald_llvm_target_description";
+        }
+
+        if (method == "createTargetMachine") {
+            return "emerald_llvm_create_target_machine";
+        }
+
+        if (method == "disposeTargetMachine") {
+            return "emerald_llvm_dispose_target_machine";
+        }
+
+        if (method == "targetMachineApplyDataLayout") {
+            return "emerald_llvm_target_machine_apply_data_layout";
+        }
+
+        if (method == "targetMachineEmitObjectFile") {
+            return "emerald_llvm_target_machine_emit_object_file";
+        }
+
+        if (method == "targetMachineEmitAssemblyFile") {
+            return "emerald_llvm_target_machine_emit_assembly_file";
+        }
+
+        if (method == "runPasses") {
+            return "emerald_llvm_run_passes";
+        }
+
+        if (method == "linkExecutable") {
+            return "emerald_llvm_link_executable";
+        }
+
+        if (method == "linkerLastCommand") {
+            return "emerald_llvm_linker_last_command";
+        }
+
+        if (method == "linkerLastOutput") {
+            return "emerald_llvm_linker_last_output";
+        }
+
+        if (method == "linkerLastError") {
+            return "emerald_llvm_linker_last_error";
+        }
+
+        if (method == "runtimeSourcePath") {
+            return "emerald_llvm_runtime_source_path";
+        }
+
+        if (method == "runtimeHeaderPath") {
+            return "emerald_llvm_runtime_header_path";
+        }
+
+        if (method == "compileIrObject") {
+            return "emerald_llvm_compile_ir_object";
+        }
+
+        if (method == "compileRuntimeObject") {
+            return "emerald_llvm_compile_runtime_object";
+        }
+
+        if (method == "runtimeFlowLibraryName") {
+            return "emerald_llvm_runtime_flow_library_name";
+        }
+
+        if (method == "runtimeFlowLibraryPath") {
+            return "emerald_llvm_runtime_flow_library_path";
+        }
+
+        if (method == "runtimeLastCommand") {
+            return "emerald_llvm_runtime_last_command";
+        }
+
+        if (method == "runtimeLastOutput") {
+            return "emerald_llvm_runtime_last_output";
+        }
+
+        if (method == "runtimeLastError") {
+            return "emerald_llvm_runtime_last_error";
+        }
+
+        if (method == "createContext") {
+            return "emerald_llvm_create_context";
+        }
+
+        if (method == "disposeContext") {
+            return "emerald_llvm_dispose_context";
+        }
+
+        if (method == "createModule") {
+            return "emerald_llvm_create_module";
+        }
+
+        if (method == "disposeModule") {
+            return "emerald_llvm_dispose_module";
+        }
+
+        if (method == "moduleSetTarget") {
+            return "emerald_llvm_module_set_target";
+        }
+
+        if (method == "moduleToIr") {
+            return "emerald_llvm_module_to_ir";
+        }
+
+        if (method == "moduleWriteIr") {
+            return "emerald_llvm_module_write_ir";
+        }
+
+        if (method == "moduleVerify") {
+            return "emerald_llvm_module_verify";
+        }
+
+        if (method == "moduleVerifyMessage") {
+            return "emerald_llvm_module_verify_message";
+        }
+
+        if (method == "createBuilder") {
+            return "emerald_llvm_create_builder";
+        }
+
+        if (method == "disposeBuilder") {
+            return "emerald_llvm_dispose_builder";
+        }
+
+        if (method == "currentBlock") {
+            return "emerald_llvm_current_block";
+        }
+
+        if (method == "voidType") {
+            return "emerald_llvm_void_type";
+        }
+
+        if (method == "i1Type") {
+            return "emerald_llvm_i1_type";
+        }
+
+        if (method == "i8Type") {
+            return "emerald_llvm_i8_type";
+        }
+
+        if (method == "i16Type") {
+            return "emerald_llvm_i16_type";
+        }
+
+        if (method == "i32Type") {
+            return "emerald_llvm_i32_type";
+        }
+
+        if (method == "i64Type") {
+            return "emerald_llvm_i64_type";
+        }
+
+        if (method == "intType") {
+            return "emerald_llvm_int_type";
+        }
+
+        if (method == "floatType") {
+            return "emerald_llvm_float_type";
+        }
+
+        if (method == "doubleType") {
+            return "emerald_llvm_double_type";
+        }
+
+        if (method == "opaquePointerType") {
+            return "emerald_llvm_opaque_pointer_type";
+        }
+
+        if (method == "pointerType") {
+            return "emerald_llvm_pointer_type";
+        }
+
+        if (method == "arrayType") {
+            return "emerald_llvm_array_type";
+        }
+
+        if (method == "structType") {
+            return "emerald_llvm_struct_type";
+        }
+
+        if (method == "namedStructType") {
+            return "emerald_llvm_named_struct_type";
+        }
+
+        if (method == "structSetBody") {
+            return "emerald_llvm_struct_set_body";
+        }
+
+        if (method == "functionType") {
+            return "emerald_llvm_function_type";
+        }
+
+        if (method == "functionTypeWithParams") {
+            return "emerald_llvm_function_type_with_params";
+        }
+
+        if (method == "typeToIr") {
+            return "emerald_llvm_type_to_ir";
+        }
+
+        if (method == "sizeOf") {
+            return "emerald_llvm_size_of";
+        }
+
+        if (method == "alignOf") {
+            return "emerald_llvm_align_of";
+        }
+
+        if (method == "addFunction") {
+            return "emerald_llvm_add_function";
+        }
+
+        if (method == "getFunction") {
+            return "emerald_llvm_get_function";
+        }
+
+        if (method == "functionParameterCount") {
+            return "emerald_llvm_function_parameter_count";
+        }
+
+        if (method == "functionParameter") {
+            return "emerald_llvm_function_parameter";
+        }
+
+        if (method == "appendBlock") {
+            return "emerald_llvm_append_block";
+        }
+
+        if (method == "blockName") {
+            return "emerald_llvm_block_name";
+        }
+
+        if (method == "addGlobal") {
+            return "emerald_llvm_add_global";
+        }
+
+        if (method == "getGlobal") {
+            return "emerald_llvm_get_global";
+        }
+
+        if (method == "globalSetInitializer") {
+            return "emerald_llvm_global_set_initializer";
+        }
+
+        if (method == "globalSetConstant") {
+            return "emerald_llvm_global_set_constant";
+        }
+
+        if (method == "valueSetLinkage") {
+            return "emerald_llvm_value_set_linkage";
+        }
+
+        if (method == "valueType") {
+            return "emerald_llvm_value_type";
+        }
+
+        if (method == "valueName") {
+            return "emerald_llvm_value_name";
+        }
+
+        if (method == "valueSetName") {
+            return "emerald_llvm_value_set_name";
+        }
+
+        if (method == "valueToIr") {
+            return "emerald_llvm_value_to_ir";
+        }
+
+        if (method == "positionAtEnd") {
+            return "emerald_llvm_position_at_end";
+        }
+
+        if (method == "returnVoid") {
+            return "emerald_llvm_return_void";
+        }
+
+        if (method == "returnValue") {
+            return "emerald_llvm_return_value";
+        }
+
+        if (method == "buildBranch") {
+            return "emerald_llvm_build_branch";
+        }
+
+        if (method == "buildConditionalBranch") {
+            return "emerald_llvm_build_conditional_branch";
+        }
+
+        if (method == "buildUnreachable") {
+            return "emerald_llvm_build_unreachable";
+        }
+
+        if (method == "constInt") {
+            return "emerald_llvm_const_int";
+        }
+
+        if (method == "constBool") {
+            return "emerald_llvm_const_bool";
+        }
+
+        if (method == "constNull") {
+            return "emerald_llvm_const_null";
+        }
+
+        if (method == "constPointerNull") {
+            return "emerald_llvm_const_pointer_null";
+        }
+
+        if (method == "constString") {
+            return "emerald_llvm_const_string";
+        }
+
+        if (method == "constStruct") {
+            return "emerald_llvm_const_struct";
+        }
+
+        if (method == "constArray") {
+            return "emerald_llvm_const_array";
+        }
+
+        if (method == "buildAdd") {
+            return "emerald_llvm_build_add";
+        }
+
+        if (method == "buildSub") {
+            return "emerald_llvm_build_sub";
+        }
+
+        if (method == "buildMul") {
+            return "emerald_llvm_build_mul";
+        }
+
+        if (method == "buildSignedDiv") {
+            return "emerald_llvm_build_signed_div";
+        }
+
+        if (method == "buildUnsignedDiv") {
+            return "emerald_llvm_build_unsigned_div";
+        }
+
+        if (method == "buildSignedRem") {
+            return "emerald_llvm_build_signed_rem";
+        }
+
+        if (method == "buildUnsignedRem") {
+            return "emerald_llvm_build_unsigned_rem";
+        }
+
+        if (method == "buildNeg") {
+            return "emerald_llvm_build_neg";
+        }
+
+        if (method == "buildAnd") {
+            return "emerald_llvm_build_and";
+        }
+
+        if (method == "buildOr") {
+            return "emerald_llvm_build_or";
+        }
+
+        if (method == "buildXor") {
+            return "emerald_llvm_build_xor";
+        }
+
+        if (method == "buildNot") {
+            return "emerald_llvm_build_not";
+        }
+
+        if (method == "buildShiftLeft") {
+            return "emerald_llvm_build_shift_left";
+        }
+
+        if (method == "buildLogicalShiftRight") {
+            return "emerald_llvm_build_logical_shift_right";
+        }
+
+        if (method == "buildArithmeticShiftRight") {
+            return "emerald_llvm_build_arithmetic_shift_right";
+        }
+
+        if (method == "buildIntCompare") {
+            return "emerald_llvm_build_int_compare";
+        }
+
+        if (method == "buildEntryAlloca") {
+            return "emerald_llvm_build_entry_alloca";
+        }
+
+        if (method == "buildAlloca") {
+            return "emerald_llvm_build_alloca";
+        }
+
+        if (method == "buildLoad") {
+            return "emerald_llvm_build_load";
+        }
+
+        if (method == "buildStore") {
+            return "emerald_llvm_build_store";
+        }
+
+        if (method == "buildGep") {
+            return "emerald_llvm_build_gep";
+        }
+
+        if (method == "buildInboundsGep") {
+            return "emerald_llvm_build_inbounds_gep";
+        }
+
+        if (method == "buildGlobalStringPointer") {
+            return "emerald_llvm_build_global_string_pointer";
+        }
+
+        if (method == "buildCall") {
+            return "emerald_llvm_build_call";
+        }
+
+        if (method == "buildPhi") {
+            return "emerald_llvm_build_phi";
+        }
+
+        if (method == "addIncoming") {
+            return "emerald_llvm_add_incoming";
+        }
+
+        if (method == "buildSelect") {
+            return "emerald_llvm_build_select";
+        }
+
+        if (method == "buildTruncate") {
+            return "emerald_llvm_build_truncate";
+        }
+
+        if (method == "buildZeroExtend") {
+            return "emerald_llvm_build_zero_extend";
+        }
+
+        if (method == "buildSignExtend") {
+            return "emerald_llvm_build_sign_extend";
+        }
+
+        if (method == "buildPointerToInt") {
+            return "emerald_llvm_build_pointer_to_int";
+        }
+
+        if (method == "buildIntToPointer") {
+            return "emerald_llvm_build_int_to_pointer";
+        }
+
+        if (method == "buildBitCast") {
+            return "emerald_llvm_build_bit_cast";
+        }
+
+        return "";
+    }
+}

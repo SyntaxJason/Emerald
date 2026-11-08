@@ -1,5 +1,7 @@
 namespace Std::Time;
 
+use Std::Native::NativeTime;
+
 public class OffsetDateTime {
     private Int year;
     private Int month;
@@ -17,6 +19,47 @@ public class OffsetDateTime {
         this.minute = minute;
         this.second = second;
         this.offsetMinutes = offsetMinutes;
+    }
+
+    public static OffsetDateTime of(Int year, Int month, Int day, Int hour, Int minute, Int second, Int offsetMinutes) {
+        return OffsetDateTime(year, month, day, hour, minute, second, offsetMinutes);
+    }
+
+    public static OffsetDateTime utcNow() {
+        return OffsetDateTime.ofEpochMillis(NativeTime.unixMillis(), 0);
+    }
+
+    public static OffsetDateTime now() {
+        Int millis = NativeTime.unixMillis();
+        return OffsetDateTime.ofEpochMillis(millis, NativeTime.localOffsetMinutes(OffsetDateTime.floorDiv(millis, 1000)));
+    }
+
+    // Civil date and time of a Unix instant shifted by the given offset.
+    public static OffsetDateTime ofEpochMillis(Int epochMillis, Int offsetMinutes) {
+        Int seconds = OffsetDateTime.floorDiv(epochMillis, 1000) + offsetMinutes * 60;
+        Int days = OffsetDateTime.floorDiv(seconds, 86400);
+        Int secondOfDay = seconds - days * 86400;
+        Int z = days + 719468;
+        Int era = OffsetDateTime.floorDiv(z, 146097);
+        Int dayOfEra = z - era * 146097;
+        Int yearOfEra = (dayOfEra - dayOfEra / 1460 + dayOfEra / 36524 - dayOfEra / 146096) / 365;
+        Int dayOfYear = dayOfEra - (365 * yearOfEra + yearOfEra / 4 - yearOfEra / 100);
+        Int monthIndex = (5 * dayOfYear + 2) / 153;
+        Int day = dayOfYear - (153 * monthIndex + 2) / 5 + 1;
+        Int month = monthIndex + 3;
+        if (monthIndex >= 10) { month = monthIndex - 9; }
+        Int year = yearOfEra + era * 400;
+        if (month <= 2) { year = year + 1; }
+        Int hour = secondOfDay / 3600;
+        Int minute = (secondOfDay - hour * 3600) / 60;
+        Int second = secondOfDay - hour * 3600 - minute * 60;
+        return OffsetDateTime(year, month, day, hour, minute, second, offsetMinutes);
+    }
+
+    private static Int floorDiv(Int value, Int divisor) {
+        Int quotient = value / divisor;
+        if (value - quotient * divisor < 0) { quotient = quotient - 1; }
+        return quotient;
     }
 
     public Int getYear() {

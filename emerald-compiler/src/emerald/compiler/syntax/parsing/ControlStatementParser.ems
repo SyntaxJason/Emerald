@@ -1,0 +1,65 @@
+namespace emerald::compiler::syntax;
+
+public class ControlStatementParser {
+    private ParserState state;
+    private ExpressionParser expressions;
+
+    public ControlStatementParser(ParserState parserState) {
+        this.state = parserState;
+        this.expressions = ExpressionParser(parserState);
+    }
+
+    public Statement parseIf() {
+        Token start = this.state.advance();
+        this.state.consumeSymbol("(", "Expected '(' after if");
+        Int condition = this.expressions.parseExpression();
+        this.state.consumeSymbol(")", "Expected ')' after if condition");
+
+        StatementParser statements = StatementParser(this.state);
+        List<Statement> body = statements.parseBlockStatements();
+        List<Statement> elseBody = this.parseElseBody(statements);
+        return Statement("if", "", "", condition, 0, body, elseBody, start.line(), start.column());
+    }
+
+    private List<Statement> parseElseBody(StatementParser statements) {
+        if (!this.state.current().isIdentifier("else")) {
+            return this.state.emptyStatements();
+        }
+
+        this.state.advance();
+
+        if (this.state.current().isIdentifier("if")) {
+            List<Statement> nested = List();
+            nested.add(this.parseIf());
+            return nested;
+        }
+
+        return statements.parseBlockStatements();
+    }
+
+    public Statement parseWhile() {
+        Token start = this.state.advance();
+        this.state.consumeSymbol("(", "Expected '(' after while");
+        Int condition = this.expressions.parseExpression();
+        this.state.consumeSymbol(")", "Expected ')' after while condition");
+
+        StatementParser statements = StatementParser(this.state);
+        List<Statement> body = statements.parseBlockStatements();
+
+        return Statement("while", "", "", condition, 0, body, this.state.emptyStatements(), start.line(), start.column());
+    }
+
+    public Statement parseFor() {
+        Token start = this.state.advance();
+        this.state.consumeSymbol("(", "Expected '(' after for");
+        Token variable = this.state.consumeKind("identifier", "Expected for variable name");
+        this.state.consumeIdentifier("in", "Expected 'in' after for variable");
+        Int iterable = this.expressions.parseExpression();
+        this.state.consumeSymbol(")", "Expected ')' after for iterable");
+
+        StatementParser statements = StatementParser(this.state);
+        List<Statement> body = statements.parseBlockStatements();
+
+        return Statement("for", variable.text(), "", iterable, 0, body, this.state.emptyStatements(), start.line(), start.column());
+    }
+}

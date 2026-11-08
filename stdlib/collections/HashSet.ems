@@ -1,18 +1,26 @@
 namespace Std::Collections;
 
+use Std::Collections::ISet;
+use Std::Collections::HashMap;
+use Std::Collections::IIterator;
+use Std::Collections::IList;
+use Std::Collections::ArrayList;
+use Std::Functional::IConsumer;
+use Std::Functional::IPredicate;
+
 public class HashSet<T> implements ISet<T> {
-    private Map<T, Bool> storage;
+    private HashMap<T, Bool> storage;
 
     public HashSet() {
-        this.storage = Map();
+        this.storage = HashMap();
     }
 
     public IIterator<T> iterator() {
-        return ListIterator(this.storage.keys());
+        return this.storage.keys().iterator();
     }
 
     public Int size() {
-        return this.storage.length();
+        return this.storage.size();
     }
 
     public Bool isEmpty() {
@@ -20,25 +28,15 @@ public class HashSet<T> implements ISet<T> {
     }
 
     public Bool contains(T value) {
-        return this.storage.has(value);
+        return this.storage.containsKey(value);
     }
 
     public Bool add(T value) {
-        if (this.storage.has(value)) {
-            return false;
-        }
-
-        this.storage.put(value, true);
-        return true;
+        return this.storage.putIfAbsent(value, true);
     }
 
     public Bool remove(T value) {
-        if (!this.storage.has(value)) {
-            return false;
-        }
-
-        this.storage.remove(value);
-        return true;
+        return this.storage.removeIfPresent(value);
     }
 
     public Void clear() {
@@ -46,44 +44,44 @@ public class HashSet<T> implements ISet<T> {
     }
 
     public IList<T> toList() {
-        return ArrayList(this.storage.keys());
+        return this.storage.keys();
     }
 
     public Void forEach(Std::Functional::IConsumer<T> consumer) {
-        List<T> keys = this.storage.keys();
-        Int index = 0;
+        Int slot = 0;
 
-        while (index < keys.length()) {
-            consumer.accept(keys.get(index));
-            index = index + 1;
+        while (slot < this.storage.slotCount()) {
+            if (this.storage.slotIsLive(slot)) {
+                consumer.accept(this.storage.slotKey(slot));
+            }
+
+            slot = slot + 1;
         }
     }
 
     public Bool any(Std::Functional::IPredicate<T> predicate) {
-        List<T> keys = this.storage.keys();
-        Int index = 0;
+        Int slot = 0;
 
-        while (index < keys.length()) {
-            if (predicate.test(keys.get(index))) {
+        while (slot < this.storage.slotCount()) {
+            if (this.storage.slotIsLive(slot) && predicate.test(this.storage.slotKey(slot))) {
                 return true;
             }
 
-            index = index + 1;
+            slot = slot + 1;
         }
 
         return false;
     }
 
     public Bool all(Std::Functional::IPredicate<T> predicate) {
-        List<T> keys = this.storage.keys();
-        Int index = 0;
+        Int slot = 0;
 
-        while (index < keys.length()) {
-            if (!predicate.test(keys.get(index))) {
+        while (slot < this.storage.slotCount()) {
+            if (this.storage.slotIsLive(slot) && !predicate.test(this.storage.slotKey(slot))) {
                 return false;
             }
 
-            index = index + 1;
+            slot = slot + 1;
         }
 
         return true;

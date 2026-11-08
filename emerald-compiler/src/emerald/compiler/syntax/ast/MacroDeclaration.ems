@@ -1,0 +1,63 @@
+namespace emerald::compiler::syntax;
+
+public class MacroDeclaration {
+    private String nameValue;
+    private String targetValue;
+    private List<Statement> statementItems;
+    private Int lineValue;
+    private Int columnValue;
+
+    public MacroDeclaration(String name, String target, List<Statement> statements, Int line, Int column) {
+        this.nameValue = name;
+        this.targetValue = target;
+        this.statementItems = List();
+        this.copyStatements(statements);
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public String name() {
+        return this.nameValue + "";
+    }
+
+    public String target() {
+        return this.targetValue + "";
+    }
+
+    public List<Statement> statements() {
+        return this.statementItems;
+    }
+
+    public Int line() {
+        return this.lineValue;
+    }
+
+    public Int column() {
+        return this.columnValue;
+    }
+
+    public MacroDeclaration shifted(Int offset) {
+        List<Statement> shiftedStatements = List();
+        Int index = 0;
+
+        while (index < this.statementItems.length()) {
+            shiftedStatements.add(this.statementItems.get(index).shifted(offset));
+            index = index + 1;
+        }
+
+        return MacroDeclaration(this.nameValue + "", this.targetValue + "", shiftedStatements, this.lineValue, this.columnValue);
+    }
+
+    public Bool isMissing() {
+        return this.nameValue.isEmpty();
+    }
+
+    private Void copyStatements(List<Statement> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            this.statementItems.add(source.get(index).shifted(0));
+            index = index + 1;
+        }
+    }
+}

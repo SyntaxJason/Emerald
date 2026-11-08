@@ -1,5 +1,6 @@
 namespace Std::Io;
 
+use Std::Result::IResult;
 public interface IWritableText {
     public Void writeText(String text);
 

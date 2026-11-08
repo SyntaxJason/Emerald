@@ -1,0 +1,9 @@
+main() {
+    List<String> names = List();
+
+    names.add("Folded");
+    names.add("Local");
+    names.add("Root");
+
+    println(names.length().toString());
+}

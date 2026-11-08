@@ -1,5 +1,16 @@
 namespace Std::Net;
 
+use Std::Native::NativeTcp;
+use Std::Net::Endpoint;
+use Std::Net::IEndpoint;
+use Std::Net::ITcpConnection;
+use Std::Net::ITcpListener;
+use Std::Net::TcpConnection;
+use Std::Result::Failure;
+use Std::Result::BoolSuccess;
+use Std::Result::IResult;
+use Std::Result::Success;
+
 public class TcpListener implements ITcpListener {
     private Int listenerHandle;
     private Endpoint localEndpoint;
@@ -18,15 +29,21 @@ public class TcpListener implements ITcpListener {
     }
 
     public Bool isOpen() {
-        return Tcp.listenerIsOpen(this.listenerHandle);
+        return NativeTcp.listenerIsOpen(this.listenerHandle);
     }
 
-    public Std::Result::IResult<ITcpConnection, String> accept() {
-        return Tcp.accept(this.listenerHandle);
+    public IResult<ITcpConnection, String> accept() {
+        Int socket = NativeTcp.accept(this.listenerHandle);
+
+        if (socket < 0) {
+            return Failure("Could not accept TCP connection");
+        }
+
+        return Success(TcpConnection(socket, Endpoint("accepted", 0)));
     }
 
     public Bool close() {
-        return Tcp.closeListener(this.listenerHandle);
+        return NativeTcp.closeListener(this.listenerHandle);
     }
 
     public Bool closeIfOpen() {
@@ -37,7 +54,15 @@ public class TcpListener implements ITcpListener {
         return this.close();
     }
 
-    public Std::Result::IResult<Bool, String> tryClose() {
-        return Tcp.tryCloseListener(this.listenerHandle);
+    public IResult<Bool, String> tryClose() {
+        if (!this.isOpen()) {
+            return BoolSuccess(true);
+        }
+
+        if (!this.close()) {
+            return Failure("Could not close TCP listener");
+        }
+
+        return BoolSuccess(true);
     }
 }

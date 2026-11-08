@@ -1,0 +1,17 @@
+public data class HyperAllocFlowV1ChainPoint(Int x, Int y) {
+}
+
+public class HyperAllocFlowV1ChainFactory {
+    public static HyperAllocFlowV1ChainPoint create(Int x, Int y) {
+        return HyperAllocFlowV1ChainPoint(x, y);
+    }
+
+    public static Int sum(HyperAllocFlowV1ChainPoint value) {
+        return value.x + value.y;
+    }
+}
+
+main() {
+    HyperAllocFlowV1ChainPoint value = HyperAllocFlowV1ChainFactory.create(20, 22);
+    println(HyperAllocFlowV1ChainFactory.sum(value).toString());
+}

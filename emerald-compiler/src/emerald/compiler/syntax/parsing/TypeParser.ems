@@ -1,0 +1,52 @@
+namespace emerald::compiler::syntax;
+
+public class TypeParser {
+    private ParserState state;
+
+    public TypeParser(ParserState parserState) {
+        this.state = parserState;
+    }
+
+    public String parse(String message) {
+        Token token = this.state.consumeKind("identifier", message);
+        String value = token.text();
+
+        while (this.state.checkSymbol("::")) {
+            this.state.advance();
+            Token segment = this.state.consumeKind("identifier", "Expected type segment after namespace separator");
+            value = value + "::" + segment.text();
+        }
+
+        if (this.state.checkSymbol("<")) {
+            value = value + this.parseGenericArguments();
+        }
+
+        return value;
+    }
+
+    private String parseGenericArguments() {
+        String value = "<";
+        this.state.advance();
+        Bool first = true;
+        Bool parsing = true;
+
+        while (parsing && !this.state.isAtEnd()) {
+            if (!first) {
+                value = value + ",";
+            }
+
+            value = value + this.parse("Expected generic type argument");
+            first = false;
+
+            if (this.state.checkSymbol(",")) {
+                this.state.advance();
+                continue;
+            }
+
+            parsing = false;
+        }
+
+        this.state.consumeSymbol(">", "Expected '>' after generic type arguments");
+        return value + ">";
+    }
+}

@@ -1,0 +1,65 @@
+namespace emerald::compiler::syntax;
+
+public class FieldDeclaration {
+    private String nameValue;
+    private String typeValue;
+    private Int initializerIndexValue;
+    private Int lineValue;
+    private Int columnValue;
+
+    public FieldDeclaration(String name, String typeName, Int line, Int column) {
+        this.nameValue = name;
+        this.typeValue = typeName;
+        this.initializerIndexValue = 0;
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public FieldDeclaration(String name, String typeName, Int initializerIndex, Int line, Int column) {
+        this.nameValue = name;
+        this.typeValue = typeName;
+        this.initializerIndexValue = initializerIndex;
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public String name() {
+        return this.nameValue + "";
+    }
+
+    public String typeName() {
+        return this.typeValue + "";
+    }
+
+    public Int initializerIndex() {
+        return this.initializerIndexValue;
+    }
+
+    public Bool hasInitializer() {
+        return this.initializerIndexValue != 0;
+    }
+
+    public Int line() {
+        return this.lineValue;
+    }
+
+    public Int column() {
+        return this.columnValue;
+    }
+
+    public FieldDeclaration shifted(Int offset) {
+        return FieldDeclaration(this.nameValue + "", this.typeValue + "", this.shiftIndex(this.initializerIndexValue, offset), this.lineValue, this.columnValue);
+    }
+
+    public Bool isMissing() {
+        return this.nameValue.isEmpty();
+    }
+
+    private Int shiftIndex(Int value, Int offset) {
+        if (value == 0) {
+            return 0;
+        }
+
+        return value + offset;
+    }
+}

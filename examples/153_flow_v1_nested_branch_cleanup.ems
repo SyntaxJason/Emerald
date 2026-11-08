@@ -1,0 +1,21 @@
+public class HyperAllocFlowV1BranchValue {
+    public Int value;
+
+    public HyperAllocFlowV1BranchValue(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    Int result = 0;
+
+    if (true) {
+        HyperAllocFlowV1BranchValue value = HyperAllocFlowV1BranchValue(42);
+        result = value.value;
+    } else {
+        HyperAllocFlowV1BranchValue value = HyperAllocFlowV1BranchValue(0);
+        result = value.value;
+    }
+
+    println(result.toString());
+}

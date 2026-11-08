@@ -1,0 +1,52 @@
+namespace Std::Ui;
+
+use Std::Native::NativeUi;
+use Std::Ui::IUiView;
+
+public class UiWindow {
+    private Int handleValue;
+
+    public UiWindow(Int handle) {
+        this.handleValue = handle;
+    }
+
+    public Int handle() {
+        return this.handleValue;
+    }
+
+    public Bool setHtml(String html) {
+        return NativeUi.setHtml(this.handleValue, html);
+    }
+
+    public Bool mountHtml(String html) {
+        return this.setHtml(html);
+    }
+
+    public Bool refreshHtml(String html) {
+        return this.setHtml(html);
+    }
+
+    public Bool setTitle(String title) {
+        return NativeUi.setTitle(this.handleValue, title);
+    }
+
+    public Bool mount(IUiView view) {
+        return this.setHtml(view.render());
+    }
+
+    public Bool isOpen() {
+        return NativeUi.isOpen(this.handleValue);
+    }
+
+    public String pollAction() {
+        return NativeUi.pollAction(this.handleValue);
+    }
+
+    public Bool show() {
+        return NativeUi.show(this.handleValue);
+    }
+
+    public Bool close() {
+        return NativeUi.close(this.handleValue);
+    }
+}

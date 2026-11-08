@@ -1,0 +1,33 @@
+namespace emerald::compiler::macro;
+
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+
+public class MacroAstFactory {
+    public MacroAstFactory() {
+    }
+
+    public List<Statement> emptyStatements() {
+        List<Statement> result = List();
+        return result;
+    }
+
+    public List<Parameter> emptyParameters() {
+        List<Parameter> result = List();
+        return result;
+    }
+
+    public List<Int> emptyExpressionIndexes() {
+        List<Int> result = List();
+        return result;
+    }
+
+    public Statement simpleStatement(String kind, String name, String typeName, Int expressionIndex, Int targetIndex, Int line, Int column) {
+        return Statement(kind, name, typeName, expressionIndex, targetIndex, this.emptyStatements(), this.emptyStatements(), line, column);
+    }
+
+    public Expression simpleExpression(String kind, String text, Int intValue, Bool boolValue, Int leftIndex, Int rightIndex, Int line, Int column) {
+        return Expression(kind, text, intValue, boolValue, leftIndex, rightIndex, this.emptyExpressionIndexes(), line, column);
+    }
+}

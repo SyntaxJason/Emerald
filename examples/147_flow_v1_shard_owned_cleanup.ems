@@ -1,0 +1,29 @@
+public class HyperAllocFlowV1ShardOwner {
+    public String text;
+
+    public HyperAllocFlowV1ShardOwner(Int value) {
+        this.text = value.toString();
+    }
+}
+
+public class HyperAllocFlowV1ShardMarker {
+    public Int value;
+
+    public HyperAllocFlowV1ShardMarker(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    Int index = 0;
+    Int total = 0;
+
+    while (index < 2) {
+        HyperAllocFlowV1ShardOwner owner = HyperAllocFlowV1ShardOwner(index + 40);
+        HyperAllocFlowV1ShardMarker marker = HyperAllocFlowV1ShardMarker(19);
+        total = total + owner.text.length() + marker.value;
+        index = index + 1;
+    }
+
+    println(total.toString());
+}

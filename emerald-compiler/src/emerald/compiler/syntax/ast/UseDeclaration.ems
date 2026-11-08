@@ -1,0 +1,81 @@
+namespace emerald::compiler::syntax;
+
+public class UseDeclaration {
+    private String qualifiedNameValue;
+    private String importAliasValue;
+    private Int lineValue;
+    private Int columnValue;
+
+    public UseDeclaration(String qualifiedName, String importAlias, Int line, Int column) {
+        this.qualifiedNameValue = qualifiedName;
+        this.importAliasValue = importAlias;
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public String qualifiedName() {
+        return this.qualifiedNameValue + "";
+    }
+
+    public String importAlias() {
+        if (!this.importAliasValue.isEmpty()) {
+            return this.importAliasValue + "";
+        }
+
+        return this.simpleName();
+    }
+
+    public String simpleName() {
+        String normalized = this.qualifiedNameValue.replace("::", ".");
+        List<String> parts = normalized.split(".");
+
+        if (parts.isEmpty()) {
+            return this.qualifiedNameValue + "";
+        }
+
+        return parts.get(parts.length() - 1);
+    }
+
+    public Bool matchesName(String name) {
+        if (!this.importAliasValue.isEmpty() && this.importAliasValue == name) {
+            return true;
+        }
+
+        if (name.isEmpty()) {
+            return false;
+        }
+
+        if (name.indexOf(".") >= 0 || name.indexOf("::") >= 0) {
+            return this.simpleName() == name;
+        }
+
+        if (!this.qualifiedNameValue.endsWith(name)) {
+            return false;
+        }
+
+        Int prefixLength = this.qualifiedNameValue.length() - name.length();
+
+        if (prefixLength == 0) {
+            return true;
+        }
+
+        if (prefixLength >= 2) {
+            String doubleColon = this.qualifiedNameValue.substring(prefixLength - 2, prefixLength);
+
+            if (doubleColon == "::") {
+                return true;
+            }
+        }
+
+        String separator = this.qualifiedNameValue.substring(prefixLength - 1, prefixLength);
+        return separator == ".";
+    }
+
+    public Int line() {
+        return this.lineValue;
+    }
+
+    public Int column() {
+        return this.columnValue;
+    }
+}

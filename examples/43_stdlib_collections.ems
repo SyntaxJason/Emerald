@@ -1,0 +1,51 @@
+use Std::Collections::ArrayList;
+use Std::Collections::HashMap;
+use Std::Collections::HashSet;
+use Std::Collections::IList;
+use Std::Collections::IMap;
+use Std::Collections::IMapEntry;
+use Std::Collections::ISet;
+use Std::Collections::IIterator;
+
+main() {
+    IList<String> names = ArrayList();
+    names.add("Ada");
+    names.add("Grace");
+    names.add("Linus");
+
+    names.forEach((name) -> println(name));
+
+    IList<String> filtered = names.filter((name) -> name == "Grace");
+    println(filtered.get(0));
+
+    IIterator<String> iterator = names.iterator();
+    while (iterator.hasNext()) {
+        println(iterator.next());
+    }
+
+    IMap<String, Int> ages = HashMap();
+    ages.put("Ada", 36);
+    ages.put("Grace", 85);
+
+    println(ages.get("Ada").toString());
+    println(ages.getOr("Missing", 0).toString());
+
+    IList<String> keys = ages.keys();
+    println(keys.size().toString());
+
+    IList<IMapEntry<String, Int>> entries = ages.entries();
+    IMapEntry<String, Int> firstEntry = entries.get(0);
+    println(firstEntry.key());
+    println(firstEntry.value().toString());
+
+    ages.forEach((name, age) -> println(name + age.toString()));
+
+    ISet<String> tags = HashSet();
+    println(tags.add("compiler").toString());
+    println(tags.add("compiler").toString());
+    println(tags.contains("compiler").toString());
+
+    tags.forEach((tag) -> println(tag));
+    println(tags.any((tag) -> tag == "compiler").toString());
+    println(tags.all((tag) -> tag == "compiler").toString());
+}

@@ -1,0 +1,61 @@
+namespace emerald::compiler::hyperallocflow;
+
+public class HyperAllocFlowRamAnalyzer {
+    public HyperAllocFlowRamAnalyzer() {
+    }
+
+    public Void print(HyperAllocFlowReport report) {
+        Int folded = report.estimatedBytesForKind("Folded");
+        Int inlineBytes = report.estimatedBytesForKind("Inline");
+        Int local = report.estimatedBytesForKind("Local");
+        Int pool = report.estimatedBytesForKind("Pool");
+        Int shard = report.estimatedBytesForKind("Shard");
+        Int root = report.estimatedBytesForKind("Root");
+        Int bond = report.estimatedBytesForKind("Bond");
+        Int baseline = folded + inlineBytes + local + pool + shard + root + bond;
+        Int avoidedHeap = folded + inlineBytes + local + pool + shard;
+        Int currentHeap = root + bond;
+        Int reduction = 0;
+
+        if (baseline > 0) {
+            reduction = avoidedHeap * 100 / baseline;
+        }
+
+        println("");
+        println("HyperAlloc Flow RAM Analysis");
+        println("  Estimated allocation baseline: " + baseline.toString() + " B");
+        println("  Estimated current heap pressure: " + currentHeap.toString() + " B");
+        println("  Estimated heap bytes avoided: " + avoidedHeap.toString() + " B");
+        println("  Estimated heap reduction: " + reduction.toString() + "%");
+        println("  Eliminated by Folded: " + folded.toString() + " B");
+        println("  Stored as Inline values: " + inlineBytes.toString() + " B");
+        println("  Stored as Local stack objects: " + local.toString() + " B");
+        println("  Reused through Pool: " + pool.toString() + " B");
+        println("  Reset through Shard: " + shard.toString() + " B");
+        println("  Remaining unique Root heap: " + root.toString() + " B");
+        println("  Remaining shared Bond heap: " + bond.toString() + " B");
+        println("  Safety violations: " + report.safetyIssueCount().toString());
+        println("  Strict unresolved allocations: " + report.strictIssueCount().toString());
+        println("  HyperAlloc Flow heap budget recommendation: " + this.recommendation(report, currentHeap, baseline));
+    }
+
+    private String recommendation(HyperAllocFlowReport report, Int currentHeap, Int baseline) {
+        if (report.safetyIssueCount() > 0) {
+            return "blocked until unsafe lifetime paths are fixed";
+        }
+
+        if (report.strictIssueCount() > 0) {
+            return "recommended after unresolved Flow paths are fixed";
+        }
+
+        if (baseline == 0 || currentHeap == 0) {
+            return "not needed; Flow already removed all estimated heap pressure";
+        }
+
+        if (currentHeap * 4 <= baseline) {
+            return "probably not worth the additional compile time";
+        }
+
+        return "worth testing; a meaningful part of estimated memory still remains Root/Bond-backed";
+    }
+}

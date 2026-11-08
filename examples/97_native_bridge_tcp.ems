@@ -1,0 +1,10 @@
+use Std::Native::NativeTcp;
+
+main() {
+    Int listener = NativeTcp.listen("127.0.0.1", 0);
+    Int port = NativeTcp.listenerPort(listener);
+
+    println(NativeTcp.listenerIsOpen(listener));
+    println(port > 0);
+    println(NativeTcp.closeListener(listener));
+}

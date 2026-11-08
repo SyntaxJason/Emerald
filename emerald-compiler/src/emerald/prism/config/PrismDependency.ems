@@ -1,0 +1,97 @@
+namespace emerald::prism::config;
+
+public class PrismDependency {
+    private String dependencyName;
+    private String dependencyVersion;
+    private String dependencySource;
+
+    public PrismDependency(String name, String version, String source) {
+        this.dependencyName = name;
+        this.dependencyVersion = version;
+        this.dependencySource = source;
+    }
+
+    public String name() {
+        return this.dependencyName;
+    }
+
+    public String version() {
+        return this.dependencyVersion;
+    }
+
+    public String source() {
+        return this.dependencySource;
+    }
+
+    public String sourceKind() {
+        if (this.isGitHub()) {
+            return "github";
+        }
+
+        if (this.isLocal()) {
+            return "path";
+        }
+
+        return "registry";
+    }
+
+    public String cacheVersion() {
+        return this.dependencyVersion.replace("/", "_").replace(":", "_").replace(" ", "_");
+    }
+
+    public Bool isRegistry() {
+        return this.dependencySource == "registry";
+    }
+
+    public Bool isGitHub() {
+        return this.dependencySource.startsWith("github:");
+    }
+
+    public Bool isLocal() {
+        return this.dependencySource.startsWith("path:");
+    }
+
+    public String githubRepository() {
+        if (!this.isGitHub()) {
+            return "";
+        }
+
+        return this.dependencySource.substring(7, this.dependencySource.length());
+    }
+
+    public String githubUrl() {
+        if (!this.isGitHub()) {
+            return "";
+        }
+
+        return "https://github.com/" + this.githubRepository();
+    }
+
+    public String githubArchiveUrl() {
+        if (!this.isGitHub()) {
+            return "";
+        }
+
+        return this.githubUrl() + "/archive/" + this.dependencyVersion + ".zip";
+    }
+
+    public String localPath() {
+        if (!this.isLocal()) {
+            return "";
+        }
+
+        return this.dependencySource.substring(5, this.dependencySource.length());
+    }
+
+    public String displaySource() {
+        if (this.isGitHub()) {
+            return "github:" + this.githubRepository() + "@" + this.dependencyVersion;
+        }
+
+        if (this.isLocal()) {
+            return "path:" + this.localPath();
+        }
+
+        return "registry";
+    }
+}

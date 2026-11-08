@@ -1,0 +1,80 @@
+namespace emerald::compiler::diagnostic;
+
+public class DiagnosticBag {
+    private List<Diagnostic> diagnosticItems;
+    private String currentPathValue;
+
+    public DiagnosticBag() {
+        this.diagnosticItems = List();
+        this.currentPathValue = "";
+    }
+
+    public Void enterSource(String path) {
+        this.currentPathValue = path;
+    }
+
+    public Void leaveSource() {
+        this.currentPathValue = "";
+    }
+
+    public Void error(String message, Int line, Int column) {
+        if (!this.currentPathValue.isEmpty()) {
+            this.diagnosticItems.add(Diagnostic("error", this.currentPathValue, message, line, column));
+            return;
+        }
+
+        this.diagnosticItems.add(Diagnostic("error", message, line, column));
+    }
+
+    public Void errorIn(String path, String message, Int line, Int column) {
+        this.diagnosticItems.add(Diagnostic("error", path, message, line, column));
+    }
+
+    public Void info(String message, Int line, Int column) {
+        if (!this.currentPathValue.isEmpty()) {
+            this.diagnosticItems.add(Diagnostic("info", this.currentPathValue, message, line, column));
+            return;
+        }
+
+        this.diagnosticItems.add(Diagnostic("info", message, line, column));
+    }
+
+    public Void infoIn(String path, String message, Int line, Int column) {
+        this.diagnosticItems.add(Diagnostic("info", path, message, line, column));
+    }
+
+    public List<Diagnostic> items() {
+        return this.diagnosticItems;
+    }
+
+    public Int size() {
+        return this.diagnosticItems.length();
+    }
+
+    public Bool isEmpty() {
+        return this.diagnosticItems.isEmpty();
+    }
+
+    public Bool hasErrors() {
+        Int index = 0;
+
+        while (index < this.diagnosticItems.length()) {
+            if (this.diagnosticItems.get(index).isError()) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    public Void printAll() {
+        Int index = 0;
+
+        while (index < this.diagnosticItems.length()) {
+            println(this.diagnosticItems.get(index).format());
+            index = index + 1;
+        }
+    }
+}

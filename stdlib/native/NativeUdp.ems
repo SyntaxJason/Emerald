@@ -1,0 +1,38 @@
+namespace Std::Native;
+
+public class NativeUdp {
+    public NativeUdp() {
+    }
+
+    public static Int bind(String host, Int port) {
+        return -1;
+    }
+
+    public static Bool isOpen(Int handle) {
+        return false;
+    }
+
+    public static Int localPort(Int handle) {
+        return 0;
+    }
+
+    public static Bool sendText(Int handle, String host, Int port, String text) {
+        return false;
+    }
+
+    public static String receiveText(Int handle) {
+        return "";
+    }
+
+    public static String lastSenderHost(Int handle) {
+        return "";
+    }
+
+    public static Int lastSenderPort(Int handle) {
+        return 0;
+    }
+
+    public static Bool close(Int handle) {
+        return false;
+    }
+}

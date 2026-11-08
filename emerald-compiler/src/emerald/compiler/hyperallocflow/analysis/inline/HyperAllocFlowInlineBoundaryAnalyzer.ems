@@ -1,0 +1,543 @@
+namespace emerald::compiler::hyperallocflow::analysis::inline;
+
+use emerald::compiler::hyperallocflow::analysis::support::HyperAllocFlowProgramCatalog;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class HyperAllocFlowInlineBoundaryAnalyzer {
+    private HyperAllocFlowProgramCatalog catalog;
+
+    public HyperAllocFlowInlineBoundaryAnalyzer(HyperAllocFlowProgramCatalog programCatalog) {
+        this.catalog = programCatalog;
+    }
+
+    public Bool isInlineType(String typeName, SyntaxProgram program) {
+        return this.isInlineDeclaration(this.catalog.findClass(typeName, program), program);
+    }
+
+    // The single Inline value-class predicate shared by Flow and the List
+    // lowering (NativeListEmitter), so storage modes can never disagree: a data
+    // class of scalar fields (Int, Float, Char, Bool) without initializers,
+    // at most 32 payload bytes, and constructors that only store their
+    // parameters into the fields in declaration order.
+    public Bool isInlineDeclaration(ClassDeclaration declaration, SyntaxProgram program) {
+        if (declaration.isMissing() || declaration.isInterface()) {
+            return false;
+        }
+
+        if (!declaration.parentName().isEmpty() || declaration.implementedInterfaces().length() > 0 || declaration.fields().length() == 0) {
+            return false;
+        }
+
+        Int offset = 0;
+        Int alignment = 1;
+        Int index = 0;
+
+        while (index < declaration.fields().length()) {
+            FieldDeclaration field = declaration.fields().get(index);
+            Int size = this.inlineFieldBytes(field.typeName());
+
+            if (size == 0 || field.hasInitializer()) {
+                return false;
+            }
+
+            offset = this.alignTo(offset, size) + size;
+
+            if (size > alignment) {
+                alignment = size;
+            }
+
+            index = index + 1;
+        }
+
+        if (this.alignTo(offset, alignment) > 32) {
+            return false;
+        }
+
+        index = 0;
+
+        while (index < declaration.methodCount()) {
+            MethodDeclaration method = declaration.methodAt(index);
+
+            if (method.isConstructor() && !this.catalog.constructorStoresParametersInOrder(method, declaration, program)) {
+                return false;
+            }
+
+            index = index + 1;
+        }
+
+        if (declaration.isData()) { return true; }
+        Int cached = this.catalog.inferredValue(declaration.fullName(), program);
+        if (cached >= 0) { return cached == 1; }
+        Bool eligible = this.inferImmutableValue(declaration, program);
+        this.catalog.cacheInferredValue(declaration.fullName(), program, eligible);
+        return eligible;
+    }
+
+    // Ordinary reference classes can become values only when every use has a
+    // known copy interpretation. Unknown boundaries retain reference semantics.
+    private Bool inferImmutableValue(ClassDeclaration value, SyntaxProgram program) {
+        Int index = 0;
+        while (index < value.methodCount()) {
+            if (!value.methodAt(index).isConstructor()) { return false; }
+            index = index + 1;
+        }
+        index = 0;
+        while (index < program.classCount()) {
+            ClassDeclaration owner = program.classAt(index);
+            if (this.valueType(owner.parentName(), value)) { return false; }
+            Bool specialized = owner.name().contains("<" + value.name() + ">") || owner.name().contains("<" + value.fullName() + ">");
+            Bool trustedCollection = owner.fullName().startsWith("Std::Collections::");
+            Bool trustedContract = owner.isInterface() && owner.fullName().startsWith("Std::Functional::");
+            Bool collection = specialized && (trustedCollection || trustedContract);
+            Int fieldIndex = 0;
+            while (!collection && fieldIndex < owner.fields().length()) {
+                String fieldType = owner.fields().get(fieldIndex).typeName();
+                if (this.valueType(fieldType, value) || this.valueContainer(fieldType, value)) { return false; }
+                FieldDeclaration field = owner.fields().get(fieldIndex);
+                if (field.hasInitializer()) {
+                    List<String> values = List();
+                    List<String> containers = List();
+                    this.gatherValueNames(program.statements(), value, values, containers);
+                    if (!this.checkValueExpression(field.initializerIndex(), value, values, containers, program, false, false)) { return false; }
+                }
+                fieldIndex = fieldIndex + 1;
+            }
+            // Collection implementation bodies are lowered through the same
+            // inline storage ABI as explicit data classes.
+            Int methodIndex = 0;
+            while (!collection && methodIndex < owner.methodCount()) {
+                MethodDeclaration method = owner.methodAt(methodIndex);
+                if (!method.isConstructor() && (this.valueType(method.returnTypeName(), value) || this.valueContainer(method.returnTypeName(), value))) { return false; }
+                Int parameterIndex = 0;
+                while (parameterIndex < method.parameterCount()) {
+                    String parameterType = method.parameterAt(parameterIndex).typeName();
+                    if (this.valueType(parameterType, value) || this.valueContainer(parameterType, value)) { return false; }
+                    parameterIndex = parameterIndex + 1;
+                }
+                if (!this.valueStatementsSafe(method.statements(), value, program)) { return false; }
+                methodIndex = methodIndex + 1;
+            }
+            index = index + 1;
+        }
+        return this.valueStatementsSafe(program.statements(), value, program);
+    }
+
+    private Bool valueType(String typeName, ClassDeclaration value) {
+        return typeName == value.name() || typeName == value.fullName();
+    }
+
+    private Bool valueContainer(String typeName, ClassDeclaration value) {
+        Int opening = typeName.indexOf("<");
+        if (opening < 0 || !typeName.endsWith(">")) { return false; }
+        String base = typeName.substring(0, opening);
+        if (base != "List" && base != "ArrayList" && base != "IList" && base != "Std::Collections::List" && base != "Std::Collections::ArrayList" && base != "Std::Collections::IList") { return false; }
+        return this.valueType(typeName.substring(opening + 1, typeName.length() - 1), value);
+    }
+
+    private Void gatherValueNames(List<Statement> statements, ClassDeclaration value, List<String> values, List<String> containers) {
+        Int index = 0;
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+            if (statement.isVariable()) {
+                if (this.valueType(statement.typeName(), value)) { values.add(statement.name()); }
+                if (this.valueContainer(statement.typeName(), value)) { containers.add(statement.name()); }
+            }
+            this.gatherValueNames(statement.bodyStatements(), value, values, containers);
+            this.gatherValueNames(statement.elseStatements(), value, values, containers);
+            index = index + 1;
+        }
+    }
+
+    private Bool valueStatementsSafe(List<Statement> statements, ClassDeclaration value, SyntaxProgram program) {
+        List<String> values = List();
+        List<String> containers = List();
+        this.gatherValueNames(program.statements(), value, values, containers);
+        this.gatherValueNames(statements, value, values, containers);
+        return this.checkValueStatements(statements, value, values, containers, program);
+    }
+
+    private Bool checkValueStatements(List<Statement> statements, ClassDeclaration value, List<String> values, List<String> containers, SyntaxProgram program) {
+        Int index = 0;
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+            Bool allowValue = statement.isVariable() && this.valueType(statement.typeName(), value);
+            Bool allowContainer = statement.isVariable() && this.valueContainer(statement.typeName(), value);
+            if (statement.isAssign()) {
+                allowValue = values.contains(statement.name());
+                allowContainer = containers.contains(statement.name());
+            }
+            if (!this.checkValueExpression(statement.expressionIndex(), value, values, containers, program, allowValue, allowContainer)) { return false; }
+            if (!this.checkValueExpression(statement.targetIndex(), value, values, containers, program, false, false)) { return false; }
+            if (statement.isFieldAssign()) {
+                Expression target = program.expression(statement.targetIndex());
+                if (this.valueExpression(target.leftIndex(), value, values, containers, program)) { return false; }
+            }
+            if (!this.checkValueStatements(statement.bodyStatements(), value, values, containers, program) || !this.checkValueStatements(statement.elseStatements(), value, values, containers, program)) { return false; }
+            index = index + 1;
+        }
+        return true;
+    }
+
+    private Bool valueExpression(Int expressionIndex, ClassDeclaration value, List<String> values, List<String> containers, SyntaxProgram program) {
+        if (expressionIndex == 0) { return false; }
+        Expression expression = program.expression(expressionIndex);
+        if (expression.kind() == "name") { return values.contains(expression.text()); }
+        if (expression.kind() == "call") { return this.valueType(expression.text(), value); }
+        if (expression.kind() == "methodcall" && (expression.text() == "get" || expression.text() == "removeAt")) {
+            Expression receiver = program.expression(expression.leftIndex());
+            return receiver.kind() == "name" && containers.contains(receiver.text());
+        }
+        return false;
+    }
+
+    private Bool checkValueExpression(Int expressionIndex, ClassDeclaration value, List<String> values, List<String> containers, SyntaxProgram program, Bool allowValue, Bool allowContainer) {
+        if (expressionIndex == 0) { return true; }
+        Expression expression = program.expression(expressionIndex);
+        if (this.valueExpression(expressionIndex, value, values, containers, program) && !allowValue) { return false; }
+        if (expression.kind() == "name" && containers.contains(expression.text()) && !allowContainer) { return false; }
+        if (expression.kind() == "call" && this.valueContainer(expression.text(), value) && !allowContainer) { return false; }
+        if (expression.kind() == "field") {
+            // A field read copies a scalar; writes were rejected above.
+            if (!this.checkValueExpression(expression.leftIndex(), value, values, containers, program, true, false)) { return false; }
+        } else if (expression.kind() == "methodcall") {
+            Expression receiver = program.expression(expression.leftIndex());
+            Bool collection = receiver.kind() == "name" && containers.contains(receiver.text());
+            String method = expression.text();
+            if (collection && method != "add" && method != "addAt" && method != "set" && method != "get" && method != "removeAt" && method != "length" && method != "size" && method != "clear" && method != "isEmpty") { return false; }
+            if (!this.checkValueExpression(expression.leftIndex(), value, values, containers, program, false, collection)) { return false; }
+            Int argument = 0;
+            while (argument < expression.argumentCount()) {
+                Bool copied = collection && ((method == "add" && argument == 0) || ((method == "addAt" || method == "set") && argument == 1));
+                if (!this.checkValueExpression(expression.argumentIndexAt(argument), value, values, containers, program, copied, false)) { return false; }
+                argument = argument + 1;
+            }
+            return true;
+        } else {
+            if (!this.checkValueExpression(expression.leftIndex(), value, values, containers, program, false, false)) { return false; }
+        }
+        if (!this.checkValueExpression(expression.rightIndex(), value, values, containers, program, false, false)) { return false; }
+        Int argument = 0;
+        while (argument < expression.argumentCount()) {
+            if (!this.checkValueExpression(expression.argumentIndexAt(argument), value, values, containers, program, false, false)) { return false; }
+            argument = argument + 1;
+        }
+        if (expression.quoteStatements().length() > 0 && !this.checkValueStatements(expression.quoteStatements(), value, values, containers, program)) { return false; }
+        return true;
+    }
+
+    private Int inlineFieldBytes(String typeName) {
+        if (typeName == "Int" || typeName == "Float") {
+            return 8;
+        }
+
+        if (typeName == "Char") {
+            return 4;
+        }
+
+        if (typeName == "Bool") {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    private Int alignTo(Int value, Int alignment) {
+        Int remainder = value % alignment;
+
+        if (remainder == 0) {
+            return value;
+        }
+
+        return value + alignment - remainder;
+    }
+
+    public Bool canInlineReturnCall(Expression expression, String expectedType, SyntaxProgram program) {
+        MethodDeclaration method = this.staticMethod(expression, program);
+        return method.returnTypeName() == expectedType && this.isInlineReturnMethod(method, program);
+    }
+
+    public Bool isInlineReturnMethod(MethodDeclaration method, SyntaxProgram program) {
+        String expectedType = method.returnTypeName();
+
+        if (method.isMissing() || !method.isStatic() || !this.isInlineType(expectedType, program)) {
+            return false;
+        }
+
+        if (!this.parametersArePrimitive(method) || method.statements().length() != 1 || !method.statements().get(0).isReturn()) {
+            return false;
+        }
+
+        Expression returned = program.expression(method.statements().get(0).expressionIndex());
+
+        if (returned.kind() != "call" || returned.text() != expectedType) {
+            return false;
+        }
+
+        ClassDeclaration declaration = this.catalog.findClass(expectedType, program);
+
+        if (returned.argumentIndexes().length() != declaration.fields().length()) {
+            return false;
+        }
+
+        Int index = 0;
+        while (index < returned.argumentIndexes().length()) {
+            if (!this.expressionUsesPrimitiveParameters(returned.argumentIndexes().get(index), method, program)) {
+                return false;
+            }
+            index = index + 1;
+        }
+
+        return true;
+    }
+
+    public MethodDeclaration inlineReturnMethod(Expression expression, SyntaxProgram program) {
+        return this.staticMethod(expression, program);
+    }
+
+    public Expression inlineReturnCreation(Expression expression, SyntaxProgram program) {
+        MethodDeclaration method = this.inlineReturnMethod(expression, program);
+
+        if (method.isMissing() || method.statements().length() != 1) {
+            return program.expression(0);
+        }
+
+        return program.expression(method.statements().get(0).expressionIndex());
+    }
+
+    public Bool canInlineReceiverCall(String ownerType, String methodName, Int parameterCount, SyntaxProgram program) {
+        if (!this.isInlineType(ownerType, program)) {
+            return false;
+        }
+
+        ClassDeclaration declaration = this.catalog.findClass(ownerType, program);
+        MethodDeclaration method = this.catalog.findMethod(ownerType, methodName, parameterCount, program);
+
+        if (method.isMissing() || (method.returnTypeName() != "Int" && method.returnTypeName() != "Bool")) {
+            return false;
+        }
+
+        if (!this.parametersArePrimitive(method) || method.statements().length() != 1 || !method.statements().get(0).isReturn()) {
+            return false;
+        }
+
+        return this.expressionUsesInlineReceiver(method.statements().get(0).expressionIndex(), declaration, method, program);
+    }
+
+    public Bool canInlineStaticValueCall(Expression expression, SyntaxProgram program) {
+        MethodDeclaration method = this.staticMethod(expression, program);
+
+        if (method.isMissing() || (method.returnTypeName() != "Int" && method.returnTypeName() != "Bool")) {
+            return false;
+        }
+
+        if (method.statements().length() != 1 || !method.statements().get(0).isReturn()) {
+            return false;
+        }
+
+        Int parameterIndex = 0;
+
+        while (parameterIndex < method.parameters().length()) {
+            String typeName = method.parameters().get(parameterIndex).typeName();
+
+            if (typeName != "Int" && typeName != "Bool" && !this.isInlineType(typeName, program)) {
+                return false;
+            }
+
+            parameterIndex = parameterIndex + 1;
+        }
+
+        return this.expressionUsesInlineParameters(method.statements().get(0).expressionIndex(), method, program);
+    }
+
+    public MethodDeclaration staticMethod(Expression expression, SyntaxProgram program) {
+        if (expression.kind() != "methodcall" || expression.leftIndex() == 0) {
+            return this.missingMethod();
+        }
+
+        Expression receiver = program.expression(expression.leftIndex());
+
+        if (receiver.kind() != "name") {
+            return this.missingMethod();
+        }
+
+        return this.catalog.findStaticMethod(receiver.text(), expression.text(), expression.argumentIndexes().length(), program);
+    }
+
+    public Bool staticCallAcceptsInlineAlias(Expression expression, List<String> aliases, String aliasType, SyntaxProgram program) {
+        if (!this.canInlineStaticValueCall(expression, program)) {
+            return false;
+        }
+
+        MethodDeclaration method = this.staticMethod(expression, program);
+        Int index = 0;
+
+        while (index < expression.argumentIndexes().length()) {
+            Expression argument = program.expression(expression.argumentIndexes().get(index));
+
+            if (argument.kind() == "name" && aliases.contains(argument.text())) {
+                if (method.parameters().get(index).typeName() != aliasType) {
+                    return false;
+                }
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+
+    private Bool parametersArePrimitive(MethodDeclaration method) {
+        Int index = 0;
+
+        while (index < method.parameters().length()) {
+            String typeName = method.parameters().get(index).typeName();
+
+            if (typeName != "Int" && typeName != "Bool") {
+                return false;
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+
+    private Bool expressionUsesPrimitiveParameters(Int expressionIndex, MethodDeclaration method, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "int" || expression.kind() == "bool") {
+            return true;
+        }
+
+        if (expression.kind() == "name") {
+            return this.parameterIsPrimitive(expression.text(), method);
+        }
+
+        if (expression.kind() == "unary") {
+            return this.expressionUsesPrimitiveParameters(expression.leftIndex(), method, program);
+        }
+
+        if (expression.kind() == "binary") {
+            return this.expressionUsesPrimitiveParameters(expression.leftIndex(), method, program) && this.expressionUsesPrimitiveParameters(expression.rightIndex(), method, program);
+        }
+
+        return false;
+    }
+
+    private Bool expressionUsesInlineReceiver(Int expressionIndex, ClassDeclaration declaration, MethodDeclaration method, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "int" || expression.kind() == "bool") {
+            return true;
+        }
+
+        if (expression.kind() == "name") {
+            return this.parameterIsPrimitive(expression.text(), method);
+        }
+
+        if (expression.kind() == "field") {
+            Expression receiver = program.expression(expression.leftIndex());
+            return receiver.kind() == "name" && receiver.text() == "this" && this.fieldIsPrimitive(expression.text(), declaration);
+        }
+
+        if (expression.kind() == "unary") {
+            return this.expressionUsesInlineReceiver(expression.leftIndex(), declaration, method, program);
+        }
+
+        if (expression.kind() == "binary") {
+            return this.expressionUsesInlineReceiver(expression.leftIndex(), declaration, method, program) && this.expressionUsesInlineReceiver(expression.rightIndex(), declaration, method, program);
+        }
+
+        return false;
+    }
+
+    private Bool expressionUsesInlineParameters(Int expressionIndex, MethodDeclaration method, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "int" || expression.kind() == "bool") {
+            return true;
+        }
+
+        if (expression.kind() == "name") {
+            return this.parameterIsPrimitive(expression.text(), method);
+        }
+
+        if (expression.kind() == "field") {
+            Expression receiver = program.expression(expression.leftIndex());
+            String receiverType = this.parameterType(receiver.text(), method);
+            ClassDeclaration declaration = this.catalog.findClass(receiverType, program);
+            return receiver.kind() == "name" && this.isInlineType(receiverType, program) && this.fieldIsPrimitive(expression.text(), declaration);
+        }
+
+        if (expression.kind() == "unary") {
+            return this.expressionUsesInlineParameters(expression.leftIndex(), method, program);
+        }
+
+        if (expression.kind() == "binary") {
+            return this.expressionUsesInlineParameters(expression.leftIndex(), method, program) && this.expressionUsesInlineParameters(expression.rightIndex(), method, program);
+        }
+
+        return false;
+    }
+
+    private Bool parameterIsPrimitive(String name, MethodDeclaration method) {
+        String typeName = this.parameterType(name, method);
+        return typeName == "Int" || typeName == "Bool";
+    }
+
+    private String parameterType(String name, MethodDeclaration method) {
+        Int index = 0;
+
+        while (index < method.parameters().length()) {
+            Parameter parameter = method.parameters().get(index);
+
+            if (parameter.name() == name) {
+                return parameter.typeName();
+            }
+
+            index = index + 1;
+        }
+
+        return "";
+    }
+
+    private Bool fieldIsPrimitive(String name, ClassDeclaration declaration) {
+        Int index = 0;
+
+        while (index < declaration.fields().length()) {
+            FieldDeclaration field = declaration.fields().get(index);
+
+            if (field.name() == name) {
+                return field.typeName() == "Int" || field.typeName() == "Bool";
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    private MethodDeclaration missingMethod() {
+        List<Parameter> parameters = List();
+        List<Statement> statements = List();
+        return MethodDeclaration("", "", "Void", parameters, statements, false, false, 1, 1);
+    }
+}

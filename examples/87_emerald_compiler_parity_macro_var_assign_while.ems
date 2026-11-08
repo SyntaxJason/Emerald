@@ -1,0 +1,24 @@
+macro WhileGeneratedLogs on Method {
+    Int index = 1;
+
+    while (index <= 3) {
+        StatementAST line = Stmt::expr(
+            Expr::call("println", [Expr::str("while " + index.toString())])
+        );
+
+        method.body.append(line);
+        index = index + 1;
+    }
+}
+
+public class WhileProbe {
+    @WhileGeneratedLogs
+    public Void run() {
+        println("body");
+    }
+}
+
+main() {
+    WhileProbe probe = WhileProbe();
+    probe.run();
+}

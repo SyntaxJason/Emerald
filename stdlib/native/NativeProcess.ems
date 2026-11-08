@@ -1,0 +1,19 @@
+namespace Std::Native;
+
+public class NativeProcess {
+    public NativeProcess() {
+    }
+
+    public static List<String> args() {
+        List<String> values = List();
+        return values;
+    }
+
+    public static String command() {
+        return "";
+    }
+
+    public static Int exit(Int code) {
+        return code;
+    }
+}

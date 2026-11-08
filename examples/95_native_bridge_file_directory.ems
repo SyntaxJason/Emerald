@@ -1,0 +1,22 @@
+use Std::Native::NativeDirectory;
+use Std::Native::NativeFile;
+use Std::Native::NativePath;
+
+main() {
+    String root = NativePath.join(NativePath.current(), "test-results-native");
+    String directory = NativePath.join(root, "bridge_io");
+    String file = NativePath.join(directory, "hello.txt");
+
+    NativeDirectory.create(root);
+    NativeDirectory.create(directory);
+    NativeFile.writeText(file, "hello");
+    NativeFile.appendText(file, " world");
+
+    println(NativeFile.exists(file));
+    println(NativeFile.isFile(file));
+    println(NativeFile.size(file));
+    println(NativeFile.readText(file));
+
+    NativeFile.delete(file);
+    NativeDirectory.delete(directory);
+}

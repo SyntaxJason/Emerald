@@ -1,0 +1,53 @@
+namespace emerald::compiler::hyperallocflow::analysis::container;
+
+public class HyperAllocFlowContainerViewState {
+    private Bool activeValue;
+    private Bool invalidatedValue;
+    private Bool unsafeValue;
+
+    public HyperAllocFlowContainerViewState() {
+        this.activeValue = true;
+        this.invalidatedValue = false;
+        this.unsafeValue = false;
+    }
+
+    public HyperAllocFlowContainerViewState(Bool active, Bool invalidated, Bool unsafe) {
+        this.activeValue = active;
+        this.invalidatedValue = invalidated;
+        this.unsafeValue = unsafe;
+    }
+
+    public Bool active() {
+        return this.activeValue;
+    }
+
+    public Bool invalidated() {
+        return this.invalidatedValue;
+    }
+
+    public Bool unsafe() {
+        return this.unsafeValue;
+    }
+
+    public Void deactivate() {
+        this.activeValue = false;
+    }
+
+    public Void invalidate() {
+        this.invalidatedValue = true;
+    }
+
+    public Void reject() {
+        this.unsafeValue = true;
+    }
+
+    public Void merge(HyperAllocFlowContainerViewState left, HyperAllocFlowContainerViewState right) {
+        this.activeValue = left.active() || right.active();
+        this.invalidatedValue = left.invalidated() || right.invalidated();
+        this.unsafeValue = left.unsafe() || right.unsafe();
+    }
+
+    public HyperAllocFlowContainerViewState copy() {
+        return HyperAllocFlowContainerViewState(this.activeValue, this.invalidatedValue, this.unsafeValue);
+    }
+}

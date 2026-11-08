@@ -1,0 +1,28 @@
+public class HyperAllocFlowV1DerivedViewItem {
+    private String storedValue;
+
+    public HyperAllocFlowV1DerivedViewItem(String value) {
+        this.storedValue = value;
+    }
+
+    public String value() {
+        return this.storedValue;
+    }
+}
+
+public class HyperAllocFlowV1DerivedViewReader {
+    public static Int parse(String value) {
+        return value.toInt();
+    }
+
+    public static Int read(List<HyperAllocFlowV1DerivedViewItem> items) {
+        HyperAllocFlowV1DerivedViewItem item = items.get(0);
+        return HyperAllocFlowV1DerivedViewReader.parse(item.value());
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1DerivedViewItem> items = List();
+    items.add(HyperAllocFlowV1DerivedViewItem("42"));
+    println(HyperAllocFlowV1DerivedViewReader.read(items).toString());
+}

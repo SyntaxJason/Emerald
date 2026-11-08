@@ -1,0 +1,16 @@
+public class HyperAllocFlowV1UnusedViewBox {
+    public Int value;
+
+    public HyperAllocFlowV1UnusedViewBox(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1UnusedViewBox> values = List();
+    HyperAllocFlowV1UnusedViewBox owned = HyperAllocFlowV1UnusedViewBox(42);
+    values.add(owned);
+    HyperAllocFlowV1UnusedViewBox view = values.get(0);
+    println(view.value.toString());
+    values.clear();
+}

@@ -24,3 +24,29 @@ stdlib/**/*.orig
 stdlib/**/*.tmp
 stdlib/**/*.log
 .zip
+
+# Self-hosted Emerald compiler, runtime, tests, tooling
+!emerald-compiler/
+!emerald-compiler/**
+!runtime/
+!runtime/**
+!tests/
+!tests/**
+!docs/
+!docs/**
+!demos/
+!demos/**
+!examples/
+!examples/**
+!scripts/
+!scripts/**
+!docker/
+!docker/**
+!emerald.sh
+
+# Build artifacts / editor caches inside the whitelisted folders
+emerald-compiler/emerald-compiler
+emerald-compiler/.emerald-studio/
+demos/flow_memory_demo
+demos/flow_memory_proof
+*.orig

@@ -38,6 +38,7 @@ module Emerald
       property is_override : Bool
       property is_default : Bool
       property is_abstract : Bool
+      property is_static : Bool
       property is_synchronized : Bool
       property is_async : Bool
       property deprecated_message : String?
@@ -45,6 +46,7 @@ module Emerald
 
       def initialize(@visibility, @name, @params, @return_type, @body,
                      @is_override = false, @is_default = false, @is_abstract = false)
+        @is_static = false
         @is_synchronized = false
         @is_async = false
         @deprecated_message = nil

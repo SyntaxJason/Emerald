@@ -1,0 +1,25 @@
+public class HyperAllocFlowV1ContinueValue {
+    public Int value;
+
+    public HyperAllocFlowV1ContinueValue(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    Int index = 0;
+    Int total = 0;
+
+    while (index < 5) {
+        HyperAllocFlowV1ContinueValue value = HyperAllocFlowV1ContinueValue(index);
+        index = index + 1;
+
+        if (index < 5) {
+            continue;
+        }
+
+        total = total + value.value + 38;
+    }
+
+    println(total.toString());
+}

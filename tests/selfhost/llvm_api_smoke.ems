@@ -1,0 +1,61 @@
+use Std::Collections::ArrayList;
+use Std::Llvm::LlvmPrelude;
+
+main() {
+    if (!LlvmNative.initializeNativeTarget()) {
+        println("llvm-api-smoke-fail: native intrinsic dispatch");
+        println(LlvmNative.lastError());
+        return;
+    }
+
+    if (!Llvm.initializeNativeTarget()) {
+        println("llvm-api-smoke-fail: initialize native target");
+        println(Llvm.lastError());
+        return;
+    }
+
+    String triple = Llvm.defaultTargetTriple();
+    String objectPath = "llvm-api-child" + Llvm.nativeObjectExtension();
+    String executablePath = "llvm-api-child" + Llvm.nativeExecutableExtension();
+    LlvmContext context = Llvm.createContext();
+    LlvmModule llvmModule = context.createModule("emerald_selfhost_api_smoke");
+    LlvmBuilder builder = context.createBuilder();
+    llvmModule.setTarget(triple);
+
+    LlvmType int32 = context.int32Type();
+    LlvmType mainType = context.functionType(int32);
+    LlvmFunction mainFunction = llvmModule.addFunction("main", mainType);
+    LlvmBasicBlock entry = mainFunction.appendBlock("entry");
+    builder.positionAtEnd(entry);
+    builder.returnValue(Llvm.constInt(int32, 42));
+
+    if (!llvmModule.verify()) {
+        println("llvm-api-smoke-fail: verify module");
+        println(llvmModule.verifyMessage());
+        return;
+    }
+
+    if (!llvmModule.emitObjectFileFor(triple, objectPath)) {
+        println("llvm-api-smoke-fail: emit object");
+        println(Llvm.lastError());
+        return;
+    }
+
+    ArrayList<String> objects = ArrayList();
+    objects.add(objectPath);
+    LlvmNativeLinker linker = LlvmNativeLinker();
+
+    if (!linker.linkExecutable(executablePath, objects)) {
+        println("llvm-api-smoke-fail: link executable");
+        println(linker.lastCommand());
+        println(linker.lastOutput());
+        println(linker.lastError());
+        return;
+    }
+
+    builder.dispose();
+    llvmModule.dispose();
+    context.dispose();
+    println("llvm-api-smoke-ok");
+    return;
+}

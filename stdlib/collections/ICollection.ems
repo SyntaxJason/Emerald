@@ -1,5 +1,8 @@
 namespace Std::Collections;
 
+use Std::Collections::IIterable;
+use Std::Functional::IConsumer;
+use Std::Functional::IPredicate;
 public interface ICollection<T> extends IIterable<T> {
     public Int size();
 

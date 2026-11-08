@@ -1,0 +1,17 @@
+use Std::Time::Duration;
+use Std::Time::OffsetDateTime;
+
+main() {
+    Duration short = Duration(1500);
+    Duration long = Duration(60000);
+    Duration total = short.plus(long);
+
+    OffsetDateTime time = OffsetDateTime(2026, 5, 14, 2, 20, 0, 120);
+    OffsetDateTime utc = time.withOffsetMinutes(0);
+
+    println(short.toSeconds().toString());
+    println(total.toString());
+    println(time.toString());
+    println(utc.toString());
+    println(time.hasSameOffset(utc).toString());
+}

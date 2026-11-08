@@ -1,0 +1,28 @@
+namespace Std::Native;
+
+public class NativeTime {
+    public NativeTime() {
+    }
+
+    public static Int monotonicMillis() {
+        return 0;
+    }
+
+    // Monotonic clock in nanoseconds from an arbitrary fixed origin.
+    public static Int monotonicNanos() {
+        return 0;
+    }
+
+    // Wall clock in milliseconds since 1970-01-01T00:00:00Z.
+    public static Int unixMillis() {
+        return 0;
+    }
+
+    // Local time zone offset from UTC, in minutes, at the given Unix second.
+    public static Int localOffsetMinutes(Int unixSeconds) {
+        return 0;
+    }
+
+    public static Void sleepMillis(Int millis) {
+    }
+}

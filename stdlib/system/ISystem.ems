@@ -12,4 +12,16 @@ public interface ISystem {
     public String pathSeparator();
 
     public String directorySeparator();
+
+    public String arch();
+
+    public Int processorCount();
+
+    public String userName();
+
+    public String hostName();
+
+    public String homeDirectory();
+
+    public String tempDirectory();
 }

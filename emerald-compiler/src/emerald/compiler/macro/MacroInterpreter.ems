@@ -1,0 +1,457 @@
+namespace emerald::compiler::macro;
+
+use emerald::compiler::diagnostic::DiagnosticBag;
+use emerald::compiler::syntax::Annotation;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MacroDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class MacroInterpreter {
+    private MacroInterpreterContext context;
+    private MacroAstFactory ast;
+    private MacroValueConverter values;
+    private MacroAstAccess access;
+    private MacroBuilderEvaluator builders;
+
+    public MacroInterpreter(SyntaxProgram program, DiagnosticBag diagnostics) {
+        this.context = MacroInterpreterContext(program, diagnostics);
+        this.ast = MacroAstFactory();
+        this.values = MacroValueConverter(this.context, this.ast);
+        this.access = MacroAstAccess(this.context, this.values, this.ast);
+        MacroEmHtmlCompiler emHtml = MacroEmHtmlCompiler(this.context, this.values, this.ast);
+        this.builders = MacroBuilderEvaluator(this.context, this.values, this.ast, emHtml);
+    }
+
+    public Void runForClass(MacroDeclaration macroDeclaration, ClassDeclaration classDeclaration, Annotation annotation) {
+        this.reset();
+        this.context.declare("class", this.context.factory().classValue(classDeclaration));
+        this.context.declare("args", this.annotationArguments(annotation));
+        this.evaluateStatements(macroDeclaration.statements());
+    }
+
+    public Void runForMethod(MacroDeclaration macroDeclaration, MethodDeclaration methodDeclaration, Annotation annotation) {
+        this.reset();
+        this.context.declare("method", this.context.factory().methodValue(methodDeclaration));
+        this.context.declare("args", this.annotationArguments(annotation));
+        this.evaluateStatements(macroDeclaration.statements());
+    }
+
+    private Void reset() {
+        this.context.reset();
+    }
+
+    private MacroValue annotationArguments(Annotation annotation) {
+        List<MacroValue> arguments = List();
+        Int index = 0;
+
+        while (index < annotation.argumentIndexes().length()) {
+            arguments.add(this.context.factory().expressionValue(annotation.argumentIndexes().get(index)));
+            index = index + 1;
+        }
+
+        return this.context.factory().listValue(arguments);
+    }
+
+    private Void evaluateStatements(List<Statement> statements) {
+        Int index = 0;
+
+        while (index < statements.length() && !this.context.failed()) {
+            this.evaluateStatement(statements.get(index));
+            index = index + 1;
+        }
+    }
+
+    private MacroValue evaluateStatement(Statement statement) {
+        if (statement.isVariable()) {
+            MacroValue value = this.evaluateExpression(statement.expressionIndex());
+            this.context.declare(statement.name(), value);
+            return value;
+        }
+
+        if (statement.isAssign()) {
+            MacroValue value = this.evaluateExpression(statement.expressionIndex());
+            this.context.assign(statement.name(), value, statement.line(), statement.column());
+            return value;
+        }
+
+        if (statement.isExpression()) {
+            return this.evaluateExpression(statement.expressionIndex());
+        }
+
+        if (statement.isReturn()) {
+            if (statement.expressionIndex() == 0) {
+                return this.context.factory().voidValue();
+            }
+
+            return this.evaluateExpression(statement.expressionIndex());
+        }
+
+        if (statement.isIf()) {
+            if (this.values.truthy(this.evaluateExpression(statement.expressionIndex()))) {
+                this.evaluateStatements(statement.bodyStatements());
+                return this.context.factory().voidValue();
+            }
+
+            this.evaluateStatements(statement.elseStatements());
+            return this.context.factory().voidValue();
+        }
+
+        if (statement.isWhile()) {
+            while (!this.context.failed() && this.values.truthy(this.evaluateExpression(statement.expressionIndex()))) {
+                this.evaluateStatements(statement.bodyStatements());
+            }
+
+            return this.context.factory().voidValue();
+        }
+
+        if (statement.isFor()) {
+            this.evaluateForStatement(statement);
+            return this.context.factory().voidValue();
+        }
+
+        if (statement.isPrintln()) {
+            return this.context.factory().voidValue();
+        }
+
+        return this.context.error("unsupported macro statement", statement.line(), statement.column());
+    }
+
+    private MacroValue evaluateExpression(Int expressionIndex) {
+        if (expressionIndex == 0) {
+            return this.context.factory().voidValue();
+        }
+
+        Expression expression = this.context.program().expression(expressionIndex);
+
+        if (expression.kind() == "int") {
+            return this.context.factory().intValue(expression.intValue());
+        }
+
+        if (expression.kind() == "string") {
+            return this.context.factory().stringValue(expression.text());
+        }
+
+        if (expression.kind() == "bool") {
+            return this.context.factory().boolValue(expression.boolValue());
+        }
+
+        if (expression.kind() == "name") {
+            return this.context.lookup(expression.text(), expression.line(), expression.column());
+        }
+
+        if (expression.kind() == "list") {
+            return this.evaluateList(expression);
+        }
+
+        if (expression.kind() == "field") {
+            return this.evaluateProperty(expression);
+        }
+
+        if (expression.kind() == "methodcall") {
+            return this.evaluateMethodCall(expression);
+        }
+
+        if (expression.kind() == "staticcall") {
+            return this.builders.evaluate(expression.text(), this.evaluateArguments(expression.argumentIndexes()), expression.line(), expression.column());
+        }
+
+        if (expression.kind() == "binary") {
+            return this.evaluateBinary(expression);
+        }
+
+        if (expression.kind() == "unary") {
+            return this.evaluateUnary(expression);
+        }
+
+        if (expression.kind() == "index") {
+            return this.evaluateIndex(expression);
+        }
+
+        if (expression.kind() == "quote") {
+            return this.evaluateQuote(expression);
+        }
+
+        if (expression.kind() == "unquote") {
+            return this.context.error("unquote can only be used inside quote blocks", expression.line(), expression.column());
+        }
+
+        if (expression.kind() == "range") {
+            return this.context.error("range can only be evaluated by for-loops", expression.line(), expression.column());
+        }
+
+        return this.context.error("unsupported macro expression " + expression.kind(), expression.line(), expression.column());
+    }
+
+    private MacroValue evaluateList(Expression expression) {
+        List<MacroValue> items = List();
+        Int index = 0;
+
+        while (index < expression.argumentIndexes().length()) {
+            items.add(this.evaluateExpression(expression.argumentIndexes().get(index)));
+            index = index + 1;
+        }
+
+        return this.context.factory().listValue(items);
+    }
+
+    private List<MacroValue> evaluateArguments(List<Int> argumentIndexes) {
+        List<MacroValue> arguments = List();
+        Int index = 0;
+
+        while (index < argumentIndexes.length()) {
+            arguments.add(this.evaluateExpression(argumentIndexes.get(index)));
+            index = index + 1;
+        }
+
+        return arguments;
+    }
+
+    private MacroValue evaluateProperty(Expression expression) {
+        MacroValue receiver = this.evaluateExpression(expression.leftIndex());
+        return this.access.property(receiver, expression.text(), expression.line(), expression.column());
+    }
+
+    private MacroValue evaluateMethodCall(Expression expression) {
+        Expression receiverExpression = this.context.program().expression(expression.leftIndex());
+
+        if (receiverExpression.kind() == "name" && this.builders.isBuilderName(receiverExpression.text())) {
+            return this.builders.evaluate(receiverExpression.text() + "::" + expression.text(), this.evaluateArguments(expression.argumentIndexes()), expression.line(), expression.column());
+        }
+
+        MacroValue receiver = this.evaluateExpression(expression.leftIndex());
+        List<MacroValue> arguments = this.evaluateArguments(expression.argumentIndexes());
+        return this.access.method(receiver, expression.text(), arguments, expression.line(), expression.column());
+    }
+
+    private Void evaluateForStatement(Statement statement) {
+        Expression iterable = this.context.program().expression(statement.expressionIndex());
+
+        if (iterable.kind() != "range") {
+            this.context.error("for-loop iterable must be Range", statement.line(), statement.column());
+            return;
+        }
+
+        Int current = this.values.expectIntFromValue(this.evaluateExpression(iterable.leftIndex()), iterable.line(), iterable.column());
+        Int end = this.values.expectIntFromValue(this.evaluateExpression(iterable.rightIndex()), iterable.line(), iterable.column());
+        this.context.declareOrAssign(statement.name(), this.context.factory().intValue(current));
+
+        while (!this.context.failed() && current <= end) {
+            this.context.assign(statement.name(), this.context.factory().intValue(current), statement.line(), statement.column());
+            this.evaluateStatements(statement.bodyStatements());
+            current = current + 1;
+        }
+    }
+
+    private MacroValue evaluateIndex(Expression expression) {
+        MacroValue receiver = this.evaluateExpression(expression.leftIndex());
+        Int index = this.values.expectIntFromValue(this.evaluateExpression(expression.rightIndex()), expression.line(), expression.column());
+
+        if (receiver.isKind("list")) {
+            if (index < receiver.values().length()) {
+                return receiver.values().get(index);
+            }
+
+            return this.context.error("list index out of range", expression.line(), expression.column());
+        }
+
+        if (receiver.isKind("block")) {
+            if (index < receiver.blockStatements().length()) {
+                return this.context.factory().statementValue(receiver.blockStatements().get(index));
+            }
+
+            return this.context.error("block index out of range", expression.line(), expression.column());
+        }
+
+        return this.context.error("cannot index " + receiver.kind(), expression.line(), expression.column());
+    }
+
+    private MacroValue evaluateQuote(Expression expression) {
+        if (expression.text() == "expr") {
+            return this.context.factory().expressionValue(this.expandExpression(expression.leftIndex()));
+        }
+
+        if (expression.text() == "stmt") {
+            if (expression.quoteStatements().length() == 0) {
+                return this.context.error("quote stmt is empty", expression.line(), expression.column());
+            }
+
+            return this.context.factory().statementValue(this.expandStatement(expression.quoteStatements().get(0)));
+        }
+
+        if (expression.text() == "block") {
+            return this.context.factory().blockValue(this.expandStatements(expression.quoteStatements()));
+        }
+
+        if (expression.text() == "method") {
+            return this.context.factory().methodValue(this.expandMethod(expression.quoteMethod()));
+        }
+
+        if (expression.text() == "field") {
+            return this.context.factory().fieldValue(this.expandField(expression.quoteField()));
+        }
+
+        return this.context.error("unknown quote kind " + expression.text(), expression.line(), expression.column());
+    }
+
+    private Int expandExpression(Int expressionIndex) {
+        if (expressionIndex == 0) {
+            return 0;
+        }
+
+        Expression expression = this.context.program().expression(expressionIndex);
+
+        if (expression.kind() == "unquote") {
+            MacroValue value = this.evaluateExpression(expression.leftIndex());
+
+            if (value.isKind("expression")) {
+                return value.expressionIndex();
+            }
+
+            this.context.error("unquote expected ExpressionAST", expression.line(), expression.column());
+            return 0;
+        }
+
+        List<Int> arguments = this.expandExpressionIndexes(expression.argumentIndexes());
+        Int left = this.expandExpression(expression.leftIndex());
+        Int right = this.expandExpression(expression.rightIndex());
+        return this.context.program().addExpression(Expression(expression.kind(), expression.text(), expression.intValue(), expression.boolValue(), left, right, arguments, expression.line(), expression.column()));
+    }
+
+    private List<Int> expandExpressionIndexes(List<Int> values) {
+        List<Int> result = List();
+        Int index = 0;
+
+        while (index < values.length()) {
+            result.add(this.expandExpression(values.get(index)));
+            index = index + 1;
+        }
+
+        return result;
+    }
+
+    private Statement expandStatement(Statement statement) {
+        if (statement.isMissing()) {
+            return statement;
+        }
+
+        if (statement.isFor()) {
+            return Statement(statement.kind(), statement.name(), statement.typeName(), this.expandExpression(statement.expressionIndex()), 0, this.expandStatements(statement.bodyStatements()), this.ast.emptyStatements(), statement.line(), statement.column());
+        }
+
+        return Statement(statement.kind(), statement.name(), statement.typeName(), this.expandExpression(statement.expressionIndex()), this.expandExpression(statement.targetIndex()), this.expandStatements(statement.bodyStatements()), this.expandStatements(statement.elseStatements()), statement.line(), statement.column());
+    }
+
+    private List<Statement> expandStatements(List<Statement> statements) {
+        List<Statement> result = List();
+        Int index = 0;
+
+        while (index < statements.length()) {
+            result.add(this.expandStatement(statements.get(index)));
+            index = index + 1;
+        }
+
+        return result;
+    }
+
+    private MethodDeclaration expandMethod(MethodDeclaration method) {
+        return MethodDeclaration(method.ownerName(), method.name(), method.returnTypeName(), method.annotations(), method.parameters(), this.expandStatements(method.statements()), method.isConstructor(), method.isStatic(), method.line(), method.column());
+    }
+
+    private FieldDeclaration expandField(FieldDeclaration field) {
+        return FieldDeclaration(field.name(), field.typeName(), this.expandExpression(field.initializerIndex()), field.line(), field.column());
+    }
+
+    private MacroValue evaluateBinary(Expression expression) {
+        MacroValue left = this.evaluateExpression(expression.leftIndex());
+        MacroValue right = this.evaluateExpression(expression.rightIndex());
+        String op = expression.text();
+
+        if (op == "+") {
+            if (left.isKind("string") || right.isKind("string")) {
+                return this.context.factory().stringValue(this.values.valueToString(left) + this.values.valueToString(right));
+            }
+
+            if (left.isKind("int") && right.isKind("int")) {
+                return this.context.factory().intValue(left.intData() + right.intData());
+            }
+        }
+
+        if (op == "-") {
+            if (left.isKind("int") && right.isKind("int")) {
+                return this.context.factory().intValue(left.intData() - right.intData());
+            }
+        }
+
+        if (op == "*") {
+            if (left.isKind("int") && right.isKind("int")) {
+                return this.context.factory().intValue(left.intData() * right.intData());
+            }
+        }
+
+        if (op == "/") {
+            if (left.isKind("int") && right.isKind("int")) {
+                return this.context.factory().intValue(left.intData() / right.intData());
+            }
+        }
+
+        if (op == "%") {
+            if (left.isKind("int") && right.isKind("int")) {
+                return this.context.factory().intValue(left.intData() % right.intData());
+            }
+        }
+
+        if (op == "==") {
+            return this.context.factory().boolValue(this.values.valueToString(left) == this.values.valueToString(right));
+        }
+
+        if (op == "!=") {
+            return this.context.factory().boolValue(this.values.valueToString(left) != this.values.valueToString(right));
+        }
+
+        if (op == "<") {
+            return this.context.factory().boolValue(left.intData() < right.intData());
+        }
+
+        if (op == "<=") {
+            return this.context.factory().boolValue(left.intData() <= right.intData());
+        }
+
+        if (op == ">") {
+            return this.context.factory().boolValue(left.intData() > right.intData());
+        }
+
+        if (op == ">=") {
+            return this.context.factory().boolValue(left.intData() >= right.intData());
+        }
+
+        if (op == "&&") {
+            return this.context.factory().boolValue(this.values.truthy(left) && this.values.truthy(right));
+        }
+
+        if (op == "||") {
+            return this.context.factory().boolValue(this.values.truthy(left) || this.values.truthy(right));
+        }
+
+        return this.context.error("unsupported macro operator " + op, expression.line(), expression.column());
+    }
+
+    private MacroValue evaluateUnary(Expression expression) {
+        MacroValue value = this.evaluateExpression(expression.leftIndex());
+
+        if (expression.text() == "!") {
+            return this.context.factory().boolValue(!this.values.truthy(value));
+        }
+
+        if (expression.text() == "-" && value.isKind("int")) {
+            return this.context.factory().intValue(0 - value.intData());
+        }
+
+        return this.context.error("unsupported macro unary operator " + expression.text(), expression.line(), expression.column());
+    }
+
+}

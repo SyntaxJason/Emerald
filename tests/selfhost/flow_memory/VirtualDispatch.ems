@@ -1,0 +1,95 @@
+use Std::Process::Process;
+
+// Calls to overridden methods run whichever override the receiver selects, so
+// Flow must size argument, receiver and result lifetimes for every override.
+
+public class VirtualNode {
+    public Int value;
+    public String name;
+    public VirtualNode(Int v) { this.value = v; this.name = "n" + v.toString(); }
+}
+
+public class VirtualBase {
+    public String tag;
+    public VirtualNode cached;
+    public VirtualBase() { this.tag = "base" + "x"; this.cached = VirtualNode(5); }
+
+    // The base keeps nothing; an override stores the argument.
+    public Void keep(VirtualNode node) { return; }
+    public Void fill(Int depth, Int v) {
+        if (depth > 0) {
+            this.fill(depth - 1, v);
+            return;
+        }
+        VirtualNode node = VirtualNode(v);
+        this.keep(node);
+    }
+    public Int read() { return 0; }
+
+    // Borrowed String argument temporaries are released after the call.
+    public Int measure(String text) { return text.length(); }
+    public Int measureAll() {
+        Int total = 0;
+        Int i = 0;
+        while (i < 100) {
+            total = total + this.measure("item" + i.toString());
+            i = i + 1;
+        }
+        return total;
+    }
+
+    // Borrowed here, owned in the override.
+    public String label() { return this.tag; }
+    // Owned here, borrowed in the override.
+    public String title() { return "title" + "!"; }
+    public Int texts() { return this.label().length() + this.title().length(); }
+
+    // Owned here, borrowed in the override.
+    public VirtualNode make() { return VirtualNode(1); }
+    public Int made() {
+        VirtualNode made = this.make();
+        return made.value + made.name.length();
+    }
+}
+
+public class VirtualHolder extends VirtualBase {
+    public VirtualNode kept;
+    public String ownTag;
+    public VirtualNode ownCached;
+    public VirtualHolder() { this.kept = VirtualNode(1); this.ownTag = "own" + "ed"; this.ownCached = VirtualNode(5); }
+    public Void keep(VirtualNode node) { this.kept = node; }
+    public Int read() { return this.kept.value; }
+    public Int measure(String text) { return text.length() + 1; }
+    public String label() { return "fresh" + "y"; }
+    public String title() { return this.ownTag; }
+    public VirtualNode make() { return this.ownCached; }
+}
+
+public class VirtualFactory {
+    // An owned receiver temporary of a dispatched call is released after it.
+    public static VirtualBase make() { return VirtualBase(); }
+}
+
+main() {
+    VirtualHolder first = VirtualHolder();
+    VirtualHolder second = VirtualHolder();
+    first.fill(2, 77);
+    second.fill(2, 88);
+    if (first.read() != 77 || second.read() != 88) { Process.exit(1); }
+
+    Int round = 0;
+
+    while (round < 50) {
+        VirtualBase plain = VirtualBase();
+        VirtualHolder holder = VirtualHolder();
+        if (plain.measureAll() != 590 || holder.measureAll() != 690) { Process.exit(2); }
+        if (VirtualFactory.make().measure("abc" + "d") != 4) { Process.exit(3); }
+        if (plain.texts() != 11 || holder.texts() != 11) { Process.exit(4); }
+        if (plain.made() != 3 || holder.made() != 7) { Process.exit(5); }
+        round = round + 1;
+    }
+
+    println(first.read());
+    println(second.read());
+    println("flow-virtual-ok");
+}

@@ -32,7 +32,7 @@ module Emerald
       io << "->("
       expr.params.each_with_index do |p, i|
         io << ", " if i > 0
-        io << p.name << " : " << crystal_type(type_ref_name(p.type_ref))
+        io << crystal_local_name(p.name) << " : " << crystal_type(type_ref_name(p.type_ref))
       end
       io << ") {\n"
       @indent += 1
@@ -52,11 +52,11 @@ module Emerald
       if tn = expr.type_name
         candidates = @resolver.registry.resolve_simple(tn)
         type_fqn = candidates.empty? ? tn : candidates.first
-        io << "->(__r : " << mangle_fqn(type_fqn) << ") { __r." << expr.method_name << " }"
+        io << "->(__r : " << mangle_fqn(type_fqn) << ") { __r." << crystal_method_name(expr.method_name) << " }"
       elsif recv = expr.receiver
         io << "->{ "
         emit_expr(io, recv)
-        io << "." << expr.method_name << " }"
+        io << "." << crystal_method_name(expr.method_name) << " }"
       end
     end
 
@@ -186,7 +186,7 @@ module Emerald
         indent(io); io << "include " << mangle_fqn(base_type_name(expr.expected_type)) << "\n"
         indent(io); io << "def initialize(@__fn : " << proc_type(param_types, return_type) << ")\n"
         indent(io); io << "end\n\n"
-        indent(io); io << "def " << method_name << "("
+        indent(io); io << "def " << crystal_method_name(method_name) << "("
         param_types.each_with_index do |param_type, index|
           io << ", " if index > 0
           io << "__p" << index << " : " << crystal_type(param_type)

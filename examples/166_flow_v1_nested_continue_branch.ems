@@ -1,0 +1,31 @@
+public class HyperAllocFlowV1NestedContinueLeft {
+    public Int value;
+
+    public HyperAllocFlowV1NestedContinueLeft(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1NestedContinueRight {
+    public Int value;
+
+    public HyperAllocFlowV1NestedContinueRight(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    Int index = 0;
+
+    while (index < 2) {
+        HyperAllocFlowV1NestedContinueLeft left = HyperAllocFlowV1NestedContinueLeft(20);
+        HyperAllocFlowV1NestedContinueRight right = HyperAllocFlowV1NestedContinueRight(22);
+        index = index + 1;
+
+        if (index == 1) {
+            continue;
+        }
+
+        println((left.value + right.value).toString());
+    }
+}

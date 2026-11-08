@@ -1,0 +1,50 @@
+namespace Std::Native;
+
+public class NativeUi {
+    public NativeUi() {
+    }
+
+    public static Bool init() {
+        return true;
+    }
+
+    public static String backend() {
+        return "stub";
+    }
+
+    public static Int createWindow(String title, Int width, Int height) {
+        return 0;
+    }
+
+    public static Bool setHtml(Int handle, String html) {
+        return handle >= 0;
+    }
+
+    public static Bool setTitle(Int handle, String title) {
+        return handle >= 0;
+    }
+
+    public static Bool isOpen(Int handle) {
+        return handle >= 0;
+    }
+
+    public static String pollAction(Int handle) {
+        return "";
+    }
+
+    public static Bool show(Int handle) {
+        return handle >= 0;
+    }
+
+    public static Bool close(Int handle) {
+        return handle >= 0;
+    }
+
+    public static Bool pump() {
+        return true;
+    }
+
+    public static Int run() {
+        return 0;
+    }
+}

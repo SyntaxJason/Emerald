@@ -1,5 +1,7 @@
 namespace Std::Functional;
 
+use Std::Functional::ISupplier;
+
 public class ConstantSupplier<T> implements ISupplier<T> {
     private T stored;
 

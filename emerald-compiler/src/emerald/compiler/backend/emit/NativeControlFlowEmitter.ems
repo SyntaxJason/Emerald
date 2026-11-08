@@ -1,0 +1,105 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Collections::ArrayList;
+use Std::Llvm::LlvmFunction;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmNativeIf;
+use Std::Llvm::LlvmNativeWhile;
+use Std::Llvm::LlvmValue;
+
+public class NativeControlFlowEmitter {
+    private NativeEmitContext context;
+    private NativeStatementEmitter statements;
+    private NativeExpressionEmitter expressions;
+
+    public NativeControlFlowEmitter(NativeEmitContext emitContext, NativeStatementEmitter statementEmitter, NativeExpressionEmitter expressionEmitter) {
+        this.context = emitContext;
+        this.statements = statementEmitter;
+        this.expressions = expressionEmitter;
+    }
+
+    public EmitResult emitIf(Statement statement, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals, String returnType, LlvmFunction currentFunction) {
+        Int id = this.context.nextTemp();
+        LlvmValue condition = this.expressions.emit(statement.expressionIndex(), program, backend, locals);
+        LlvmNativeIf branch = LlvmNativeIf(currentFunction, "if_" + id.toString());
+
+        branch.branchFrom(backend.builder(), condition);
+        branch.enterTrue(backend.builder());
+        List<NativeLocal> trueLocals = this.copyLocals(locals);
+        EmitResult trueResult = this.statements.emit(statement.bodyStatements(), program, backend, trueLocals, returnType, currentFunction);
+
+        if (!trueResult.terminated()) {
+            branch.leaveToMerge(backend.builder());
+        }
+
+        branch.enterFalse(backend.builder());
+        List<NativeLocal> falseLocals = this.copyLocals(locals);
+        EmitResult falseResult = this.statements.emit(statement.elseStatements(), program, backend, falseLocals, returnType, currentFunction);
+
+        if (!falseResult.terminated()) {
+            branch.leaveToMerge(backend.builder());
+        }
+
+        branch.enterMerge(backend.builder());
+
+        if (trueResult.terminated() && falseResult.terminated()) {
+            backend.builder().unreachable();
+            return EmitResult(true);
+        }
+
+        return EmitResult(false);
+    }
+
+    public Void emitWhile(Statement statement, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals, String returnType, LlvmFunction currentFunction) {
+        Int id = this.context.nextTemp();
+        LlvmNativeWhile loop = LlvmNativeWhile(currentFunction, "while_" + id.toString());
+
+        loop.jumpToCondition(backend.builder());
+        loop.enterCondition(backend.builder());
+        LlvmValue condition = this.expressions.emit(statement.expressionIndex(), program, backend, locals);
+        loop.branchOn(backend.builder(), condition);
+        loop.enterBody(backend.builder());
+        Bool usesShard = this.context.hyperAllocFlowReport().statementsUseKind(statement.bodyStatements(), "Shard");
+        LlvmValue shardToken = this.beginShardScope(usesShard, backend);
+        NativeLoopFrame frame = NativeLoopFrame(loop.conditionBlock(), loop.exitBlock(), locals.length(), shardToken, usesShard);
+        this.context.pushLoop(frame);
+        EmitResult bodyResult = this.statements.emit(statement.bodyStatements(), program, backend, locals, returnType, currentFunction);
+        this.context.popLoop();
+
+        if (!bodyResult.terminated()) {
+            if (usesShard) {
+                ArrayList<LlvmValue> endArgs = ArrayList();
+                endArgs.add(LlvmValue(shardToken.handle()));
+                backend.callRuntime(backend.runtimeDeclarations().shardEnd(), endArgs, "");
+                this.context.hyperAllocFlowReport().recordShardCleanup();
+            }
+
+            loop.continueLoop(backend.builder());
+        }
+
+        loop.enterExit(backend.builder());
+    }
+
+    private LlvmValue beginShardScope(Bool usesShard, LlvmNativeBackend backend) {
+        if (!usesShard) {
+            return backend.int64(0);
+        }
+
+        ArrayList<LlvmValue> beginArgs = ArrayList();
+        return backend.callRuntime(backend.runtimeDeclarations().shardBegin(), beginArgs, "shard_scope_" + this.context.nextTemp().toString());
+    }
+
+    private List<NativeLocal> copyLocals(List<NativeLocal> locals) {
+        List<NativeLocal> copy = List();
+        Int index = 0;
+
+        while (index < locals.length()) {
+            copy.add(locals.get(index).stableCopy());
+            index = index + 1;
+        }
+
+        return copy;
+    }
+}

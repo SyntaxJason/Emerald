@@ -1,0 +1,27 @@
+public class Counter {
+    private Int value;
+
+    public Counter(Int start) {
+        this.value = start;
+    }
+
+    public Void tick() {
+        this.value = this.value + 1;
+    }
+
+    public Int getValue() {
+        return this.value;
+    }
+}
+
+main() {
+    Counter counter = Counter(39);
+
+    counter.tick();
+    counter.tick();
+    counter.tick();
+
+    println(counter.getValue());
+
+    return 0;
+}

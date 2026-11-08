@@ -1,0 +1,29 @@
+use Std::Compare::NaturalIntComparator;
+use Std::Compare::ReverseIntComparator;
+use Std::Time::Clock;
+use Std::Time::Duration;
+use Std::Time::OffsetDateTime;
+use Std::Random::Random;
+main() {
+    NaturalIntComparator natural = NaturalIntComparator();
+    ReverseIntComparator reverse = ReverseIntComparator();
+    Int big = 9223372036854775807;
+    Int small = -9223372036854775807 - 1;
+    println(natural.compare(small, big));
+    println(natural.compare(big, small));
+    println(natural.compare(3, 3));
+    println(reverse.compare(small, big));
+    println(reverse.compare(big, small));
+    println(OffsetDateTime.ofEpochMillis(1700000000123, 60).toString());
+    println(OffsetDateTime.ofEpochMillis(0 - 1, 0).toString());
+    println(OffsetDateTime.ofEpochMillis(951782400000, 0).toString());
+    Int before = Clock.nanos();
+    Clock.sleep(Duration.millis(5));
+    Int after = Clock.nanos();
+    println(after - before >= 5000000);
+    println(Clock.millis() > 1700000000000);
+    println(Clock.utcNow().getYear() >= 2024);
+    Int pick = Random.nextIntBetween(5, 7);
+    println(pick >= 5 && pick <= 7);
+    println(Random.nextInt(1));
+}

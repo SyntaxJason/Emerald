@@ -1,0 +1,42 @@
+namespace emerald::prism::config;
+
+use Std::Io::Files;
+
+public class PrismProjectWriter {
+    public PrismProjectWriter() {
+    }
+
+    public Bool writeDefault(String path, String name) {
+        if (Files.exists(path)) {
+            return false;
+        }
+
+        Files.writeText(path, this.defaultText(name));
+        return true;
+    }
+
+    public String defaultText(String name) {
+        String text = "";
+        text = text + "[package]\n";
+        text = text + "name = \"" + name + "\"\n";
+        text = text + "version = \"0.1.0\"\n";
+        text = text + "description = \"A new Emerald package\"\n";
+        text = text + "\n";
+        text = text + "[build]\n";
+        text = text + "main = \"src/Main.ems\"\n";
+        text = text + "output = \"build/" + name + "\"\n";
+        text = text + "target = \"native\"\n";
+        text = text + "emit = \"exe\"\n";
+        text = text + "keepTemps = false\n";
+        text = text + "writeIr = false\n";
+        text = text + "\n";
+        text = text + "[registry]\n";
+        text = text + "default = \"https://prism.emerald-lang.eu\"\n";
+        text = text + "\n";
+        text = text + "[dependencies]\n";
+        text = text + "\n";
+        text = text + "[assets]\n";
+        text = text + "webview2 = \"latest\"\n";
+        return text;
+    }
+}

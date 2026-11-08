@@ -1,0 +1,52 @@
+namespace emerald::compiler::source;
+
+public class ProjectSource {
+    private SourceFile sourceValue;
+    private Bool entryValue;
+    private String requestedNameValue;
+    private String expectedNamespaceValue;
+    private Int requestLineValue;
+    private Int requestColumnValue;
+
+    public ProjectSource(SourceFile source, Bool entry) {
+        this.sourceValue = source;
+        this.entryValue = entry;
+        this.requestedNameValue = "";
+        this.expectedNamespaceValue = "";
+        this.requestLineValue = 1;
+        this.requestColumnValue = 1;
+    }
+
+    public ProjectSource(SourceFile source, Bool entry, String requestedName, String expectedNamespace, Int requestLine, Int requestColumn) {
+        this.sourceValue = source;
+        this.entryValue = entry;
+        this.requestedNameValue = requestedName;
+        this.expectedNamespaceValue = expectedNamespace;
+        this.requestLineValue = requestLine;
+        this.requestColumnValue = requestColumn;
+    }
+
+    public SourceFile source() {
+        return this.sourceValue;
+    }
+
+    public Bool isEntry() {
+        return this.entryValue;
+    }
+
+    public String requestedName() {
+        return this.requestedNameValue;
+    }
+
+    public String expectedNamespace() {
+        return this.expectedNamespaceValue;
+    }
+
+    public Int requestLine() {
+        return this.requestLineValue;
+    }
+
+    public Int requestColumn() {
+        return this.requestColumnValue;
+    }
+}

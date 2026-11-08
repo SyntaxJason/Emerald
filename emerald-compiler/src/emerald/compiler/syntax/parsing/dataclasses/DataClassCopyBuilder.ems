@@ -1,0 +1,79 @@
+namespace emerald::compiler::syntax;
+
+public class DataClassCopyBuilder {
+    private DataClassExpressionBuilder expressions;
+
+    public DataClassCopyBuilder(SyntaxProgram syntaxProgram) {
+        this.expressions = DataClassExpressionBuilder(syntaxProgram);
+    }
+
+    public MethodDeclaration copyFor(String ownerName, List<FieldDeclaration> fields, Int line, Int column) {
+        List<Parameter> parameters = List();
+        List<Statement> statements = List();
+        statements.add(this.returnConstructor(ownerName, this.copyArguments(fields), line, column));
+        return MethodDeclaration(ownerName, "copy", ownerName, parameters, statements, false, false, true, line, column);
+    }
+
+    public MethodDeclaration withFor(String ownerName, List<FieldDeclaration> fields, FieldDeclaration changedField, Int line, Int column) {
+        List<Parameter> parameters = List();
+        parameters.add(Parameter(changedField.name(), changedField.typeName(), changedField.line(), changedField.column()));
+
+        List<Statement> statements = List();
+        statements.add(this.returnConstructor(ownerName, this.withArguments(fields, changedField), line, column));
+
+        return MethodDeclaration(ownerName, this.withMethodName(changedField), ownerName, parameters, statements, false, false, true, line, column);
+    }
+
+    public String withMethodName(FieldDeclaration field) {
+        return "with" + this.capitalized(field.name());
+    }
+
+    private Statement returnConstructor(String ownerName, List<Int> arguments, Int line, Int column) {
+        Int call = this.expressions.constructorCall(ownerName, arguments, line, column);
+        return Statement("return", "", "", call, 0, this.expressions.emptyStatements(), this.expressions.emptyStatements(), line, column);
+    }
+
+    private List<Int> copyArguments(List<FieldDeclaration> fields) {
+        List<Int> arguments = List();
+        Int index = 0;
+
+        while (index < fields.length()) {
+            FieldDeclaration field = fields.get(index);
+            arguments.add(this.expressions.field("this", field));
+            index = index + 1;
+        }
+
+        return arguments;
+    }
+
+    private List<Int> withArguments(List<FieldDeclaration> fields, FieldDeclaration changedField) {
+        List<Int> arguments = List();
+        Int index = 0;
+
+        while (index < fields.length()) {
+            FieldDeclaration field = fields.get(index);
+
+            if (field.name() == changedField.name()) {
+                arguments.add(this.expressions.name(changedField.name(), changedField.line(), changedField.column()));
+            } else {
+                arguments.add(this.expressions.field("this", field));
+            }
+
+            index = index + 1;
+        }
+
+        return arguments;
+    }
+
+    private String capitalized(String value) {
+        if (value.isEmpty()) {
+            return value;
+        }
+
+        if (value.length() == 1) {
+            return value.toUpperCase();
+        }
+
+        return value.substring(0, 1).toUpperCase() + value.substring(1, value.length());
+    }
+}

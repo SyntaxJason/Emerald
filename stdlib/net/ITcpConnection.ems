@@ -1,5 +1,7 @@
 namespace Std::Net;
 
+use Std::Net::IEndpoint;
+use Std::Result::IResult;
 public interface ITcpConnection {
     public IEndpoint endpoint();
 

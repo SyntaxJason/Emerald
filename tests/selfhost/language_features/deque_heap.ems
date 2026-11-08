@@ -1,0 +1,62 @@
+use Std::Collections::Deque;
+use Std::Collections::Queue;
+use Std::Collections::Stack;
+use Std::Collections::PriorityQueue;
+use Std::Compare::IComparator;
+use Std::Compare::ReverseIntComparator;
+class Job { public Int priority; public String name; public Job(Int priority, String name) { this.priority = priority; this.name = name; } }
+class JobOrder implements IComparator<Job> {
+    public JobOrder() {}
+    public Int compare(Job left, Job right) {
+        if (left.priority < right.priority) { return -1; }
+        if (left.priority > right.priority) { return 1; }
+        return 0;
+    }
+}
+main() {
+    Deque<Job> deque = Deque();
+    Int index = 0;
+    while (index < 50) {
+        deque.addLast(Job(index, "b" + index.toString()));
+        deque.addFirst(Job(0 - index, "f" + index.toString()));
+        index = index + 1;
+    }
+    println(deque.size());
+    println(deque.get(0).name);
+    println(deque.get(99).name);
+    Int sum = 0;
+    index = 0;
+    while (index < 30) { sum = sum + deque.removeFirst().priority + deque.removeLast().priority; index = index + 1; }
+    println(sum);
+    println(deque.size());
+    println(deque.peekFirst().name);
+    Queue<String> queue = Queue();
+    index = 0;
+    while (index < 1000) { queue.enqueue("s" + index.toString()); index = index + 1; }
+    println(queue.dequeue());
+    println(queue.peek());
+    println(queue.size());
+    Stack<Job> stack = Stack();
+    index = 0;
+    while (index < 10) { stack.push(Job(index, "x")); index = index + 1; }
+    println(stack.pop().priority);
+    println(stack.peek().priority);
+    PriorityQueue<Job> heap = PriorityQueue(JobOrder());
+    index = 0;
+    while (index < 200) { heap.add(Job((index * 37) % 101, "p" + index.toString())); index = index + 1; }
+    Int previous = -1;
+    Bool sorted = true;
+    while (!heap.isEmpty()) {
+        Job next = heap.poll();
+        if (next.priority < previous) { sorted = false; }
+        previous = next.priority;
+    }
+    println(sorted);
+    PriorityQueue<Int> numbers = PriorityQueue(ReverseIntComparator());
+    numbers.add(3);
+    numbers.add(9);
+    numbers.add(1);
+    println(numbers.poll());
+    println(numbers.poll());
+    println(numbers.size());
+}

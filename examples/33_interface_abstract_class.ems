@@ -1,0 +1,24 @@
+public interface ITask {
+    public Void execute();
+}
+
+public abstract class AbstractTask implements ITask {
+    public AbstractTask() {
+    }
+}
+
+public class ConcreteTask extends AbstractTask {
+    public ConcreteTask() {
+    }
+
+    @Override
+    public Void execute() {
+        println("execute");
+    }
+}
+
+main() {
+    ConcreteTask task = ConcreteTask();
+
+    task.execute();
+}

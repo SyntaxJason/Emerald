@@ -1,0 +1,6 @@
+main() {
+    List<Int> values = List();
+    values.add(42);
+    values.clear();
+    println((values.length() + 42).toString());
+}

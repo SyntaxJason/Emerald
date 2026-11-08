@@ -4,12 +4,14 @@ module Emerald
   class Codegen
     private def emit_member_access(io : IO, expr : AST::MemberAccess)
       receiver = expr.receiver
+
       if receiver.is_a?(AST::ThisExpr)
-        io << "@" << expr.name
-      else
-        emit_expr(io, receiver)
-        io << "." << expr.name
+        io << "@" << expr.name << ".not_nil!"
+        return
       end
+
+      emit_expr(io, receiver)
+      io << "." << crystal_method_name(expr.name)
     end
 
     private def emit_method_call(io : IO, expr : AST::MethodCall)
@@ -55,10 +57,13 @@ module Emerald
 
       receiver = expr.receiver
       if receiver.is_a?(AST::ThisExpr)
-        io << expr.name
+        io << crystal_method_name(expr.name)
+      elsif receiver.is_a?(AST::Identifier) && static_receiver_identifier?(receiver.as(AST::Identifier).name) && !receiver_type.empty? && @resolver.registry[base_type_name(receiver_type)]
+        io << crystal_type(receiver_type)
+        io << "." << crystal_method_name(expr.name)
       else
         emit_expr(io, receiver)
-        io << "." << expr.name
+        io << "." << crystal_method_name(expr.name)
       end
       io << "("
       expr.args.each_with_index do |arg, i|
@@ -68,9 +73,46 @@ module Emerald
       io << ")"
     end
 
+    private def static_receiver_identifier?(name : String) : Bool
+      return false if name.empty?
+
+      name[0].uppercase?
+    end
+
     private def emit_static_stdlib_call(io : IO, expr : AST::MethodCall, type_name : String) : Bool
       intrinsic = RuntimeStaticIntrinsics.find(type_name, expr.name)
       return false unless intrinsic
+
+      if intrinsic.category == "llvm" && type_name == "LlvmNative"
+        emit_llvm_raw_call(io, expr, intrinsic.opcode.sub("llvm.native.", ""))
+        return true
+      end
+
+      if type_name == "NativeHash"
+        io << "(((("
+        emit_expr(io, expr.args[0])
+        io << ").hash >> 1).to_i64))"
+        return true
+      end
+
+      if type_name == "NativeMath"
+        if expr.name == "absFloat" || expr.name == "floor" || expr.name == "ceil" || expr.name == "round"
+          io << "("
+          emit_expr(io, expr.args[0])
+          io << ")." << (expr.name == "absFloat" ? "abs" : expr.name)
+        elsif expr.name == "pow"
+          io << "("
+          emit_expr(io, expr.args[0])
+          io << ") ** ("
+          emit_expr(io, expr.args[1])
+          io << ")"
+        else
+          io << "Math." << expr.name << "("
+          emit_expr(io, expr.args[0])
+          io << ")"
+        end
+        return true
+      end
 
       case {type_name, expr.name}
       when {"Duration", "millis"}
@@ -214,6 +256,219 @@ module Emerald
       when {"Directory", "list"}
         emit_static_directory_list(io, expr)
         return true
+      when {"NativeConsole", "write"}
+        emit_native_console_status_call(io, expr, "print")
+        return true
+      when {"NativeConsole", "writeLine"}
+        emit_native_console_status_call(io, expr, "puts")
+        return true
+      when {"NativeConsole", "errorLine"}
+        emit_native_console_status_call(io, expr, "STDERR.puts")
+        return true
+      when {"NativeConsole", "readLine"}
+        emit_static_console_read_line(io)
+        return true
+      when {"NativeFile", "exists"}
+        emit_static_file_predicate(io, expr, "exists?")
+        return true
+      when {"NativeFile", "isFile"}
+        emit_static_file_predicate(io, expr, "file?")
+        return true
+      when {"NativeFile", "readText"}
+        emit_static_file_read_text(io, expr)
+        return true
+      when {"NativeFile", "readLines"}
+        emit_static_file_read_lines(io, expr)
+        return true
+      when {"NativeFile", "writeText"}
+        emit_native_file_write_text(io, expr)
+        return true
+      when {"NativeFile", "appendText"}
+        emit_native_file_append_text(io, expr)
+        return true
+      when {"NativeFile", "delete"}
+        emit_static_file_delete(io, expr)
+        return true
+      when {"NativeFile", "size"}
+        emit_static_file_size(io, expr)
+        return true
+      when {"NativeDirectory", "exists"}
+        emit_static_directory_predicate(io, expr)
+        return true
+      when {"NativeDirectory", "create"}
+        emit_static_directory_create(io, expr)
+        return true
+      when {"NativeDirectory", "delete"}
+        emit_static_directory_delete(io, expr)
+        return true
+      when {"NativeDirectory", "list"}
+        emit_static_directory_list(io, expr)
+        return true
+      when {"NativePath", "current"}
+        emit_native_path_current(io)
+        return true
+      when {"NativePath", "join"}
+        emit_static_path_join(io, expr)
+        return true
+      when {"NativePath", "parent"}
+        emit_static_path_single(io, expr, "dirname")
+        return true
+      when {"NativePath", "fileName"}
+        emit_static_path_single(io, expr, "basename")
+        return true
+      when {"NativePath", "extension"}
+        emit_static_path_single(io, expr, "extname")
+        return true
+      when {"NativeEnv", "get"}
+        emit_static_env_get(io, expr)
+        return true
+      when {"NativeEnv", "getOr"}
+        emit_static_env_get_or(io, expr)
+        return true
+      when {"NativeEnv", "has"}
+        emit_static_env_has(io, expr)
+        return true
+      when {"NativeEnv", "args"}
+        emit_static_process_args(io)
+        return true
+      when {"NativeEnv", "currentDirectory"}
+        emit_static_env_current_directory(io)
+        return true
+      when {"NativeProcess", "args"}
+        emit_static_process_args(io)
+        return true
+      when {"NativeProcess", "command"}
+        emit_static_process_command(io)
+        return true
+      when {"NativeProcess", "exit"}
+        emit_native_process_exit(io, expr)
+        return true
+      when {"NativeSystem", "os"}
+        emit_static_system_os(io)
+        return true
+      when {"NativeSystem", "isWindows"}
+        emit_static_system_flag(io, "win32")
+        return true
+      when {"NativeSystem", "isLinux"}
+        emit_static_system_flag(io, "linux")
+        return true
+      when {"NativeSystem", "lineSeparator"}
+        emit_static_system_line_separator(io)
+        return true
+      when {"NativeSystem", "pathSeparator"}
+        emit_static_system_path_separator(io)
+        return true
+      when {"NativeSystem", "directorySeparator"}
+        emit_static_system_directory_separator(io)
+        return true
+      when {"NativeSystem", "arch"}
+        emit_native_system_arch(io)
+        return true
+      when {"NativeSystem", "processorCount"}
+        emit_native_system_processor_count(io)
+        return true
+      when {"NativeSystem", "userName"}
+        emit_native_system_user_name(io)
+        return true
+      when {"NativeSystem", "hostName"}
+        emit_native_system_host_name(io)
+        return true
+      when {"NativeSystem", "homeDirectory"}
+        emit_native_system_home_directory(io)
+        return true
+      when {"NativeSystem", "tempDirectory"}
+        emit_native_system_temp_directory(io)
+        return true
+      when {"NativeTcp", "connect"}
+        emit_native_tcp_connect(io, expr)
+        return true
+      when {"NativeTcp", "listen"}
+        emit_native_tcp_listen(io, expr)
+        return true
+      when {"NativeTcp", "isOpen"}
+        emit_static_tcp_handle_predicate(io, expr, "socket_open?")
+        return true
+      when {"NativeTcp", "listenerIsOpen"}
+        emit_static_tcp_handle_predicate(io, expr, "listener_open?")
+        return true
+      when {"NativeTcp", "listenerPort"}
+        emit_native_zero(io)
+        return true
+      when {"NativeTcp", "readText"}
+        emit_static_tcp_handle_string(io, expr, "read_text")
+        return true
+      when {"NativeTcp", "readLine"}
+        emit_static_tcp_handle_string(io, expr, "read_line")
+        return true
+      when {"NativeTcp", "writeText"}
+        emit_static_tcp_write(io, expr)
+        return true
+      when {"NativeTcp", "close"}
+        emit_static_tcp_close(io, expr, "close_socket")
+        return true
+      when {"NativeTcp", "accept"}
+        emit_native_tcp_accept(io, expr)
+        return true
+      when {"NativeTcp", "closeListener"}
+        emit_static_tcp_close(io, expr, "close_listener")
+        return true
+      when {"NativeUdp", "bind"}
+        emit_native_negative_one(io)
+        return true
+      when {"NativeUdp", "isOpen"}
+        emit_native_false(io)
+        return true
+      when {"NativeUdp", "localPort"}
+        emit_native_zero(io)
+        return true
+      when {"NativeUdp", "sendText"}
+        emit_native_false(io)
+        return true
+      when {"NativeUdp", "receiveText"}
+        emit_native_empty_string(io)
+        return true
+      when {"NativeUdp", "lastSenderHost"}
+        emit_native_empty_string(io)
+        return true
+      when {"NativeUdp", "lastSenderPort"}
+        emit_native_zero(io)
+        return true
+      when {"NativeUdp", "close"}
+        emit_native_false(io)
+        return true
+      when {"NativeUi", "init"}
+        emit_native_true(io)
+        return true
+      when {"NativeUi", "backend"}
+        emit_native_ui_backend(io)
+        return true
+      when {"NativeUi", "createWindow"}
+        emit_native_ui_create_window(io, expr)
+        return true
+      when {"NativeUi", "setHtml"}
+        emit_native_true(io)
+        return true
+      when {"NativeUi", "setTitle"}
+        emit_native_true(io)
+        return true
+      when {"NativeUi", "isOpen"}
+        emit_native_true(io)
+        return true
+      when {"NativeUi", "pollAction"}
+        emit_native_empty_string(io)
+        return true
+      when {"NativeUi", "show"}
+        emit_native_true(io)
+        return true
+      when {"NativeUi", "close"}
+        emit_native_true(io)
+        return true
+      when {"NativeUi", "pump"}
+        emit_native_true(io)
+        return true
+      when {"NativeUi", "run"}
+        emit_native_zero(io)
+        return true
       when {"Http", "get"}
         emit_static_http_get(io, expr)
         return true
@@ -328,9 +583,187 @@ module Emerald
       when {"Clock", "sleep"}
         emit_static_clock_sleep(io, expr)
         return true
+      when {"Llvm", "createContext"}
+        emit_llvm_wrapped_call(io, expr, "Std::Llvm::LlvmContext", "create_context")
+        return true
+      when {"Llvm", "initializeNativeTarget"}
+        io << "EmeraldRuntimeLlvm.initialize_native_target"
+        return true
+      when {"Llvm", "initializeTarget"}
+        emit_llvm_raw_call(io, expr, "initialize_target")
+        return true
+      when {"Llvm", "defaultTargetTriple"}
+        io << "EmeraldRuntimeLlvm.default_target_triple"
+        return true
+      when {"Llvm", "normalizeTargetTriple"}
+        emit_llvm_raw_call(io, expr, "normalize_target_triple")
+        return true
+      when {"Llvm", "lookupTarget"}
+        emit_llvm_wrapped_call(io, expr, "Std::Llvm::LlvmTarget", "lookup_target")
+        return true
+      when {"Llvm", "lastError"}
+        io << "EmeraldRuntimeLlvm.last_error"
+        return true
+      when {"Llvm", "nativeObjectExtension"}
+        io << "EmeraldRuntimeLlvm.native_object_extension"
+        return true
+      when {"Llvm", "nativeExecutableExtension"}
+        io << "EmeraldRuntimeLlvm.native_executable_extension"
+        return true
+      when {"Llvm", "functionType"}
+        emit_llvm_type_from_type_arg(io, expr, "function_type")
+        return true
+      when {"Llvm", "constInt"}
+        emit_llvm_value_from_type_and_int(io, expr, "const_int")
+        return true
+      when {"Llvm", "constBool"}
+        emit_llvm_value_from_type_and_bool(io, expr, "const_bool")
+        return true
+      when {"Llvm", "constNull"}
+        emit_llvm_value_from_type(io, expr, "const_null")
+        return true
+      when {"Llvm", "constPointerNull"}
+        emit_llvm_value_from_type(io, expr, "const_pointer_null")
+        return true
+      when {"Llvm", "externalLinkage"}
+        io << "EmeraldRuntimeLlvm.external_linkage"
+        return true
+      when {"Llvm", "internalLinkage"}
+        io << "EmeraldRuntimeLlvm.internal_linkage"
+        return true
+      when {"Llvm", "privateLinkage"}
+        io << "EmeraldRuntimeLlvm.private_linkage"
+        return true
+      when {"LlvmNative", "initializeTarget"}
+        emit_llvm_raw_call(io, expr, "initialize_target")
+        return true
+      when {"LlvmNative", "createContext"}
+        emit_llvm_raw_call(io, expr, "create_context")
+        return true
+      when {"LlvmNative", "disposeContext"}
+        emit_llvm_raw_call(io, expr, "dispose_context")
+        return true
+      when {"LlvmNative", "createModule"}
+        emit_llvm_raw_call(io, expr, "create_module")
+        return true
+      when {"LlvmNative", "disposeModule"}
+        emit_llvm_raw_call(io, expr, "dispose_module")
+        return true
+      when {"LlvmNative", "moduleToIr"}
+        emit_llvm_raw_call(io, expr, "module_to_ir")
+        return true
+      when {"LlvmNative", "moduleWriteIr"}
+        emit_llvm_raw_call(io, expr, "module_write_ir")
+        return true
+      when {"LlvmNative", "moduleVerify"}
+        emit_llvm_raw_call(io, expr, "module_verify")
+        return true
+      when {"LlvmNative", "moduleVerifyMessage"}
+        emit_llvm_raw_call(io, expr, "module_verify_message")
+        return true
+      when {"LlvmNative", "createBuilder"}
+        emit_llvm_raw_call(io, expr, "create_builder")
+        return true
+      when {"LlvmNative", "disposeBuilder"}
+        emit_llvm_raw_call(io, expr, "dispose_builder")
+        return true
+      when {"LlvmNative", "voidType"}
+        emit_llvm_raw_call(io, expr, "void_type")
+        return true
+      when {"LlvmNative", "i1Type"}
+        emit_llvm_raw_call(io, expr, "i1_type")
+        return true
+      when {"LlvmNative", "i8Type"}
+        emit_llvm_raw_call(io, expr, "i8_type")
+        return true
+      when {"LlvmNative", "i32Type"}
+        emit_llvm_raw_call(io, expr, "i32_type")
+        return true
+      when {"LlvmNative", "i64Type"}
+        emit_llvm_raw_call(io, expr, "i64_type")
+        return true
+      when {"LlvmNative", "pointerType"}
+        emit_llvm_raw_call(io, expr, "pointer_type")
+        return true
+      when {"LlvmNative", "functionType"}
+        emit_llvm_raw_call(io, expr, "function_type")
+        return true
+      when {"LlvmNative", "addFunction"}
+        emit_llvm_raw_call(io, expr, "add_function")
+        return true
+      when {"LlvmNative", "appendBlock"}
+        emit_llvm_raw_call(io, expr, "append_block")
+        return true
+      when {"LlvmNative", "positionAtEnd"}
+        emit_llvm_raw_call(io, expr, "position_at_end")
+        return true
+      when {"LlvmNative", "returnVoid"}
+        emit_llvm_raw_call(io, expr, "return_void")
+        return true
+      when {"LlvmNative", "returnValue"}
+        emit_llvm_raw_call(io, expr, "return_value")
+        return true
+      when {"LlvmNative", "constInt"}
+        emit_llvm_raw_call(io, expr, "const_int")
+        return true
+      when {"LlvmNative", "buildAdd"}
+        emit_llvm_raw_call(io, expr, "build_add")
+        return true
+      when {"LlvmNative", "buildSub"}
+        emit_llvm_raw_call(io, expr, "build_sub")
+        return true
+      when {"LlvmNative", "buildMul"}
+        emit_llvm_raw_call(io, expr, "build_mul")
+        return true
+      when {"LlvmNative", "buildSignedDiv"}
+        emit_llvm_raw_call(io, expr, "build_signed_div")
+        return true
       end
 
       raise "Runtime intrinsic #{intrinsic.receiver}.#{intrinsic.method_name} has no codegen emitter"
+    end
+
+    private def emit_llvm_raw_call(io : IO, expr : AST::MethodCall, target : String)
+      io << "EmeraldRuntimeLlvm." << target << "("
+      expr.args.each_with_index do |arg, index|
+        io << ", " if index > 0
+        emit_expr(io, arg)
+      end
+      io << ")"
+    end
+
+    private def emit_llvm_wrapped_call(io : IO, expr : AST::MethodCall, return_type : String, target : String)
+      io << crystal_type(return_type) << ".new("
+      emit_llvm_raw_call(io, expr, target)
+      io << ")"
+    end
+
+    private def emit_llvm_type_from_type_arg(io : IO, expr : AST::MethodCall, target : String)
+      io << crystal_type("Std::Llvm::LlvmType") << ".new(EmeraldRuntimeLlvm." << target << "(("
+      emit_expr(io, expr.args[0])
+      io << ").handle))"
+    end
+
+    private def emit_llvm_value_from_type_and_int(io : IO, expr : AST::MethodCall, target : String)
+      io << crystal_type("Std::Llvm::LlvmValue") << ".new(EmeraldRuntimeLlvm." << target << "(("
+      emit_expr(io, expr.args[0])
+      io << ").handle, "
+      emit_expr(io, expr.args[1])
+      io << "))"
+    end
+
+    private def emit_llvm_value_from_type_and_bool(io : IO, expr : AST::MethodCall, target : String)
+      io << crystal_type("Std::Llvm::LlvmValue") << ".new(EmeraldRuntimeLlvm." << target << "(("
+      emit_expr(io, expr.args[0])
+      io << ").handle, "
+      emit_expr(io, expr.args[1])
+      io << "))"
+    end
+
+    private def emit_llvm_value_from_type(io : IO, expr : AST::MethodCall, target : String)
+      io << crystal_type("Std::Llvm::LlvmValue") << ".new(EmeraldRuntimeLlvm." << target << "(("
+      emit_expr(io, expr.args[0])
+      io << ").handle))"
     end
 
     private def emit_duration_factory(io : IO, expr : AST::MethodCall, factor : String)
@@ -449,6 +882,114 @@ module Emerald
       io << "].max), "
       emit_expr(io, expr.args[2])
       io << "].min)"
+    end
+
+    private def emit_native_empty_string(io : IO)
+      io << "\"\""
+    end
+
+    private def emit_native_false(io : IO)
+      io << "false"
+    end
+
+    private def emit_native_true(io : IO)
+      io << "true"
+    end
+
+    private def emit_native_zero(io : IO)
+      io << "0_i64"
+    end
+
+    private def emit_native_ui_backend(io : IO)
+      io << "\"bootstrap-headless\""
+    end
+
+    private def emit_native_ui_create_window(io : IO, expr : AST::MethodCall)
+      io << "1_i64"
+    end
+
+    private def emit_native_negative_one(io : IO)
+      io << "-1_i64"
+    end
+
+    private def emit_native_console_status_call(io : IO, expr : AST::MethodCall, target : String)
+      io << "(begin; " << target << "("
+      emit_expr(io, expr.args[0])
+      io << "); 0_i64; rescue ex : Exception; -1_i64; end)"
+    end
+
+    private def emit_native_path_current(io : IO)
+      io << "::Dir.current"
+    end
+
+    private def emit_native_file_write_text(io : IO, expr : AST::MethodCall)
+      io << "(begin; ::File.write("
+      emit_expr(io, expr.args[0])
+      io << ", "
+      emit_expr(io, expr.args[1])
+      io << "); 0_i64; rescue ex : Exception; -1_i64; end)"
+    end
+
+    private def emit_native_file_append_text(io : IO, expr : AST::MethodCall)
+      io << "(begin; ::File.open("
+      emit_expr(io, expr.args[0])
+      io << ", \"a\") { |__emerald_file| __emerald_file << "
+      emit_expr(io, expr.args[1])
+      io << " }; 0_i64; rescue ex : Exception; -1_i64; end)"
+    end
+
+    private def emit_native_process_exit(io : IO, expr : AST::MethodCall)
+      io << "(exit(("
+      emit_expr(io, expr.args[0])
+      io << ").to_i32); "
+      emit_expr(io, expr.args[0])
+      io << ")"
+    end
+
+    private def emit_native_system_arch(io : IO)
+      io << "({% if flag?(:x86_64) %}\"x86_64\"{% elsif flag?(:aarch64) %}\"aarch64\"{% elsif flag?(:i386) %}\"x86\"{% else %}\"unknown\"{% end %})"
+    end
+
+    private def emit_native_system_processor_count(io : IO)
+      io << "(System.cpu_count.to_i64)"
+    end
+
+    private def emit_native_system_user_name(io : IO)
+      io << "(ENV[\"USER\"]? || ENV[\"USERNAME\"]? || \"\")"
+    end
+
+    private def emit_native_system_host_name(io : IO)
+      io << "(ENV[\"HOSTNAME\"]? || \"\")"
+    end
+
+    private def emit_native_system_home_directory(io : IO)
+      io << "(ENV[\"HOME\"]? || ENV[\"USERPROFILE\"]? || \"\")"
+    end
+
+    private def emit_native_system_temp_directory(io : IO)
+      io << "(ENV[\"TMPDIR\"]? || ENV[\"TEMP\"]? || ENV[\"TMP\"]? || \"/tmp\")"
+    end
+
+    private def emit_native_tcp_connect(io : IO, expr : AST::MethodCall)
+      io << "(begin; EmeraldRuntimeSocket.connect("
+      emit_expr(io, expr.args[0])
+      io << ", "
+      emit_expr(io, expr.args[1])
+      io << "); rescue ex : Exception; -1_i64; end)"
+    end
+
+    private def emit_native_tcp_listen(io : IO, expr : AST::MethodCall)
+      io << "(begin; EmeraldRuntimeSocket.listen("
+      emit_expr(io, expr.args[0])
+      io << ", "
+      emit_expr(io, expr.args[1])
+      io << "); rescue ex : Exception; -1_i64; end)"
+    end
+
+    private def emit_native_tcp_accept(io : IO, expr : AST::MethodCall)
+      io << "(begin; EmeraldRuntimeSocket.accept("
+      emit_expr(io, expr.args[0])
+      io << "); rescue ex : Exception; -1_i64; end)"
     end
 
     private def emit_static_path_current(io : IO)
@@ -764,12 +1305,15 @@ module Emerald
 
     private def emit_member_assign(io : IO, expr : AST::MemberAssign)
       receiver = expr.receiver
+
       if receiver.is_a?(AST::ThisExpr)
-        io << "@" << expr.name
-      else
-        emit_expr(io, receiver)
-        io << "." << expr.name
+        io << "@" << expr.name << " = "
+        emit_expr(io, expr.value)
+        return
       end
+
+      emit_expr(io, receiver)
+      io << "." << crystal_method_name(expr.name)
       io << " = "
       emit_expr(io, expr.value)
     end

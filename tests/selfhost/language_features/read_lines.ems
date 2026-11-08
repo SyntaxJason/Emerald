@@ -1,0 +1,14 @@
+use Std::Collections::IList;
+use Std::Io::Files;
+
+main() {
+    String path = "/tmp/emerald-language-read-lines.txt";
+    Files.writeText(path, "a\r\nb\n\nc\n");
+    IList<String> lines = Files.readLines(path);
+    println(lines.size());
+    println(lines.get(0) + "|" + lines.get(1) + "|" + lines.get(2) + "|" + lines.get(3));
+    Files.writeText(path, "");
+    println(Files.readLines(path).size());
+    Files.delete(path);
+    println(Files.readLines(path).size());
+}

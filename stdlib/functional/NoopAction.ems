@@ -1,5 +1,7 @@
 namespace Std::Functional;
 
+use Std::Functional::IAction;
+
 public class NoopAction implements IAction {
     public NoopAction() {
     }

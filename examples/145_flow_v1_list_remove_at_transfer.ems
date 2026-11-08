@@ -1,0 +1,15 @@
+public class HyperAllocFlowV1RemovedBox {
+    public Int value;
+
+    public HyperAllocFlowV1RemovedBox(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1RemovedBox> boxes = List();
+    HyperAllocFlowV1RemovedBox value = HyperAllocFlowV1RemovedBox(42);
+    boxes.add(value);
+    HyperAllocFlowV1RemovedBox removed = boxes.removeAt(0);
+    println(removed.value.toString());
+}

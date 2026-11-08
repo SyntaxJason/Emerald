@@ -1,0 +1,29 @@
+macro AddForwardMethod on Class {
+    StatementAST body = Stmt::return(
+        Expr::methodCall(
+            Expr::this(),
+            "echo",
+            [Expr::str("macro")]
+        )
+    );
+
+    BlockAST block = Block::of([body]);
+    MethodAST method = MethodAST::create("fromMacro", "String", [], block);
+
+    class.addMethod(method);
+}
+
+@AddForwardMethod
+public class ForwardProbe {
+    public ForwardProbe() {
+    }
+
+    public String echo(String value) {
+        return "echo " + value;
+    }
+}
+
+main() {
+    ForwardProbe probe = ForwardProbe();
+    println(probe.fromMacro());
+}

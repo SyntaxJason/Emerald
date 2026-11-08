@@ -1,0 +1,167 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::hyperallocflow::analysis::fold::HyperAllocFlowFoldMethodAnalyzer;
+use emerald::compiler::hyperallocflow::analysis::support::HyperAllocFlowProgramCatalog;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmValue;
+
+public class NativeFoldedMethodEmitter {
+    private NativeEmitContext context;
+    private NativeLookup lookup;
+    private NativeExpressionEmitter expressions;
+    private HyperAllocFlowFoldMethodAnalyzer methods;
+
+    public NativeFoldedMethodEmitter(NativeEmitContext emitContext, NativeExpressionEmitter expressionEmitter) {
+        this.context = emitContext;
+        this.lookup = NativeLookup();
+        this.expressions = expressionEmitter;
+        this.methods = HyperAllocFlowFoldMethodAnalyzer(HyperAllocFlowProgramCatalog());
+    }
+
+    public Bool supports(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Expression receiver = program.expression(expression.leftIndex());
+
+        if (receiver.kind() != "name") {
+            return false;
+        }
+
+        NativeLocal local = this.lookup.findLocal(receiver.text(), locals, backend);
+
+        if (!local.isFoldedFlow()) {
+            return false;
+        }
+
+        return this.methods.canInline(local.typeName(), expression.text(), expression.argumentIndexes().length(), program);
+    }
+
+    public LlvmValue emit(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Expression receiver = program.expression(expression.leftIndex());
+        NativeLocal local = this.lookup.findLocal(receiver.text(), locals, backend);
+        MethodDeclaration method = this.methods.method(local.typeName(), expression.text(), expression.argumentIndexes().length(), program);
+        List<String> parameterNames = List();
+        List<LlvmValue> parameterValues = List();
+        Int index = 0;
+
+        while (index < method.parameters().length()) {
+            Parameter parameter = method.parameters().get(index);
+            parameterNames.add(parameter.name());
+            parameterValues.add(this.expressions.emit(expression.argumentIndexes().get(index), program, backend, locals));
+            index = index + 1;
+        }
+
+        this.context.hyperAllocFlowReport().recordFoldedMethodInline();
+        return this.emitExpression(method.statements().get(0).expressionIndex(), local, parameterNames, parameterValues, program, backend);
+    }
+
+    private LlvmValue emitExpression(Int expressionIndex, NativeLocal receiver, List<String> parameterNames, List<LlvmValue> parameterValues, SyntaxProgram program, LlvmNativeBackend backend) {
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "int") {
+            return backend.int64(expression.intValue());
+        }
+
+        if (expression.kind() == "bool") {
+            return backend.boolValue(expression.boolValue());
+        }
+
+        if (expression.kind() == "name") {
+            return this.parameterValue(expression.text(), parameterNames, parameterValues, backend);
+        }
+
+        if (expression.kind() == "field") {
+            return receiver.foldedFieldValue(expression.text());
+        }
+
+        if (expression.kind() == "unary") {
+            LlvmValue value = this.emitExpression(expression.leftIndex(), receiver, parameterNames, parameterValues, program, backend);
+
+            if (expression.text() == "-") {
+                return backend.checkedInteger("neg", value, backend.int64(0), "fold_neg_" + this.context.nextTemp().toString());
+            }
+
+            return backend.builder().intEqual(value, backend.boolValue(false), "fold_not_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.kind() == "binary") {
+            LlvmValue left = this.emitExpression(expression.leftIndex(), receiver, parameterNames, parameterValues, program, backend);
+            LlvmValue right = this.emitExpression(expression.rightIndex(), receiver, parameterNames, parameterValues, program, backend);
+            return this.emitBinary(expression.text(), left, right, backend);
+        }
+
+        return backend.int32(0);
+    }
+
+    private LlvmValue parameterValue(String name, List<String> parameterNames, List<LlvmValue> parameterValues, LlvmNativeBackend backend) {
+        Int index = 0;
+
+        while (index < parameterNames.length()) {
+            if (parameterNames.get(index) == name) {
+                return parameterValues.get(index);
+            }
+
+            index = index + 1;
+        }
+
+        return backend.int32(0);
+    }
+
+    private LlvmValue emitBinary(String op, LlvmValue left, LlvmValue right, LlvmNativeBackend backend) {
+        if (op == "+") {
+            return backend.checkedInteger("add", left, right, "fold_add_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "-") {
+            return backend.checkedInteger("sub", left, right, "fold_sub_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "*") {
+            return backend.checkedInteger("mul", left, right, "fold_mul_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "/") {
+            return backend.checkedInteger("div", left, right, "fold_div_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "%") {
+            return backend.checkedInteger("rem", left, right, "fold_rem_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "&&") {
+            return backend.builder().bitAnd(left, right, "fold_and_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "||") {
+            return backend.builder().bitOr(left, right, "fold_or_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "==") {
+            return backend.builder().intEqual(left, right, "fold_eq_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "!=") {
+            return backend.builder().intNotEqual(left, right, "fold_ne_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "<") {
+            return backend.builder().intSignedLessThan(left, right, "fold_lt_" + this.context.nextTemp().toString());
+        }
+
+        if (op == "<=") {
+            return backend.builder().intSignedLessOrEqual(left, right, "fold_le_" + this.context.nextTemp().toString());
+        }
+
+        if (op == ">") {
+            return backend.builder().intSignedGreaterThan(left, right, "fold_gt_" + this.context.nextTemp().toString());
+        }
+
+        if (op == ">=") {
+            return backend.builder().intSignedGreaterOrEqual(left, right, "fold_ge_" + this.context.nextTemp().toString());
+        }
+
+        return backend.int32(0);
+    }
+}

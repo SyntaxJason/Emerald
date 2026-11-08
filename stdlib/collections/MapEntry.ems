@@ -1,5 +1,7 @@
 namespace Std::Collections;
 
+use Std::Collections::IMapEntry;
+
 public class MapEntry<K, V> implements IMapEntry<K, V> {
     private K storedKey;
     private V storedValue;

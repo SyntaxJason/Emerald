@@ -1,0 +1,31 @@
+namespace emerald::compiler::syntax;
+
+public class Parameter {
+    private String nameValue;
+    private String typeValue;
+    private Int lineValue;
+    private Int columnValue;
+
+    public Parameter(String name, String typeName, Int line, Int column) {
+        this.nameValue = name;
+        this.typeValue = typeName;
+        this.lineValue = line;
+        this.columnValue = column;
+    }
+
+    public String name() {
+        return this.nameValue + "";
+    }
+
+    public String typeName() {
+        return this.typeValue + "";
+    }
+
+    public Int line() {
+        return this.lineValue;
+    }
+
+    public Int column() {
+        return this.columnValue;
+    }
+}

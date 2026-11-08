@@ -1,5 +1,17 @@
 namespace Std::Io;
 
+use Std::Io::IClosable;
+use Std::Io::IFlushable;
+use Std::Io::IPath;
+use Std::Io::ITextWriter;
+use Std::Io::Path;
+use Std::Native::NativeFile;
+use Std::Result::Failure;
+use Std::Result::BoolSuccess;
+use Std::Result::IResult;
+use Std::Result::Success;
+use Std::Native::NativeSystem;
+
 public class TextWriter implements ITextWriter, IClosable, IFlushable {
     private Path writerPath;
 
@@ -20,39 +32,51 @@ public class TextWriter implements ITextWriter, IClosable, IFlushable {
     }
 
     public Bool exists() {
-        return File.exists(this.writerPath.value());
+        return NativeFile.exists(this.writerPath.value());
     }
 
     public Void writeText(String text) {
-        File.writeText(this.writerPath.value(), text);
+        NativeFile.writeText(this.writerPath.value(), text);
     }
 
     public Void writeLine(String text) {
-        this.writeText(text + "\n");
+        this.writeText(text + NativeSystem.lineSeparator());
     }
 
-    public Std::Result::IResult<Bool, String> tryWriteText(String text) {
-        return File.tryWriteText(this.writerPath.value(), text);
+    public IResult<Bool, String> tryWriteText(String text) {
+        NativeFile.writeText(this.writerPath.value(), text);
+
+        if (!this.exists()) {
+            return Failure("Could not write file: " + this.writerPath.value());
+        }
+
+        return BoolSuccess(true);
     }
 
-    public Std::Result::IResult<Bool, String> tryWriteLine(String text) {
-        return this.tryWriteText(text + "\n");
+    public IResult<Bool, String> tryWriteLine(String text) {
+        return this.tryWriteText(text + NativeSystem.lineSeparator());
     }
 
     public Void appendText(String text) {
-        File.appendText(this.writerPath.value(), text);
+        NativeFile.appendText(this.writerPath.value(), text);
     }
 
     public Void appendLine(String text) {
-        this.appendText(text + "\n");
+        this.appendText(text + NativeSystem.lineSeparator());
     }
 
-    public Std::Result::IResult<Bool, String> tryAppendText(String text) {
-        return File.tryAppendText(this.writerPath.value(), text);
+    public IResult<Bool, String> tryAppendText(String text) {
+        NativeFile.appendText(this.writerPath.value(), text);
+
+        if (!this.exists()) {
+            return Failure("Could not append file: " + this.writerPath.value());
+        }
+
+        return BoolSuccess(true);
     }
 
-    public Std::Result::IResult<Bool, String> tryAppendLine(String text) {
-        return this.tryAppendText(text + "\n");
+    public IResult<Bool, String> tryAppendLine(String text) {
+        return this.tryAppendText(text + NativeSystem.lineSeparator());
     }
 
     public Void flush() {

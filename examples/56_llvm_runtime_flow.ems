@@ -1,0 +1,102 @@
+use Std::Collections::ArrayList;
+use Std::Llvm::Llvm;
+use Std::Llvm::LlvmContext;
+use Std::Llvm::LlvmModule;
+use Std::Llvm::LlvmBuilder;
+use Std::Llvm::LlvmType;
+use Std::Llvm::LlvmValue;
+use Std::Llvm::LlvmFunction;
+use Std::Llvm::LlvmBasicBlock;
+use Std::Llvm::LlvmNativeLinker;
+use Std::Llvm::LlvmRuntime;
+use Std::Llvm::LlvmRuntimeDeclarations;
+use Std::Llvm::LlvmRuntimeFunction;
+
+main() {
+    if (!Llvm.initializeNativeTarget()) {
+        println(Llvm.lastError());
+        return;
+    }
+
+    String triple = Llvm.defaultTargetTriple();
+    String objectPath = "emerald-runtime-step-two" + Llvm.nativeObjectExtension();
+    String runtimeObjectPath = "emerald-runtime" + Llvm.nativeObjectExtension();
+    String executablePath = "emerald-runtime-step-two" + Llvm.nativeExecutableExtension();
+
+    LlvmContext context = Llvm.createContext();
+    LlvmModule llvmModule = context.createModule("emerald_runtime_step_two");
+    LlvmBuilder builder = context.createBuilder();
+
+    llvmModule.setTarget(triple);
+
+    LlvmRuntimeDeclarations runtimeDeclarations = LlvmRuntimeDeclarations(context, llvmModule);
+    LlvmRuntimeFunction flowInit = runtimeDeclarations.flowInit();
+    LlvmRuntimeFunction stringFromCString = runtimeDeclarations.stringFromCString();
+    LlvmRuntimeFunction printlnFunction = runtimeDeclarations.println();
+
+    LlvmType int32 = context.int32Type();
+    LlvmType mainType = context.functionType(int32);
+    LlvmFunction mainFunction = llvmModule.addFunction("main", mainType);
+    LlvmBasicBlock entry = mainFunction.appendBlock("entry");
+
+    builder.positionAtEnd(entry);
+
+    ArrayList<LlvmValue> noArgs = ArrayList();
+    builder.callFunction(flowInit.type(), flowInit.function(), noArgs, "");
+
+    LlvmValue messageBytes = builder.globalStringPointer("Hello from Emerald Native Runtime + HyperAlloc Flow", "message_bytes");
+
+    ArrayList<LlvmValue> stringArgs = ArrayList();
+    stringArgs.add(messageBytes);
+
+    LlvmValue message = builder.callFunction(stringFromCString.type(), stringFromCString.function(), stringArgs, "message");
+
+    ArrayList<LlvmValue> printArgs = ArrayList();
+    printArgs.add(message);
+
+    builder.callFunction(printlnFunction.type(), printlnFunction.function(), printArgs, "");
+    builder.returnValue(Llvm.constInt(int32, 0));
+
+    if (!llvmModule.verify()) {
+        println(llvmModule.verifyMessage());
+        return;
+    }
+
+    if (!llvmModule.emitObjectFileFor(triple, objectPath)) {
+        println(Llvm.lastError());
+        return;
+    }
+
+    LlvmRuntime emeraldRuntime = LlvmRuntime();
+
+    if (!emeraldRuntime.compileObject(runtimeObjectPath)) {
+        println(emeraldRuntime.lastCommand());
+        println(emeraldRuntime.lastOutput());
+        println(emeraldRuntime.lastError());
+        return;
+    }
+
+    ArrayList<String> objects = ArrayList();
+    objects.add(objectPath);
+    objects.add(runtimeObjectPath);
+
+    ArrayList<String> libraryPaths = ArrayList();
+    ArrayList<String> extraArgs = ArrayList();
+
+    LlvmNativeLinker linker = LlvmNativeLinker();
+
+    if (!linker.linkExecutableWith(executablePath, objects, libraryPaths, emeraldRuntime.libraries(), extraArgs)) {
+        println(linker.lastCommand());
+        println(linker.lastOutput());
+        println(linker.lastError());
+        return;
+    }
+
+    println("Wrote " + objectPath);
+    println("Compiled " + runtimeObjectPath);
+    println("Linked " + executablePath);
+
+    builder.dispose();
+    llvmModule.dispose();
+    context.dispose();
+}

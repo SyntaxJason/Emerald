@@ -1,0 +1,69 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::syntax::MethodDeclaration;
+use Std::Collections::ArrayList;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmType;
+
+public class NativeTypeMapper {
+    private NativeEmitContext context;
+
+    public NativeTypeMapper(NativeEmitContext emitContext) {
+        this.context = emitContext;
+    }
+
+    public LlvmType llvmType(String typeName, LlvmNativeBackend backend) {
+        if (typeName == "Void") {
+            return backend.context().voidType();
+        }
+
+        if (typeName == "String") {
+            return backend.context().opaquePointerType();
+        }
+
+        if (typeName == "Bool") {
+            return backend.context().boolType();
+        }
+
+        if (typeName == "Float") {
+            return backend.context().doubleType();
+        }
+        if (typeName == "Int") {
+            return backend.context().int64Type();
+        }
+        if (typeName == "Char") {
+            return backend.context().int32Type();
+        }
+
+        if (typeName.startsWith("List<") || typeName.startsWith("IList<") || typeName.startsWith("ArrayList<")) {
+            return backend.context().opaquePointerType();
+        }
+
+        return backend.context().opaquePointerType();
+    }
+
+    public LlvmType returnType(MethodDeclaration method, LlvmNativeBackend backend) {
+        if (method.isConstructor()) {
+            return backend.context().voidType();
+        }
+
+        return this.llvmType(method.returnTypeName(), backend);
+    }
+
+    public LlvmType methodType(MethodDeclaration method, LlvmNativeBackend backend) {
+        ArrayList<LlvmType> parameterTypes = ArrayList();
+
+        if (!method.isStatic()) {
+            parameterTypes.add(backend.context().opaquePointerType());
+        }
+
+        Int index = 0;
+
+        while (index < method.parameters().length()) {
+            parameterTypes.add(this.llvmType(method.parameters().get(index).typeName(), backend));
+            index = index + 1;
+        }
+
+        return backend.context().functionTypeWithParams(this.returnType(method, backend), parameterTypes);
+    }
+}

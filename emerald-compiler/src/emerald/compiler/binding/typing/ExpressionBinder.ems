@@ -1,0 +1,17 @@
+namespace emerald::compiler::binding;
+
+public class ExpressionBinder {
+    private ExpressionTypeResolver resolver;
+
+    public ExpressionBinder(BindingContext bindingContext, BindingTypeCatalog typeCatalog) {
+        this.resolver = ExpressionTypeResolver(bindingContext, typeCatalog);
+    }
+
+    public String typeOf(Int expressionIndex) {
+        return this.resolver.typeOf(expressionIndex);
+    }
+
+    public String typeOfExpected(Int expressionIndex, String expected) {
+        return this.resolver.typeOfExpected(expressionIndex, expected);
+    }
+}

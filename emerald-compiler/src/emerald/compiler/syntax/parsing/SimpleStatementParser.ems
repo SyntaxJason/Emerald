@@ -1,0 +1,93 @@
+namespace emerald::compiler::syntax;
+
+public class SimpleStatementParser {
+    private ParserState state;
+    private ExpressionParser expressions;
+
+    public SimpleStatementParser(ParserState parserState) {
+        this.state = parserState;
+        this.expressions = ExpressionParser(parserState);
+    }
+
+    public Statement parsePrintln() {
+        Token start = this.state.advance();
+        this.state.consumeSymbol("(", "Expected '(' after println");
+        Int value = this.expressions.parseExpression();
+        this.state.consumeSymbol(")", "Expected ')' after println argument");
+        this.state.consumeSymbol(";", "Expected ';' after println statement");
+
+        return Statement("println", "", "", value, 0, this.state.emptyStatements(), this.state.emptyStatements(), start.line(), start.column());
+    }
+
+    public Statement parseReturn() {
+        Token start = this.state.advance();
+        Int value = 0;
+
+        if (!this.state.checkSymbol(";")) {
+            value = this.expressions.parseExpression();
+        }
+
+        this.state.consumeSymbol(";", "Expected ';' after return statement");
+        return Statement("return", "", "", value, 0, this.state.emptyStatements(), this.state.emptyStatements(), start.line(), start.column());
+    }
+
+    public Statement parseBreak() {
+        Token start = this.state.advance();
+        this.state.consumeSymbol(";", "Expected ';' after break");
+        return Statement("break", "", "", 0, 0, this.state.emptyStatements(), this.state.emptyStatements(), start.line(), start.column());
+    }
+
+    public Statement parseContinue() {
+        Token start = this.state.advance();
+        this.state.consumeSymbol(";", "Expected ';' after continue");
+        return Statement("continue", "", "", 0, 0, this.state.emptyStatements(), this.state.emptyStatements(), start.line(), start.column());
+    }
+
+    public Statement parsePanic() {
+        Token start = this.state.advance();
+        this.state.consumeSymbol("(", "Expected '(' after panic");
+        Int value = this.expressions.parseExpression();
+        this.state.consumeSymbol(")", "Expected ')' after panic message");
+        this.state.consumeSymbol(";", "Expected ';' after panic");
+        return Statement("panic", "", "", value, 0, this.state.emptyStatements(), this.state.emptyStatements(), start.line(), start.column());
+    }
+
+    public Statement parseVariable() {
+        TypeParser types = TypeParser(this.state);
+        Token start = this.state.current();
+        String typeName = types.parse("Expected variable type");
+        Token name = this.state.consumeKind("identifier", "Expected variable name");
+        this.state.consumeSymbol("=", "Expected '=' after variable name");
+        Int value = this.expressions.parseExpression();
+        this.state.consumeSymbol(";", "Expected ';' after variable declaration");
+
+        return Statement("variable", name.text(), typeName, value, 0, this.state.emptyStatements(), this.state.emptyStatements(), start.line(), start.column());
+    }
+
+    public Statement parseAssign() {
+        Token name = this.state.advance();
+        this.state.consumeSymbol("=", "Expected '=' after assignment name");
+        Int value = this.expressions.parseExpression();
+        this.state.consumeSymbol(";", "Expected ';' after assignment");
+
+        return Statement("assign", name.text(), "", value, 0, this.state.emptyStatements(), this.state.emptyStatements(), name.line(), name.column());
+    }
+
+    public Statement parseFieldAssign() {
+        Token start = this.state.current();
+        Int target = this.expressions.parsePostfix();
+        this.state.consumeSymbol("=", "Expected '=' after field assignment");
+        Int value = this.expressions.parseExpression();
+        this.state.consumeSymbol(";", "Expected ';' after field assignment");
+
+        return Statement("fieldassign", "", "", value, target, this.state.emptyStatements(), this.state.emptyStatements(), start.line(), start.column());
+    }
+
+    public Statement parseExpressionStatement() {
+        Token start = this.state.current();
+        Int value = this.expressions.parseExpression();
+        this.state.consumeSymbol(";", "Expected ';' after expression statement");
+
+        return Statement("expression", "", "", value, 0, this.state.emptyStatements(), this.state.emptyStatements(), start.line(), start.column());
+    }
+}

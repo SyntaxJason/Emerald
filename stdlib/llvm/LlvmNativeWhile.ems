@@ -1,0 +1,49 @@
+namespace Std::Llvm;
+
+public class LlvmNativeWhile {
+    private LlvmBasicBlock conditionBlockValue;
+    private LlvmBasicBlock bodyBlockValue;
+    private LlvmBasicBlock exitBlockValue;
+
+    public LlvmNativeWhile(LlvmFunction function, String name) {
+        this.conditionBlockValue = function.appendBlock(name + "_condition");
+        this.bodyBlockValue = function.appendBlock(name + "_body");
+        this.exitBlockValue = function.appendBlock(name + "_exit");
+    }
+
+    public LlvmBasicBlock conditionBlock() {
+        return LlvmBasicBlock(this.conditionBlockValue.handle());
+    }
+
+    public LlvmBasicBlock bodyBlock() {
+        return LlvmBasicBlock(this.bodyBlockValue.handle());
+    }
+
+    public LlvmBasicBlock exitBlock() {
+        return LlvmBasicBlock(this.exitBlockValue.handle());
+    }
+
+    public Void jumpToCondition(LlvmBuilder builder) {
+        builder.branch(this.conditionBlockValue);
+    }
+
+    public Void enterCondition(LlvmBuilder builder) {
+        builder.positionAtEnd(this.conditionBlockValue);
+    }
+
+    public Void branchOn(LlvmBuilder builder, LlvmValue condition) {
+        builder.conditionalBranch(condition, this.bodyBlockValue, this.exitBlockValue);
+    }
+
+    public Void enterBody(LlvmBuilder builder) {
+        builder.positionAtEnd(this.bodyBlockValue);
+    }
+
+    public Void continueLoop(LlvmBuilder builder) {
+        builder.branch(this.conditionBlockValue);
+    }
+
+    public Void enterExit(LlvmBuilder builder) {
+        builder.positionAtEnd(this.exitBlockValue);
+    }
+}

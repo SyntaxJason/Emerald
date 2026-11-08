@@ -1,0 +1,11 @@
+public data class HyperAllocFlowV1IndependentPair(Int left, Int right) {
+}
+
+main() {
+    List<HyperAllocFlowV1IndependentPair> values = List();
+    HyperAllocFlowV1IndependentPair original = HyperAllocFlowV1IndependentPair(20, 22);
+    values.add(original);
+    HyperAllocFlowV1IndependentPair copy = values.get(0);
+    values.clear();
+    println((copy.left + copy.right).toString());
+}

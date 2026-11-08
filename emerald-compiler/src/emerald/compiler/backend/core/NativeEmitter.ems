@@ -1,0 +1,103 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::binding::BoundProgram;
+use emerald::compiler::cli::Options;
+use emerald::compiler::diagnostic::DiagnosticBag;
+use emerald::compiler::hyperallocflow::HyperAllocFlowReport;
+use Std::Llvm::LlvmNativeBackend;
+
+public class NativeEmitter {
+    public NativeEmitter() {
+    }
+
+    public Bool emit(BoundProgram program, Options options, DiagnosticBag diagnostics, HyperAllocFlowReport hyperAllocFlowReport) {
+        NativeEmitContext context = NativeEmitContext(options, hyperAllocFlowReport);
+        LlvmNativeBackend backend = LlvmNativeBackend(context.moduleName(), context.outputBase());
+        backend.configureTarget(options.target(), options.targetTriple(), options.executableExtension(), options.objectExtension());
+        backend.configureBuild(options.emitMode(), options.keepTemps(), options.tempBase());
+        backend.configureToolchain(options.cc(), options.sysroot());
+        backend.configureRuntime(!NativeLookup().findClass(program.syntax(), "LlvmNative").isMissing());
+
+        if (!backend.initialize()) {
+            diagnostics.error(backend.lastMessage(), 1, 1);
+            backend.dispose();
+            return false;
+        }
+
+        context.classTable().create(program.syntax(), backend);
+        NativeMethodEmitter methods = NativeMethodEmitter(context);
+        methods.emitAll(program.syntax(), backend);
+
+        backend.beginMain();
+        NativeStatementEmitter statements = NativeStatementEmitter(context);
+        List<NativeLocal> locals = List();
+        EmitResult result = statements.emit(program.syntax().statements(), program.syntax(), backend, locals, "Int", backend.mainFunction());
+
+        if (!result.terminated()) {
+            backend.returnCode(0);
+        }
+
+        if (context.errors().length() > 0) {
+            Int errorIndex = 0;
+
+            while (errorIndex < context.errors().length()) {
+                diagnostics.error(context.errors().get(errorIndex), 1, 1);
+                errorIndex = errorIndex + 1;
+            }
+
+            backend.dispose();
+            return false;
+        }
+
+        if (!this.finish(backend, options, diagnostics)) {
+            backend.dispose();
+            return false;
+        }
+
+        backend.dispose();
+        return true;
+    }
+
+    private Bool finish(LlvmNativeBackend backend, Options options, DiagnosticBag diagnostics) {
+        if (options.emitLlvmIrOnly()) {
+            if (!backend.writeIr(options.irPath())) {
+                diagnostics.error(backend.lastMessage(), 1, 1);
+                return false;
+            }
+
+            return true;
+        }
+
+        if (options.writeIr()) {
+            if (!backend.writeIr(options.irPath())) {
+                diagnostics.error(backend.lastMessage(), 1, 1);
+                return false;
+            }
+        }
+
+        if (options.emitObject()) {
+            if (!backend.emitObjectOutput()) {
+                diagnostics.error(backend.lastMessage(), 1, 1);
+                return false;
+            }
+
+            return true;
+        }
+
+        if (options.emitAssembly()) {
+            if (!backend.emitAssemblyOutput()) {
+                diagnostics.error(backend.lastMessage(), 1, 1);
+                return false;
+            }
+
+            return true;
+        }
+
+        if (!backend.buildExecutable()) {
+            diagnostics.error(backend.lastMessage(), 1, 1);
+            return false;
+        }
+
+        return true;
+    }
+}

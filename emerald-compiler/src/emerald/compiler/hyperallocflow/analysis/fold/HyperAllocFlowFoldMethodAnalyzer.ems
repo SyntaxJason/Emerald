@@ -1,0 +1,126 @@
+namespace emerald::compiler::hyperallocflow::analysis::fold;
+
+use emerald::compiler::hyperallocflow::analysis::support::HyperAllocFlowProgramCatalog;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class HyperAllocFlowFoldMethodAnalyzer {
+    private HyperAllocFlowProgramCatalog catalog;
+
+    public HyperAllocFlowFoldMethodAnalyzer(HyperAllocFlowProgramCatalog programCatalog) {
+        this.catalog = programCatalog;
+    }
+
+    public Bool canInline(String ownerName, String name, Int parameterCount, SyntaxProgram program) {
+        ClassDeclaration declaration = this.catalog.findClass(ownerName, program);
+        MethodDeclaration method = this.catalog.findMethod(ownerName, name, parameterCount, program);
+
+        if (declaration.isMissing() || method.isMissing()) {
+            return false;
+        }
+
+        if (method.returnTypeName() != "Int" && method.returnTypeName() != "Bool") {
+            return false;
+        }
+
+        if (method.statements().length() != 1 || !method.statements().get(0).isReturn()) {
+            return false;
+        }
+
+        Int parameterIndex = 0;
+
+        while (parameterIndex < method.parameters().length()) {
+            String typeName = method.parameters().get(parameterIndex).typeName();
+
+            if (typeName != "Int" && typeName != "Bool") {
+                return false;
+            }
+
+            parameterIndex = parameterIndex + 1;
+        }
+
+        return this.expressionIsInlineSafe(method.statements().get(0).expressionIndex(), declaration, method, program);
+    }
+
+    public Int returnExpressionIndex(String ownerName, String name, Int parameterCount, SyntaxProgram program) {
+        MethodDeclaration method = this.catalog.findMethod(ownerName, name, parameterCount, program);
+
+        if (method.isMissing() || method.statements().length() != 1 || !method.statements().get(0).isReturn()) {
+            return 0;
+        }
+
+        return method.statements().get(0).expressionIndex();
+    }
+
+    public MethodDeclaration method(String ownerName, String name, Int parameterCount, SyntaxProgram program) {
+        return this.catalog.findMethod(ownerName, name, parameterCount, program);
+    }
+
+    private Bool expressionIsInlineSafe(Int expressionIndex, ClassDeclaration declaration, MethodDeclaration method, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return false;
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "int" || expression.kind() == "bool") {
+            return true;
+        }
+
+        if (expression.kind() == "name") {
+            return this.isPrimitiveParameter(expression.text(), method);
+        }
+
+        if (expression.kind() == "field") {
+            Expression receiver = program.expression(expression.leftIndex());
+            return receiver.kind() == "name" && receiver.text() == "this" && this.isPrimitiveField(expression.text(), declaration);
+        }
+
+        if (expression.kind() == "unary") {
+            return this.expressionIsInlineSafe(expression.leftIndex(), declaration, method, program);
+        }
+
+        if (expression.kind() == "binary") {
+            return this.expressionIsInlineSafe(expression.leftIndex(), declaration, method, program) && this.expressionIsInlineSafe(expression.rightIndex(), declaration, method, program);
+        }
+
+        return false;
+    }
+
+    private Bool isPrimitiveParameter(String name, MethodDeclaration method) {
+        Int index = 0;
+
+        while (index < method.parameters().length()) {
+            Parameter parameter = method.parameters().get(index);
+
+            if (parameter.name() == name) {
+                return parameter.typeName() == "Int" || parameter.typeName() == "Bool";
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    private Bool isPrimitiveField(String name, ClassDeclaration declaration) {
+        Int index = 0;
+
+        while (index < declaration.fields().length()) {
+            FieldDeclaration field = declaration.fields().get(index);
+
+            if (field.name() == name) {
+                return field.typeName() == "Int" || field.typeName() == "Bool";
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+}

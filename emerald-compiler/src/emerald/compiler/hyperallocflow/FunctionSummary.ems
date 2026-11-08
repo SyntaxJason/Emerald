@@ -1,0 +1,349 @@
+namespace emerald::compiler::hyperallocflow;
+
+public class FunctionSummary {
+    private String ownerNameValue;
+    private String qualifiedOwnerNameValue;
+    private String nameValue;
+    private Int parameterCountValue;
+    private String returnTypeValue;
+    private Bool constructorValue;
+    private Bool staticValue;
+    private Bool receiverEscapesValue;
+    private Bool returnsOwnedValue;
+    private Bool generatedValue;
+    private Bool returnBorrowsReceiverValue;
+    private String returnReasonValue;
+    private List<ParameterHyperAllocFlowEffect> parameterEffectItems;
+    private List<String> parameterTypeItems;
+    private List<Int> returnBorrowParameterItems;
+    private Bool interfaceContractValue;
+
+    public FunctionSummary(String ownerName, String name, Int parameterCount, String returnType, Bool constructor, Bool staticMethod, Bool receiverEscapes, Bool returnsOwned, String returnReason, List<ParameterHyperAllocFlowEffect> parameterEffects) {
+        this.ownerNameValue = ownerName;
+        this.qualifiedOwnerNameValue = ownerName;
+        this.nameValue = name;
+        this.parameterCountValue = parameterCount;
+        this.returnTypeValue = returnType;
+        this.constructorValue = constructor;
+        this.staticValue = staticMethod;
+        this.receiverEscapesValue = receiverEscapes;
+        this.returnsOwnedValue = returnsOwned;
+        this.generatedValue = false;
+        this.returnBorrowsReceiverValue = false;
+        this.returnReasonValue = returnReason;
+        this.parameterEffectItems = List();
+        this.copyParameterEffects(parameterEffects);
+        this.parameterTypeItems = List();
+        this.returnBorrowParameterItems = List();
+        this.interfaceContractValue = false;
+    }
+
+    public FunctionSummary(String ownerName, String name, Int parameterCount, String returnType, Bool constructor, Bool staticMethod, Bool receiverEscapes, Bool returnsOwned, Bool generated, String returnReason, List<ParameterHyperAllocFlowEffect> parameterEffects) {
+        this.ownerNameValue = ownerName;
+        this.qualifiedOwnerNameValue = ownerName;
+        this.nameValue = name;
+        this.parameterCountValue = parameterCount;
+        this.returnTypeValue = returnType;
+        this.constructorValue = constructor;
+        this.staticValue = staticMethod;
+        this.receiverEscapesValue = receiverEscapes;
+        this.returnsOwnedValue = returnsOwned;
+        this.generatedValue = generated;
+        this.returnBorrowsReceiverValue = false;
+        this.returnReasonValue = returnReason;
+        this.parameterEffectItems = List();
+        this.copyParameterEffects(parameterEffects);
+        this.parameterTypeItems = List();
+        this.returnBorrowParameterItems = List();
+        this.interfaceContractValue = false;
+    }
+
+    // Summary of an interface method, joined over its implementations.
+    public Void markInterfaceContract() {
+        this.interfaceContractValue = true;
+    }
+
+    public Bool isInterfaceContract() {
+        return this.interfaceContractValue;
+    }
+
+    public String ownerName() {
+        return this.ownerNameValue + "";
+    }
+
+    public Bool ownerNameIsEmpty() {
+        return this.ownerNameValue.isEmpty();
+    }
+
+    public Void setQualifiedOwnerName(String ownerName) {
+        this.qualifiedOwnerNameValue = ownerName;
+    }
+
+    public String qualifiedOwnerName() {
+        return this.qualifiedOwnerNameValue + "";
+    }
+
+    public String name() {
+        return this.nameValue + "";
+    }
+
+    public Int parameterCount() {
+        return this.parameterCountValue;
+    }
+
+    public String returnTypeName() {
+        return this.returnTypeValue + "";
+    }
+
+    public Bool returnTypeMatches(String typeName) {
+        return this.returnTypeValue == typeName;
+    }
+
+    public Bool isConstructor() {
+        return this.constructorValue;
+    }
+
+    public Bool isStatic() {
+        return this.staticValue;
+    }
+
+    public Bool receiverEscapes() {
+        return this.receiverEscapesValue;
+    }
+
+    public Bool receiverIsView() {
+        return !this.receiverEscapesValue;
+    }
+
+    public Bool returnsOwned() {
+        return this.returnsOwnedValue;
+    }
+
+    public Bool isGenerated() {
+        return this.generatedValue;
+    }
+
+    public Bool returnBorrowsReceiver() {
+        return this.returnBorrowsReceiverValue;
+    }
+
+    public Bool returnBorrowsParameter(Int index) {
+        return this.returnBorrowParameterItems.contains(index);
+    }
+
+    public Bool markReturnBorrowsReceiver() {
+        if (this.returnBorrowsReceiverValue) {
+            return false;
+        }
+
+        this.returnBorrowsReceiverValue = true;
+        return true;
+    }
+
+    public Bool markReturnBorrowsParameter(Int index) {
+        if (this.returnBorrowParameterItems.contains(index)) {
+            return false;
+        }
+
+        this.returnBorrowParameterItems.add(index);
+        return true;
+    }
+
+    public String returnReason() {
+        return this.returnReasonValue;
+    }
+
+    public Void markReturnsOwned(String reason) {
+        this.returnsOwnedValue = true;
+        this.returnReasonValue = reason;
+    }
+
+    public Void clearReturnsOwned(String reason) {
+        this.returnsOwnedValue = false;
+        this.returnReasonValue = reason;
+    }
+
+    public Bool parameterEscapes(Int index) {
+        if (index < 0 || index >= this.parameterEffectItems.length()) {
+            return true;
+        }
+
+        return this.parameterEffectItems.get(index).escapes();
+    }
+
+    public Bool parameterIsView(Int index) {
+        if (index < 0 || index >= this.parameterEffectItems.length()) {
+            return false;
+        }
+
+        return this.parameterEffectItems.get(index).isView();
+    }
+
+    public Bool parameterMutates(Int index) {
+        if (index < 0 || index >= this.parameterEffectItems.length()) {
+            return true;
+        }
+
+        return this.parameterEffectItems.get(index).mutates();
+    }
+
+    public ParameterHyperAllocFlowEffect parameterEffect(Int index) {
+        if (index >= 0 && index < this.parameterEffectItems.length()) {
+            ParameterHyperAllocFlowEffect effect = this.parameterEffectItems.get(index);
+            return ParameterHyperAllocFlowEffect(effect.index(), effect.name() + "", effect.escapes(), effect.mutates(), effect.reason() + "");
+        }
+
+        return ParameterHyperAllocFlowEffect(index, "", true, "missing parameter summary; keeping escape-safe default");
+    }
+
+    public List<ParameterHyperAllocFlowEffect> parameterEffects() {
+        return this.parameterEffectItems;
+    }
+
+    public List<String> parameterTypes() {
+        return this.parameterTypeItems;
+    }
+
+    public Void setParameterTypes(List<String> parameterTypes) {
+        this.parameterTypeItems = List();
+        Int index = 0;
+
+        while (index < parameterTypes.length()) {
+            this.parameterTypeItems.add(parameterTypes.get(index));
+            index = index + 1;
+        }
+    }
+
+    public Bool updateReceiverEscapes(Bool receiverEscapes) {
+        if (this.receiverEscapesValue == receiverEscapes) {
+            return false;
+        }
+
+        this.receiverEscapesValue = receiverEscapes;
+        return true;
+    }
+
+    public Bool updateParameterEffect(Int index, Bool escapes, Bool mutates) {
+        if (index < 0 || index >= this.parameterEffectItems.length()) {
+            return false;
+        }
+
+        return this.parameterEffectItems.get(index).updateEffects(escapes, mutates);
+    }
+
+    public Bool updateEffects(Bool receiverEscapes, List<ParameterHyperAllocFlowEffect> parameterEffects) {
+        Bool parameterEffectsChanged = this.parameterEffectItems.length() != parameterEffects.length();
+        Int index = 0;
+
+        while (!parameterEffectsChanged && index < parameterEffects.length()) {
+            ParameterHyperAllocFlowEffect current = this.parameterEffectItems.get(index);
+            ParameterHyperAllocFlowEffect next = parameterEffects.get(index);
+
+            if (current.escapes() != next.escapes() || current.mutates() != next.mutates()) {
+                parameterEffectsChanged = true;
+            }
+
+            index = index + 1;
+        }
+
+        Bool changed = this.receiverEscapesValue != receiverEscapes || parameterEffectsChanged;
+        this.receiverEscapesValue = receiverEscapes;
+
+        if (parameterEffectsChanged) {
+            this.parameterEffectItems = List();
+            this.copyParameterEffects(parameterEffects);
+        }
+
+        return changed;
+    }
+
+    public Bool matchesOwnerName(String ownerName) {
+        return this.matchesOwner(ownerName);
+    }
+
+    public Bool hasSameQualifiedOwner(FunctionSummary other) {
+        return this.qualifiedOwnerNameValue == other.qualifiedOwnerNameValue;
+    }
+
+    public Bool matches(String name, Int parameterCount) {
+        return this.nameValue == name && this.parameterCountValue == parameterCount && !this.constructorValue;
+    }
+
+    public Bool matchesResolved(String ownerName, String name, List<String> parameterTypes, Bool staticMethod) {
+        if (!this.matchesOwner(ownerName) || this.nameValue != name || this.parameterCountValue != parameterTypes.length() || this.staticValue != staticMethod || this.constructorValue) {
+            return false;
+        }
+
+        if (this.parameterTypeItems.length() != parameterTypes.length()) {
+            return false;
+        }
+
+        Int index = 0;
+
+        while (index < parameterTypes.length()) {
+            if (this.parameterTypeItems.get(index) != parameterTypes.get(index)) {
+                return false;
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+
+    public Bool matchesStatic(String ownerName, String name, Int parameterCount) {
+        return this.matchesOwner(ownerName) && this.nameValue == name && this.parameterCountValue == parameterCount && this.staticValue && !this.constructorValue;
+    }
+
+    public Bool matchesReturn(String name, Int parameterCount, String returnType) {
+        return this.nameValue == name && this.parameterCountValue == parameterCount && this.returnTypeValue == returnType && !this.constructorValue;
+    }
+
+    public Bool matchesStaticReturn(String ownerName, String name, Int parameterCount, String returnType) {
+        return this.matchesOwner(ownerName) && this.nameValue == name && this.parameterCountValue == parameterCount && this.returnTypeValue == returnType && this.staticValue && !this.constructorValue;
+    }
+
+    private Void copyParameterEffects(List<ParameterHyperAllocFlowEffect> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            ParameterHyperAllocFlowEffect effect = source.get(index);
+            this.parameterEffectItems.add(ParameterHyperAllocFlowEffect(effect.index(), effect.name() + "", effect.escapes(), effect.mutates(), effect.reason() + ""));
+            index = index + 1;
+        }
+    }
+
+    private Bool matchesOwner(String ownerName) {
+        if (this.qualifiedOwnerNameValue == ownerName) {
+            return true;
+        }
+
+        if (ownerName.indexOf("::") >= 0) {
+            return false;
+        }
+
+        return this.ownerNameValue == ownerName;
+    }
+
+    public Bool matchesDeclaration(String ownerName, String name, List<String> parameterTypes, Bool staticMethod) {
+        if (this.ownerNameValue != ownerName || this.nameValue != name || this.parameterCountValue != parameterTypes.length() || this.staticValue != staticMethod) {
+            return false;
+        }
+
+        if (this.parameterTypeItems.length() != parameterTypes.length()) {
+            return false;
+        }
+
+        Int index = 0;
+
+        while (index < parameterTypes.length()) {
+            if (this.parameterTypeItems.get(index) != parameterTypes.get(index)) {
+                return false;
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+}

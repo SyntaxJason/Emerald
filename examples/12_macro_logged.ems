@@ -1,0 +1,28 @@
+macro Logged on Method {
+    StatementAST entry = Stmt::expr(
+        Expr::call("println", [Expr::str("→ " + method.name)])
+    );
+    StatementAST exit = Stmt::expr(
+        Expr::call("println", [Expr::str("← " + method.name)])
+    );
+    method.body.prepend(entry);
+    method.body.append(exit);
+}
+
+public class Calculator {
+    @Logged
+    public Int square(Int x) {
+        return x * x;
+    }
+
+    @Logged
+    public Int cube(Int x) {
+        return x * x * x;
+    }
+}
+
+main() {
+    Calculator c = Calculator();
+    println(c.square(5));
+    println(c.cube(3));
+}

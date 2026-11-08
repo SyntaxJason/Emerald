@@ -1,5 +1,8 @@
 namespace Std::Io;
 
+use Std::Io::IPath;
+use Std::Native::NativePath;
+
 public class Path implements IPath {
     private String valueText;
 
@@ -24,19 +27,19 @@ public class Path implements IPath {
     }
 
     public String fileName() {
-        return Path.fileName(this.valueText);
+        return NativePath.fileName(this.valueText);
     }
 
     public String extension() {
-        return Path.extension(this.valueText);
+        return NativePath.extension(this.valueText);
     }
 
     public IPath parent() {
-        return Path(Path.parent(this.valueText));
+        return Path(NativePath.parent(this.valueText));
     }
 
     public IPath join(String segment) {
-        return Path(Path.join(this.valueText, segment));
+        return Path(NativePath.join(this.valueText, segment));
     }
 
     public IPath resolve(String segment) {

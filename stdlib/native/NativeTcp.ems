@@ -1,0 +1,50 @@
+namespace Std::Native;
+
+public class NativeTcp {
+    public NativeTcp() {
+    }
+
+    public static Int connect(String host, Int port) {
+        return -1;
+    }
+
+    public static Int listen(String host, Int port) {
+        return -1;
+    }
+
+    public static Bool isOpen(Int handle) {
+        return false;
+    }
+
+    public static Bool listenerIsOpen(Int handle) {
+        return false;
+    }
+
+    public static Int listenerPort(Int handle) {
+        return 0;
+    }
+
+    public static String readText(Int handle) {
+        return "";
+    }
+
+    public static String readLine(Int handle) {
+        return "";
+    }
+
+    public static Bool writeText(Int handle, String text) {
+        return false;
+    }
+
+    public static Bool close(Int handle) {
+        return false;
+    }
+
+    public static Int accept(Int handle) {
+        return -1;
+    }
+
+    public static Bool closeListener(Int handle) {
+        return false;
+    }
+}

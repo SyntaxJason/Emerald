@@ -1,0 +1,13 @@
+namespace Std::Text;
+
+use Std::Native::NativeString;
+
+public class Strings {
+    public Strings() {
+    }
+
+    // Joins the parts with the separator between them in a single pass.
+    public static String join(List<String> parts, String separator) {
+        return NativeString.join(parts, separator);
+    }
+}

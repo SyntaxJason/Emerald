@@ -1,0 +1,27 @@
+macro ArgLines on Method {
+    String tag = args[0].toString();
+    Int repeats = args[1].toInt();
+    Bool enabled = args[2].toBool();
+
+    if (enabled) {
+        for (i in 1..repeats) {
+            StatementAST line = Stmt::expr(
+                Expr::call("println", [Expr::str(tag + " " + i.toString())])
+            );
+
+            method.body.append(line);
+        }
+    }
+}
+
+public class MacroArgLoopProbe {
+    @ArgLines("FOR", 3, true)
+    public Void run() {
+        println("body");
+    }
+}
+
+main() {
+    MacroArgLoopProbe probe = MacroArgLoopProbe();
+    probe.run();
+}

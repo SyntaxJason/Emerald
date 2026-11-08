@@ -1,0 +1,31 @@
+public class AnswerBox {
+    public AnswerBox() {
+    }
+
+    public Int answer() {
+        return 40 + 2;
+    }
+
+    public String status(Int value) {
+        if (value == 42) {
+            return "methods work";
+        }
+
+        return "methods broken";
+    }
+
+    public Void printStatus(Int value) {
+        println(this.status(value));
+        return;
+    }
+}
+
+main() {
+    AnswerBox box = AnswerBox();
+    Int value = box.answer();
+
+    box.printStatus(value);
+    println(value);
+
+    return 0;
+}

@@ -1,0 +1,19 @@
+public interface IRunnable {
+    public Void run();
+}
+
+public class Job implements IRunnable {
+    public Job() {
+    }
+
+    @Override
+    public Void run() {
+        println("job running");
+    }
+}
+
+main() {
+    Job job = Job();
+
+    job.run();
+}

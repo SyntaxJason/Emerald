@@ -1,0 +1,21 @@
+macro AddConstantMethod on Class {
+    StatementAST body = Stmt::return(
+        Expr::str("generated")
+    );
+
+    BlockAST block = Block::of([body]);
+    MethodAST method = MethodAST::create("generated", "String", [], block);
+
+    class.addMethod(method);
+}
+
+@AddConstantMethod
+public class ConstantProbe {
+    public ConstantProbe() {
+    }
+}
+
+main() {
+    ConstantProbe probe = ConstantProbe();
+    println(probe.generated());
+}

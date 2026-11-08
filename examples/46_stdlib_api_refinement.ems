@@ -1,0 +1,46 @@
+use Std::Collections::ArrayList;
+use Std::Collections::HashMap;
+use Std::Collections::HashSet;
+use Std::Collections::IList;
+use Std::Collections::IMap;
+use Std::Collections::ISet;
+use Std::Data::IPair;
+use Std::Data::ITriple;
+use Std::Data::IIntRange;
+use Std::Data::Pair;
+use Std::Data::Triple;
+use Std::Data::IntRange;
+
+main() {
+    IList<String> names = ArrayList();
+    names.add("Ada");
+    names.add("Grace");
+
+    println(names.firstOr("missing"));
+    println(names.lastOr("missing"));
+    println(names.getOr(99, "fallback"));
+
+    IMap<String, Int> ages = HashMap();
+    println(ages.putIfAbsent("Ada", 36).toString());
+    println(ages.putIfAbsent("Ada", 37).toString());
+    println(ages.containsValue(36).toString());
+
+    ISet<String> tags = HashSet();
+    tags.add("stdlib");
+    IList<String> tagList = tags.toList();
+    println(tagList.firstOr("empty"));
+
+    IPair<String, Int> pair = Pair("answer", 42);
+    println(pair.left());
+    println(pair.right().toString());
+
+    ITriple<String, String, Int> triple = Triple("language", "version", 1);
+    println(triple.left());
+    println(triple.middle());
+    println(triple.right().toString());
+
+    IIntRange range = IntRange(10, 20);
+    println(range.clamp(7).toString());
+    println(range.clamp(25).toString());
+    println(range.clamp(15).toString());
+}

@@ -1,0 +1,45 @@
+namespace emerald::compiler::source;
+
+use emerald::compiler::diagnostic::DiagnosticBag;
+use emerald::compiler::syntax::ClassDeclaration;
+
+public class ProjectClassRegistry {
+    private List<String> nameItems;
+    private List<String> pathItems;
+
+    public ProjectClassRegistry() {
+        this.nameItems = List();
+        this.pathItems = List();
+    }
+
+    public Void register(ClassDeclaration declaration, String path, DiagnosticBag diagnostics) {
+        String name = declaration.fullName();
+        Int existing = this.indexOf(name);
+
+        if (existing >= 0) {
+            diagnostics.errorIn(path, "Duplicate class: " + name + " first declared in " + this.pathItems.get(existing), declaration.line(), declaration.column());
+            return;
+        }
+
+        this.nameItems.add(name);
+        this.pathItems.add(path);
+    }
+
+    public Bool contains(String name) {
+        return this.indexOf(name.replace(".", "::")) >= 0;
+    }
+
+    private Int indexOf(String name) {
+        Int index = 0;
+
+        while (index < this.nameItems.length()) {
+            if (this.nameItems.get(index) == name) {
+                return index;
+            }
+
+            index = index + 1;
+        }
+
+        return -1;
+    }
+}

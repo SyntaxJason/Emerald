@@ -1,0 +1,9 @@
+main() {
+    List<Int> values = List();
+    values.add(40);
+    values.add(2);
+    Int result = values.get(0) + values.get(1);
+    println(values.length());
+    println(result);
+    return 0;
+}

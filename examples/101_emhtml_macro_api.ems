@@ -1,0 +1,49 @@
+use Std::Ui::UiMacros;
+use Std::Ui::EmHtmlRuntime;
+use Std::Ui::UiWindow;
+
+@UiState
+@EmHtml("examples/ui/counter.emhtml")
+public class CounterView {
+    private String titleValue;
+    private Int clicksValue;
+
+    public CounterView() {
+        this.titleValue = "Emerald UI";
+        this.clicksValue = 0;
+    }
+
+    @UiBind("title")
+    public String title() {
+        return this.titleValue;
+    }
+
+    @UiBind("clicks")
+    public String clicks() {
+        return this.clicksValue.toString();
+    }
+
+    @UiAction("increment")
+    public Void increment() {
+        this.clicksValue = this.clicksValue + 1;
+    }
+
+    public Bool onUiAction(String action) {
+        if (action == "increment") {
+            this.increment();
+            return true;
+        }
+
+        return false;
+    }
+}
+
+main() {
+    CounterView view = CounterView();
+
+    println(view.emhtmlPath());
+    println(view.render());
+    println(view.dispatch("increment").toString());
+    println(view.clicks());
+    println(view.isDirty().toString());
+}

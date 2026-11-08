@@ -1,5 +1,7 @@
 namespace Std::Data;
 
+use Std::Data::IBox;
+
 public class Box<T> implements IBox<T> {
     private T stored;
 

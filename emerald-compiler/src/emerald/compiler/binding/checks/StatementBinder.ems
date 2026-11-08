@@ -1,0 +1,182 @@
+namespace emerald::compiler::binding;
+
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::Statement;
+
+public class StatementBinder {
+    private BindingContext context;
+    private BindingTypeCatalog catalog;
+    private ExpressionBinder expressions;
+    private Int loopDepth;
+
+    public StatementBinder(BindingContext bindingContext, BindingTypeCatalog typeCatalog, ExpressionBinder expressionBinder) {
+        this.context = bindingContext;
+        this.catalog = typeCatalog;
+        this.expressions = expressionBinder;
+        this.loopDepth = 0;
+    }
+
+    public Void bind(List<Statement> statements, String returnType) {
+        Int index = 0;
+
+        while (index < statements.length()) {
+            this.bindStatement(statements.get(index), returnType);
+            index = index + 1;
+        }
+    }
+
+    private Void bindStatement(Statement statement, String returnType) {
+        if (statement.isPrintln()) {
+            this.expressions.typeOf(statement.expressionIndex());
+            return;
+        }
+
+        if (statement.isReturn()) {
+            this.bindReturn(statement, returnType);
+            return;
+        }
+
+        if (statement.isVariable()) {
+            this.bindVariable(statement);
+            return;
+        }
+
+        if (statement.isAssign()) {
+            this.bindAssign(statement);
+            return;
+        }
+
+        if (statement.isFieldAssign()) {
+            this.bindFieldAssign(statement);
+            return;
+        }
+
+        if (statement.isIf()) {
+            this.bindCondition(statement);
+            this.bindScope(statement.bodyStatements(), returnType);
+            this.bindScope(statement.elseStatements(), returnType);
+            return;
+        }
+
+        if (statement.isWhile()) {
+            this.bindCondition(statement);
+            this.loopDepth = this.loopDepth + 1;
+            this.bindScope(statement.bodyStatements(), returnType);
+            this.loopDepth = this.loopDepth - 1;
+            return;
+        }
+
+        if (statement.isBreak() || statement.isContinue()) {
+            if (this.loopDepth == 0) {
+                this.context.diagnostics().error(statement.kind() + " can only be used inside a loop", statement.line(), statement.column());
+            }
+
+            return;
+        }
+
+        if (statement.isPanic()) {
+            String panicType = this.expressions.typeOfExpected(statement.expressionIndex(), "String");
+
+            if (panicType != "String" && panicType != "Error") {
+                this.context.diagnostics().error("panic message must be String", statement.line(), statement.column());
+            }
+
+            return;
+        }
+
+        if (statement.isExpression()) {
+            this.expressions.typeOf(statement.expressionIndex());
+            return;
+        }
+
+        this.context.diagnostics().error("Unsupported statement in Emerald Compiler pipeline", statement.line(), statement.column());
+    }
+
+    private Void bindScope(List<Statement> statements, String returnType) {
+        Int scopeStart = this.context.beginScope();
+        this.bind(statements, returnType);
+        this.context.leaveScope(scopeStart);
+    }
+
+    private Void bindReturn(Statement statement, String returnType) {
+        if (statement.expressionIndex() == 0) {
+            if (returnType != "Void" && returnType != "Int") {
+                this.context.diagnostics().error("Return expression required for " + returnType, statement.line(), statement.column());
+            }
+
+            return;
+        }
+
+        String actual = this.expressions.typeOfExpected(statement.expressionIndex(), returnType);
+
+        if (returnType == "Void") {
+            this.context.diagnostics().error("Void method cannot return " + actual, statement.line(), statement.column());
+            return;
+        }
+
+        if (!this.catalog.canAssign(actual, returnType)) {
+            this.context.diagnostics().error("Cannot return " + actual + " from " + returnType, statement.line(), statement.column());
+        }
+    }
+
+    private Void bindVariable(Statement statement) {
+        String expected = statement.typeName();
+
+        if (!this.catalog.isUsableType(expected)) {
+            this.context.diagnostics().error("Unknown or invalid variable type: " + expected, statement.line(), statement.column());
+            return;
+        }
+
+        if (this.context.hasSymbol(statement.name())) {
+            this.context.diagnostics().error("Variable already exists: " + statement.name(), statement.line(), statement.column());
+            return;
+        }
+
+        String actual = this.expressions.typeOfExpected(statement.expressionIndex(), expected);
+
+        if (!this.catalog.canAssign(actual, expected)) {
+            this.context.diagnostics().error("Cannot assign " + actual + " to " + expected, statement.line(), statement.column());
+        }
+
+        this.context.addSymbol(statement.name(), expected);
+    }
+
+    private Void bindAssign(Statement statement) {
+        VariableSymbol symbol = this.context.findSymbol(statement.name());
+
+        if (symbol.name().isEmpty()) {
+            this.context.diagnostics().error("Unknown variable: " + statement.name(), statement.line(), statement.column());
+            return;
+        }
+
+        String actual = this.expressions.typeOfExpected(statement.expressionIndex(), symbol.typeName());
+
+        if (!this.catalog.canAssign(actual, symbol.typeName())) {
+            this.context.diagnostics().error("Cannot assign " + actual + " to " + symbol.typeName(), statement.line(), statement.column());
+        }
+    }
+
+    private Void bindFieldAssign(Statement statement) {
+        Expression target = this.context.program().expression(statement.targetIndex());
+
+        if (target.kind() != "field") {
+            this.context.diagnostics().error("Assignment target must be a field", statement.line(), statement.column());
+            return;
+        }
+
+        String expected = this.expressions.typeOf(statement.targetIndex());
+        String actual = this.expressions.typeOfExpected(statement.expressionIndex(), expected);
+
+        if (actual != expected && actual != "Error" && expected != "Error") {
+            this.context.diagnostics().error("Cannot assign " + actual + " to " + expected, statement.line(), statement.column());
+        }
+    }
+
+    private Void bindCondition(Statement statement) {
+        String actual = this.expressions.typeOf(statement.expressionIndex());
+
+        if (actual != "Bool" && actual != "Error") {
+            this.context.diagnostics().error("Condition must be Bool", statement.line(), statement.column());
+        }
+    }
+}

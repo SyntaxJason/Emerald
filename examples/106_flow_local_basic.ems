@@ -1,0 +1,19 @@
+public class HyperAllocFlowPoint {
+    private Int x;
+    private Int y;
+
+    public HyperAllocFlowPoint(Int x, Int y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    public Int sum() {
+        return this.x + this.y;
+    }
+}
+
+main() {
+    HyperAllocFlowPoint point = HyperAllocFlowPoint(10, 20);
+
+    println(point.sum().toString());
+}

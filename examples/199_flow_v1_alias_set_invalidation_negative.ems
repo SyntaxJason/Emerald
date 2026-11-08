@@ -1,0 +1,18 @@
+public class HyperAllocFlowV1AliasSetBox {
+    public Int value;
+
+    public HyperAllocFlowV1AliasSetBox(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1AliasSetBox> values = List();
+    HyperAllocFlowV1AliasSetBox first = HyperAllocFlowV1AliasSetBox(42);
+    HyperAllocFlowV1AliasSetBox second = HyperAllocFlowV1AliasSetBox(1);
+    values.add(first);
+    HyperAllocFlowV1AliasSetBox view = values.get(0);
+    List<HyperAllocFlowV1AliasSetBox> mirror = values;
+    mirror.set(0, second);
+    println(view.value.toString());
+}

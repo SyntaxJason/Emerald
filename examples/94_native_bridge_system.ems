@@ -1,0 +1,11 @@
+use Std::Native::NativeSystem;
+
+main() {
+    println(NativeSystem.os());
+    println(NativeSystem.arch());
+    println(NativeSystem.processorCount());
+    println(NativeSystem.isLinux());
+    println(NativeSystem.directorySeparator());
+    println(NativeSystem.userName());
+    println(NativeSystem.hostName());
+}

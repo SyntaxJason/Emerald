@@ -1,0 +1,758 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Collections::ArrayList;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmRuntimeFunction;
+use Std::Llvm::LlvmValue;
+
+public class NativeRuntimeBridgeEmitter {
+    private NativeEmitContext context;
+    private NativeExpressionEmitter expressions;
+    private NativeLlvmBridgeEmitter llvm;
+
+    public NativeRuntimeBridgeEmitter(NativeEmitContext emitContext, NativeExpressionEmitter expressionEmitter) {
+        this.context = emitContext;
+        this.expressions = expressionEmitter;
+        this.llvm = NativeLlvmBridgeEmitter(emitContext, expressionEmitter);
+    }
+
+    public Bool supports(String receiver, String method) {
+        if (receiver == "LlvmNative") {
+            return this.llvm.supports(receiver, method);
+        }
+
+        if (receiver == "NativeMath") {
+            return method == "sqrt" || method == "absFloat" || method == "floor" || method == "ceil" || method == "round" || method == "sin" || method == "cos" || method == "tan" || method == "log" || method == "log10" || method == "exp" || method == "pow";
+        }
+
+        if (receiver == "NativeConsole") {
+            return this.supportsConsole(method);
+        }
+
+        if (receiver == "NativeFile") {
+            return this.supportsFile(method);
+        }
+
+        if (receiver == "NativeDirectory") {
+            return this.supportsDirectory(method);
+        }
+
+        if (receiver == "NativePath") {
+            return this.supportsPath(method);
+        }
+
+        if (receiver == "NativeEnv") {
+            return this.supportsEnv(method);
+        }
+
+        if (receiver == "NativeTime") {
+            return method == "monotonicMillis" || method == "monotonicNanos" || method == "unixMillis" || method == "localOffsetMinutes" || method == "sleepMillis";
+        }
+
+        if (receiver == "NativeRandom") {
+            return method == "nextInt63";
+        }
+
+        if (receiver == "NativeString") {
+            return method == "join";
+        }
+
+        if (receiver == "NativeHash") {
+            return method == "of";
+        }
+
+        if (receiver == "NativeProcess" || receiver == "Process") {
+            return this.supportsProcess(method);
+        }
+
+        if (receiver == "NativeSystem") {
+            return this.supportsSystem(method);
+        }
+
+        if (receiver == "NativeTcp") {
+            return this.supportsTcp(method);
+        }
+
+        if (receiver == "NativeUdp") {
+            return this.supportsUdp(method);
+        }
+
+        if (receiver == "NativeUi") {
+            return this.supportsUi(method);
+        }
+
+        return false;
+    }
+
+    public LlvmValue emit(String receiver, Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (receiver == "LlvmNative") {
+            return this.llvm.emit(expression, program, backend, locals);
+        }
+
+        if (receiver == "NativeMath") { return this.emitMath(expression, program, backend, locals); }
+
+        if (receiver == "NativeConsole") {
+            return this.emitConsole(expression, program, backend, locals);
+        }
+
+        if (receiver == "NativeFile") {
+            return this.emitFile(expression, program, backend, locals);
+        }
+
+        if (receiver == "NativeDirectory") {
+            return this.emitDirectory(expression, program, backend, locals);
+        }
+
+        if (receiver == "NativePath") {
+            return this.emitPath(expression, program, backend, locals);
+        }
+
+        if (receiver == "NativeEnv") {
+            return this.emitEnv(expression, program, backend, locals);
+        }
+
+        if (receiver == "NativeString") {
+            return this.call2(backend.runtimeDeclarations().stringJoin(), expression, program, backend, locals, "string_join_" + this.context.nextTemp().toString());
+        }
+
+        if (receiver == "NativeRandom") {
+            return this.call0(backend.runtimeDeclarations().randomNext(), backend, "random_next_" + this.context.nextTemp().toString());
+        }
+
+        if (receiver == "NativeHash") {
+            return this.emitHash(expression, program, backend, locals);
+        }
+
+        if (receiver == "NativeTime") {
+            if (expression.text() == "unixMillis") {
+                return this.call0(backend.runtimeDeclarations().timeUnixMillis(), backend, "time_unix_millis_" + this.context.nextTemp().toString());
+            }
+            if (expression.text() == "localOffsetMinutes") {
+                return this.call1(backend.runtimeDeclarations().timeLocalOffsetMinutes(), expression, program, backend, locals, "time_local_offset_" + this.context.nextTemp().toString());
+            }
+            if (expression.text() == "sleepMillis") {
+                this.call1(backend.runtimeDeclarations().timeSleepMillis(), expression, program, backend, locals, "");
+                return backend.int32(0);
+            }
+            if (expression.text() == "monotonicNanos") {
+                return this.call0(backend.runtimeDeclarations().timeMonotonicNanos(), backend, "time_monotonic_nanos_" + this.context.nextTemp().toString());
+            }
+            return this.call0(backend.runtimeDeclarations().timeMonotonicMillis(), backend, "time_monotonic_millis_" + this.context.nextTemp().toString());
+        }
+
+        if (receiver == "NativeProcess" || receiver == "Process") {
+            return this.emitProcess(expression, program, backend, locals);
+        }
+
+        if (receiver == "NativeSystem") {
+            return this.emitSystem(expression, program, backend, locals);
+        }
+
+        if (receiver == "NativeTcp") {
+            return this.emitTcp(expression, program, backend, locals);
+        }
+
+        if (receiver == "NativeUdp") {
+            return this.emitUdp(expression, program, backend, locals);
+        }
+
+        if (receiver == "NativeUi") {
+            return this.emitUi(expression, program, backend, locals);
+        }
+
+        return backend.int32(0);
+    }
+
+    // NativeHash.of(value): allocation-free hash chosen by the static type of
+    // the argument (generic code is specialized, so K is concrete here).
+    private LlvmValue emitHash(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Int argumentIndex = expression.argumentIndexAt(0);
+        String type = this.expressions.typer().typeOf(argumentIndex, program, locals, backend);
+        LlvmValue value = this.expressions.emit(argumentIndex, program, backend, locals);
+        String name = "hash_" + this.context.nextTemp().toString();
+        ArrayList<Std::Llvm::LlvmType> types = ArrayList();
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(value.handle()));
+
+        if (type == "String") {
+            types.add(backend.context().opaquePointerType());
+            LlvmValue result = backend.callRuntime(backend.runtimeDeclarations().declare("emerald_string_hash_int64", backend.context().int64Type(), types), args, name);
+            this.expressions.releaseOwnedStringTemporary(argumentIndex, value, program, backend, locals);
+            return result;
+        }
+
+        if (type == "Float") {
+            types.add(backend.context().doubleType());
+            return backend.callRuntime(backend.runtimeDeclarations().declare("emerald_hash_float64", backend.context().int64Type(), types), args, name);
+        }
+
+        if (type == "Bool" || type == "Char") {
+            types.add(backend.context().int64Type());
+            ArrayList<LlvmValue> wide = ArrayList();
+            wide.add(backend.builder().zeroExtend(value, backend.context().int64Type(), name + "_wide"));
+            return backend.callRuntime(backend.runtimeDeclarations().declare("emerald_hash_int64", backend.context().int64Type(), types), wide, name);
+        }
+
+        if (type == "Int") {
+            types.add(backend.context().int64Type());
+            return backend.callRuntime(backend.runtimeDeclarations().declare("emerald_hash_int64", backend.context().int64Type(), types), args, name);
+        }
+
+        NativeLookup lookup = NativeLookup();
+        MethodDeclaration custom = lookup.findMethod(program, type, "hashCode", 0);
+
+        if (!custom.isMissing()) {
+            NativeVirtualDispatchEmitter virtualCalls = NativeVirtualDispatchEmitter(this.context);
+            return backend.builder().callFunction(this.context.typeMapper().methodType(custom, backend), virtualCalls.target(type, custom, program, backend), args, name);
+        }
+
+        if (!lookup.findMethod(program, type, "equals", 1).isMissing()) {
+            // Custom equality without a custom hash: all instances must collide.
+            return backend.int64(0);
+        }
+
+        types.add(backend.context().opaquePointerType());
+        return backend.callRuntime(backend.runtimeDeclarations().declare("emerald_hash_pointer", backend.context().int64Type(), types), args, name);
+    }
+
+    private LlvmValue emitMath(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        backend.requireMathLibrary();
+        String name = expression.text();
+        // These LLVM intrinsics keep ordinary IEEE semantics: no fast-math,
+        // reciprocal approximation, or reassociation is enabled.
+        if (name == "sqrt" || name == "floor" || name == "ceil" || name == "round") { name = "llvm." + name + ".f64"; }
+        if (name == "absFloat") { name = "llvm.fabs.f64"; }
+        ArrayList<Std::Llvm::LlvmType> types = ArrayList();
+        ArrayList<LlvmValue> args = ArrayList();
+        Int index = 0;
+        while (index < expression.argumentCount()) {
+            types.add(backend.context().doubleType());
+            args.add(backend.asFloat(this.expressions.emit(expression.argumentIndexAt(index), program, backend, locals), "math_arg_" + this.context.nextTemp().toString()));
+            index = index + 1;
+        }
+        return backend.callRuntime(backend.runtimeDeclarations().declare(name, backend.context().doubleType(), types), args, "math_" + this.context.nextTemp().toString());
+    }
+
+    private Bool supportsConsole(String method) {
+        if (method == "write") {
+            return true;
+        }
+
+        if (method == "writeLine") {
+            return true;
+        }
+
+        if (method == "errorLine") {
+            return true;
+        }
+
+        return method == "readLine";
+    }
+
+    private Bool supportsFile(String method) {
+        if (method == "exists" || method == "isFile") {
+            return true;
+        }
+
+        if (method == "readText" || method == "readLines") {
+            return true;
+        }
+
+        if (method == "writeText" || method == "appendText") {
+            return true;
+        }
+
+        if (method == "delete" || method == "size") {
+            return true;
+        }
+
+        return false;
+    }
+
+    private Bool supportsDirectory(String method) {
+        if (method == "exists" || method == "create") {
+            return true;
+        }
+
+        if (method == "delete" || method == "list") {
+            return true;
+        }
+
+        return false;
+    }
+
+    private Bool supportsPath(String method) {
+        if (method == "current" || method == "join") {
+            return true;
+        }
+
+        if (method == "parent" || method == "fileName") {
+            return true;
+        }
+
+        return method == "extension";
+    }
+
+    private Bool supportsEnv(String method) {
+        if (method == "get" || method == "getOr") {
+            return true;
+        }
+
+        if (method == "has" || method == "args") {
+            return true;
+        }
+
+        return method == "currentDirectory";
+    }
+
+    private Bool supportsProcess(String method) {
+        if (method == "args" || method == "command") {
+            return true;
+        }
+
+        return method == "exit";
+    }
+
+    private Bool supportsSystem(String method) {
+        if (method == "os" || method == "isWindows" || method == "isLinux") {
+            return true;
+        }
+
+        if (method == "lineSeparator" || method == "pathSeparator" || method == "directorySeparator") {
+            return true;
+        }
+
+        if (method == "arch" || method == "processorCount") {
+            return true;
+        }
+
+        if (method == "userName" || method == "hostName") {
+            return true;
+        }
+
+        if (method == "homeDirectory" || method == "tempDirectory") {
+            return true;
+        }
+
+        return false;
+    }
+
+    private Bool supportsTcp(String method) {
+        if (method == "connect" || method == "listen") {
+            return true;
+        }
+
+        if (method == "isOpen" || method == "listenerIsOpen" || method == "listenerPort") {
+            return true;
+        }
+
+        if (method == "readText" || method == "readLine" || method == "writeText") {
+            return true;
+        }
+
+        if (method == "close" || method == "accept" || method == "closeListener") {
+            return true;
+        }
+
+        return false;
+    }
+
+    private Bool supportsUdp(String method) {
+        if (method == "bind" || method == "isOpen" || method == "localPort") {
+            return true;
+        }
+
+        if (method == "sendText" || method == "receiveText") {
+            return true;
+        }
+
+        if (method == "lastSenderHost" || method == "lastSenderPort") {
+            return true;
+        }
+
+        return method == "close";
+    }
+
+    private Bool supportsUi(String method) {
+        if (method == "init" || method == "backend") {
+            return true;
+        }
+
+        if (method == "createWindow" || method == "setHtml") {
+            return true;
+        }
+
+        if (method == "setTitle" || method == "show" || method == "close") {
+            return true;
+        }
+
+        if (method == "isOpen" || method == "pollAction") {
+            return true;
+        }
+
+        if (method == "pump" || method == "run") {
+            return true;
+        }
+
+        return false;
+    }
+
+    private LlvmValue emitConsole(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (expression.text() == "write") {
+            LlvmValue text = this.argument(expression, 0, program, backend, locals);
+            backend.print(text);
+            return backend.int32(0);
+        }
+
+        if (expression.text() == "writeLine") {
+            LlvmValue text = this.argument(expression, 0, program, backend, locals);
+            backend.println(text);
+            return backend.int32(0);
+        }
+
+        if (expression.text() == "errorLine") {
+            this.call1(backend.runtimeDeclarations().consoleErrorLine(), expression, program, backend, locals, "");
+            return backend.int32(0);
+        }
+
+        return this.call0(backend.runtimeDeclarations().consoleReadLine(), backend, "console_line_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue emitFile(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (expression.text() == "exists") {
+            return this.boolCall1(backend.runtimeDeclarations().fileExists(), expression, program, backend, locals);
+        }
+
+        if (expression.text() == "isFile") {
+            return this.boolCall1(backend.runtimeDeclarations().fileIsFile(), expression, program, backend, locals);
+        }
+
+        if (expression.text() == "readText") {
+            return this.call1(backend.runtimeDeclarations().fileReadText(), expression, program, backend, locals, "file_text_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "readLines") {
+            return this.call1(backend.runtimeDeclarations().fileReadLines(), expression, program, backend, locals, "file_lines_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "writeText") {
+            this.call2(backend.runtimeDeclarations().fileWriteText(), expression, program, backend, locals, "");
+            return backend.int32(0);
+        }
+
+        if (expression.text() == "appendText") {
+            this.call2(backend.runtimeDeclarations().fileAppendText(), expression, program, backend, locals, "");
+            return backend.int32(0);
+        }
+
+        if (expression.text() == "delete") {
+            return this.boolCall1(backend.runtimeDeclarations().fileDelete(), expression, program, backend, locals);
+        }
+
+        return this.call1(backend.runtimeDeclarations().fileSize(), expression, program, backend, locals, "file_size_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue emitDirectory(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (expression.text() == "exists") {
+            return this.boolCall1(backend.runtimeDeclarations().directoryExists(), expression, program, backend, locals);
+        }
+
+        if (expression.text() == "create") {
+            return this.boolCall1(backend.runtimeDeclarations().directoryCreate(), expression, program, backend, locals);
+        }
+
+        if (expression.text() == "delete") {
+            return this.boolCall1(backend.runtimeDeclarations().directoryDelete(), expression, program, backend, locals);
+        }
+
+        return this.call1(backend.runtimeDeclarations().directoryList(), expression, program, backend, locals, "dir_list_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue emitPath(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (expression.text() == "current") {
+            return this.call0(backend.runtimeDeclarations().pathCurrent(), backend, "path_current_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "join") {
+            return this.call2(backend.runtimeDeclarations().pathJoin(), expression, program, backend, locals, "path_join_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "parent") {
+            return this.call1(backend.runtimeDeclarations().pathParent(), expression, program, backend, locals, "path_parent_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "fileName") {
+            return this.call1(backend.runtimeDeclarations().pathFileName(), expression, program, backend, locals, "path_file_name_" + this.context.nextTemp().toString());
+        }
+
+        return this.call1(backend.runtimeDeclarations().pathExtension(), expression, program, backend, locals, "path_extension_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue emitEnv(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (expression.text() == "get") {
+            return this.call1(backend.runtimeDeclarations().envGet(), expression, program, backend, locals, "env_get_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "getOr") {
+            return this.call2(backend.runtimeDeclarations().envGetOr(), expression, program, backend, locals, "env_get_or_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "has") {
+            return this.boolCall1(backend.runtimeDeclarations().envHas(), expression, program, backend, locals);
+        }
+
+        if (expression.text() == "args") {
+            return this.call0(backend.runtimeDeclarations().envArgs(), backend, "env_args_" + this.context.nextTemp().toString());
+        }
+
+        return this.call0(backend.runtimeDeclarations().envCurrentDirectory(), backend, "env_cwd_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue emitProcess(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (expression.text() == "command") {
+            return this.call0(backend.runtimeDeclarations().processCommand(), backend, "process_command_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "args") {
+            return this.call0(backend.runtimeDeclarations().processArgs(), backend, "process_args_" + this.context.nextTemp().toString());
+        }
+
+        this.call1(backend.runtimeDeclarations().processExit(), expression, program, backend, locals, "");
+        return backend.int32(0);
+    }
+
+    private LlvmValue emitSystem(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (expression.text() == "os") {
+            return this.call0(backend.runtimeDeclarations().systemOs(), backend, "system_os_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "isWindows") {
+            return this.boolCall0(backend.runtimeDeclarations().systemIsWindows(), backend);
+        }
+
+        if (expression.text() == "isLinux") {
+            return this.boolCall0(backend.runtimeDeclarations().systemIsLinux(), backend);
+        }
+
+        if (expression.text() == "lineSeparator") {
+            return this.call0(backend.runtimeDeclarations().systemLineSeparator(), backend, "system_line_separator_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "pathSeparator") {
+            return this.call0(backend.runtimeDeclarations().systemPathSeparator(), backend, "system_path_separator_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "directorySeparator") {
+            return this.call0(backend.runtimeDeclarations().systemDirectorySeparator(), backend, "system_directory_separator_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "arch") {
+            return this.call0(backend.runtimeDeclarations().systemArch(), backend, "system_arch_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "processorCount") {
+            return this.call0(backend.runtimeDeclarations().systemProcessorCount(), backend, "system_processor_count_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "userName") {
+            return this.call0(backend.runtimeDeclarations().systemUserName(), backend, "system_user_name_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "hostName") {
+            return this.call0(backend.runtimeDeclarations().systemHostName(), backend, "system_host_name_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "homeDirectory") {
+            return this.call0(backend.runtimeDeclarations().systemHomeDirectory(), backend, "system_home_directory_" + this.context.nextTemp().toString());
+        }
+
+        return this.call0(backend.runtimeDeclarations().systemTempDirectory(), backend, "system_temp_directory_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue emitTcp(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (expression.text() == "connect") {
+            return this.call2(backend.runtimeDeclarations().tcpConnect(), expression, program, backend, locals, "tcp_connect_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "listen") {
+            return this.call2(backend.runtimeDeclarations().tcpListen(), expression, program, backend, locals, "tcp_listen_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "isOpen") {
+            return this.boolCall1(backend.runtimeDeclarations().tcpIsOpen(), expression, program, backend, locals);
+        }
+
+        if (expression.text() == "listenerIsOpen") {
+            return this.boolCall1(backend.runtimeDeclarations().tcpListenerIsOpen(), expression, program, backend, locals);
+        }
+
+        if (expression.text() == "listenerPort") {
+            return this.call1(backend.runtimeDeclarations().tcpListenerPort(), expression, program, backend, locals, "tcp_listener_port_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "readText") {
+            return this.call1(backend.runtimeDeclarations().tcpReadText(), expression, program, backend, locals, "tcp_read_text_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "readLine") {
+            return this.call1(backend.runtimeDeclarations().tcpReadLine(), expression, program, backend, locals, "tcp_read_line_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "writeText") {
+            return this.boolCall2(backend.runtimeDeclarations().tcpWriteText(), expression, program, backend, locals);
+        }
+
+        if (expression.text() == "close") {
+            return this.boolCall1(backend.runtimeDeclarations().tcpClose(), expression, program, backend, locals);
+        }
+
+        if (expression.text() == "accept") {
+            return this.call1(backend.runtimeDeclarations().tcpAccept(), expression, program, backend, locals, "tcp_accept_" + this.context.nextTemp().toString());
+        }
+
+        return this.boolCall1(backend.runtimeDeclarations().tcpCloseListener(), expression, program, backend, locals);
+    }
+
+    private LlvmValue emitUdp(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (expression.text() == "bind") {
+            return this.call2(backend.runtimeDeclarations().udpBind(), expression, program, backend, locals, "udp_bind_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "isOpen") {
+            return this.boolCall1(backend.runtimeDeclarations().udpIsOpen(), expression, program, backend, locals);
+        }
+
+        if (expression.text() == "localPort") {
+            return this.call1(backend.runtimeDeclarations().udpLocalPort(), expression, program, backend, locals, "udp_local_port_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "sendText") {
+            return this.boolCall4(backend.runtimeDeclarations().udpSendText(), expression, program, backend, locals);
+        }
+
+        if (expression.text() == "receiveText") {
+            return this.call1(backend.runtimeDeclarations().udpReceiveText(), expression, program, backend, locals, "udp_receive_text_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "lastSenderHost") {
+            return this.call1(backend.runtimeDeclarations().udpLastSenderHost(), expression, program, backend, locals, "udp_sender_host_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "lastSenderPort") {
+            return this.call1(backend.runtimeDeclarations().udpLastSenderPort(), expression, program, backend, locals, "udp_sender_port_" + this.context.nextTemp().toString());
+        }
+
+        return this.boolCall1(backend.runtimeDeclarations().udpClose(), expression, program, backend, locals);
+    }
+
+    private LlvmValue emitUi(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (expression.text() == "init") {
+            return this.boolCall0(backend.runtimeDeclarations().uiInit(), backend);
+        }
+
+        if (expression.text() == "backend") {
+            return this.call0(backend.runtimeDeclarations().uiBackend(), backend, "ui_backend_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "createWindow") {
+            return this.call3(backend.runtimeDeclarations().uiCreateWindow(), expression, program, backend, locals, "ui_window_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "setHtml") {
+            return this.boolCall2(backend.runtimeDeclarations().uiSetHtml(), expression, program, backend, locals);
+        }
+
+        if (expression.text() == "setTitle") {
+            return this.boolCall2(backend.runtimeDeclarations().uiSetTitle(), expression, program, backend, locals);
+        }
+
+        if (expression.text() == "isOpen") {
+            return this.boolCall1(backend.runtimeDeclarations().uiIsOpen(), expression, program, backend, locals);
+        }
+
+        if (expression.text() == "pollAction") {
+            return this.call1(backend.runtimeDeclarations().uiPollAction(), expression, program, backend, locals, "ui_action_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "show") {
+            return this.boolCall1(backend.runtimeDeclarations().uiShow(), expression, program, backend, locals);
+        }
+
+        if (expression.text() == "close") {
+            return this.boolCall1(backend.runtimeDeclarations().uiClose(), expression, program, backend, locals);
+        }
+
+        if (expression.text() == "pump") {
+            return this.boolCall0(backend.runtimeDeclarations().uiPump(), backend);
+        }
+
+        return this.call0(backend.runtimeDeclarations().uiRun(), backend, "ui_run_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue boolCall0(LlvmRuntimeFunction runtimeFunction, LlvmNativeBackend backend) {
+        LlvmValue raw = this.call0(runtimeFunction, backend, "bridge_bool_raw_" + this.context.nextTemp().toString());
+        return backend.builder().intNotEqual(raw, backend.int32(0), "bridge_bool_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue boolCall1(LlvmRuntimeFunction runtimeFunction, Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        LlvmValue raw = this.call1(runtimeFunction, expression, program, backend, locals, "bridge_bool_raw_" + this.context.nextTemp().toString());
+        return backend.builder().intNotEqual(raw, backend.int32(0), "bridge_bool_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue boolCall2(LlvmRuntimeFunction runtimeFunction, Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        LlvmValue raw = this.call2(runtimeFunction, expression, program, backend, locals, "bridge_bool_raw_" + this.context.nextTemp().toString());
+        return backend.builder().intNotEqual(raw, backend.int32(0), "bridge_bool_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue boolCall3(LlvmRuntimeFunction runtimeFunction, Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        LlvmValue raw = this.call3(runtimeFunction, expression, program, backend, locals, "bridge_bool_raw_" + this.context.nextTemp().toString());
+        return backend.builder().intNotEqual(raw, backend.int32(0), "bridge_bool_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue boolCall4(LlvmRuntimeFunction runtimeFunction, Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        LlvmValue raw = this.call4(runtimeFunction, expression, program, backend, locals, "bridge_bool_raw_" + this.context.nextTemp().toString());
+        return backend.builder().intNotEqual(raw, backend.int32(0), "bridge_bool_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue call0(LlvmRuntimeFunction runtimeFunction, LlvmNativeBackend backend, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        return backend.callRuntime(runtimeFunction, args, name);
+    }
+
+    private LlvmValue call1(LlvmRuntimeFunction runtimeFunction, Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(this.argument(expression, 0, program, backend, locals));
+        return backend.callRuntime(runtimeFunction, args, name);
+    }
+
+    private LlvmValue call2(LlvmRuntimeFunction runtimeFunction, Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(this.argument(expression, 0, program, backend, locals));
+        args.add(this.argument(expression, 1, program, backend, locals));
+        return backend.callRuntime(runtimeFunction, args, name);
+    }
+
+    private LlvmValue call3(LlvmRuntimeFunction runtimeFunction, Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(this.argument(expression, 0, program, backend, locals));
+        args.add(this.argument(expression, 1, program, backend, locals));
+        args.add(this.argument(expression, 2, program, backend, locals));
+        return backend.callRuntime(runtimeFunction, args, name);
+    }
+
+    private LlvmValue call4(LlvmRuntimeFunction runtimeFunction, Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals, String name) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(this.argument(expression, 0, program, backend, locals));
+        args.add(this.argument(expression, 1, program, backend, locals));
+        args.add(this.argument(expression, 2, program, backend, locals));
+        args.add(this.argument(expression, 3, program, backend, locals));
+        return backend.callRuntime(runtimeFunction, args, name);
+    }
+
+    private LlvmValue argument(Expression expression, Int index, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        return this.expressions.emit(expression.argumentIndexes().get(index), program, backend, locals);
+    }
+}

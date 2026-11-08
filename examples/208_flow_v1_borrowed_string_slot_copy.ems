@@ -1,0 +1,12 @@
+public class HyperAllocFlowV1BorrowedStringSlot {
+    public static String append(String input) {
+        String value = input;
+        value = (value + "2");
+        return value;
+    }
+}
+
+main() {
+    String value = HyperAllocFlowV1BorrowedStringSlot.append("4");
+    println(value);
+}

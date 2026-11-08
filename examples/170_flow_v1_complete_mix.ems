@@ -1,0 +1,32 @@
+public data class HyperAllocFlowV1MixPair(Int left, Int right) {
+    public Int sum() {
+        return this.left + this.right;
+    }
+}
+
+public class HyperAllocFlowV1MixBox {
+    public Int value;
+
+    public HyperAllocFlowV1MixBox(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    HyperAllocFlowV1MixPair folded = HyperAllocFlowV1MixPair(20, 22);
+    HyperAllocFlowV1MixPair inlineValue = HyperAllocFlowV1MixPair(19, 23);
+    HyperAllocFlowV1MixPair inlineCopy = inlineValue;
+    List<HyperAllocFlowV1MixPair> inlineValues = List();
+    inlineValues.add(inlineCopy);
+    List<HyperAllocFlowV1MixBox> references = List();
+    HyperAllocFlowV1MixBox box = HyperAllocFlowV1MixBox(42);
+    references.add(box);
+    Int index = 0;
+
+    while (index < 2) {
+        HyperAllocFlowV1MixBox pooled = HyperAllocFlowV1MixBox(index + 41);
+        index = index + 1;
+    }
+
+    println((folded.sum() + inlineValues.get(0).left + references.get(0).value - 61).toString());
+}

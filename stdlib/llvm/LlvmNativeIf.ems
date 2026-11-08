@@ -1,0 +1,47 @@
+namespace Std::Llvm;
+
+public class LlvmNativeIf {
+    private LlvmFunction ownerFunction;
+    private LlvmBasicBlock trueBlockValue;
+    private LlvmBasicBlock falseBlockValue;
+    private LlvmBasicBlock mergeBlockValue;
+
+    public LlvmNativeIf(LlvmFunction function, String name) {
+        this.ownerFunction = LlvmFunction(function.handle(), function.context());
+        this.trueBlockValue = function.appendBlock(name + "_true");
+        this.falseBlockValue = function.appendBlock(name + "_false");
+        this.mergeBlockValue = function.appendBlock(name + "_merge");
+    }
+
+    public LlvmBasicBlock trueBlock() {
+        return LlvmBasicBlock(this.trueBlockValue.handle());
+    }
+
+    public LlvmBasicBlock falseBlock() {
+        return LlvmBasicBlock(this.falseBlockValue.handle());
+    }
+
+    public LlvmBasicBlock mergeBlock() {
+        return LlvmBasicBlock(this.mergeBlockValue.handle());
+    }
+
+    public Void branchFrom(LlvmBuilder builder, LlvmValue condition) {
+        builder.conditionalBranch(condition, this.trueBlockValue, this.falseBlockValue);
+    }
+
+    public Void enterTrue(LlvmBuilder builder) {
+        builder.positionAtEnd(this.trueBlockValue);
+    }
+
+    public Void enterFalse(LlvmBuilder builder) {
+        builder.positionAtEnd(this.falseBlockValue);
+    }
+
+    public Void enterMerge(LlvmBuilder builder) {
+        builder.positionAtEnd(this.mergeBlockValue);
+    }
+
+    public Void leaveToMerge(LlvmBuilder builder) {
+        builder.branch(this.mergeBlockValue);
+    }
+}

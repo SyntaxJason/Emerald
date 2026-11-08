@@ -1,0 +1,57 @@
+namespace emerald::compiler::source;
+
+use emerald::compiler::diagnostic::DiagnosticBag;
+
+public class ProjectNamespaceValidator {
+    private ProjectPathResolver resolver;
+    private SourceNamespaceScanner scanner;
+
+    public ProjectNamespaceValidator(ProjectPathResolver pathResolver) {
+        this.resolver = pathResolver;
+        this.scanner = SourceNamespaceScanner();
+    }
+
+    public Void validate(ProjectSource source, DiagnosticBag diagnostics) {
+        String expected = source.expectedNamespace();
+        String actual = this.scanner.scan(source.source().text());
+
+        if (!source.requestedName().isEmpty()) {
+            expected = this.namespaceFromQualifiedName(source.requestedName());
+        }
+
+        if (expected.isEmpty()) {
+            return;
+        }
+
+        if (actual == expected) {
+            return;
+        }
+
+        String shownActual = actual;
+
+        if (shownActual.isEmpty()) {
+            shownActual = "<global>";
+        }
+
+        diagnostics.errorIn(source.source().path(), "Namespace mismatch: expected " + expected + ", got " + shownActual, 1, 1);
+    }
+
+    private String namespaceFromQualifiedName(String value) {
+        String normalized = value.replace(".", "::");
+        List<String> parts = normalized.split("::");
+
+        if (parts.length() <= 1) {
+            return "";
+        }
+
+        String result = parts.get(0) + "";
+        Int index = 1;
+
+        while (index < parts.length() - 1) {
+            result = result + "::" + parts.get(index);
+            index = index + 1;
+        }
+
+        return result;
+    }
+}

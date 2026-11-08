@@ -5,7 +5,7 @@ module Emerald
     def emit_stmt(io : IO, stmt : AST::Node)
       case stmt
       when AST::VarDecl       then emit_var_decl(io, stmt); io << "\n"
-      when AST::AssignStmt    then indent(io); io << stmt.target << " = "; emit_expr(io, stmt.value); io << "\n"
+      when AST::AssignStmt    then indent(io); io << crystal_local_name(stmt.target) << " = "; emit_expr(io, stmt.value); io << "\n"
       when AST::ExpressionStmt then indent(io); emit_expr(io, stmt.expression); io << "\n"
       when AST::ReturnStmt    then emit_return(io, stmt)
       when AST::IfStmt        then emit_if(io, stmt)
@@ -25,7 +25,16 @@ module Emerald
 
     private def emit_var_decl(io : IO, decl : AST::VarDecl)
       indent(io)
-      io << decl.name << " = "
+      io << crystal_local_name(decl.name)
+
+      if type_ref = decl.type_ref
+        if needs_typed_local_annotation?(decl.name)
+          io << " : " << crystal_type(type_ref_name(type_ref))
+        end
+      end
+
+      io << " = "
+
       if init = decl.initializer
         emit_expr(io, init)
       else
@@ -80,7 +89,7 @@ module Emerald
     private def emit_for(io : IO, stmt : AST::ForStmt)
       indent(io); io << "("
       emit_expr(io, stmt.iterable)
-      io << ").each do |" << stmt.var_name << "|\n"
+      io << ").each do |" << crystal_local_name(stmt.var_name) << "|\n"
       @indent += 1
       emit_block(io, stmt.body)
       @indent -= 1

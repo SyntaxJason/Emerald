@@ -1,0 +1,17 @@
+public data class User(String name, Int age, Bool active);
+
+main() {
+    User user = User("Jason", 21, true);
+    User copy = user.copy();
+    User older = user.withAge(22);
+    User renamed = user.withName("David");
+
+    println(user.toString());
+    println(user.equals(copy));
+    println(user == copy);
+    println(user.equals(older));
+    println(older.toString());
+    println(renamed.name);
+
+    return 0;
+}

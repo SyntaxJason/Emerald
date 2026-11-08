@@ -1,30 +1,70 @@
 namespace Std::System;
 
+use Std::Native::NativeSystem;
+use Std::System::ISystem;
+
 public class System implements ISystem {
     public System() {
     }
 
+    public static String os() { return NativeSystem.os(); }
+    public static Bool isWindows() { return NativeSystem.isWindows(); }
+    public static Bool isLinux() { return NativeSystem.isLinux(); }
+    public static String lineSeparator() { return NativeSystem.lineSeparator(); }
+    public static String pathSeparator() { return NativeSystem.pathSeparator(); }
+    public static String directorySeparator() { return NativeSystem.directorySeparator(); }
+    public static String arch() { return NativeSystem.arch(); }
+    public static Int processorCount() { return NativeSystem.processorCount(); }
+    public static String userName() { return NativeSystem.userName(); }
+    public static String hostName() { return NativeSystem.hostName(); }
+    public static String homeDirectory() { return NativeSystem.homeDirectory(); }
+    public static String tempDirectory() { return NativeSystem.tempDirectory(); }
+
     public String os() {
-        return System.os();
+        return NativeSystem.os();
     }
 
     public Bool isWindows() {
-        return System.isWindows();
+        return NativeSystem.isWindows();
     }
 
     public Bool isLinux() {
-        return System.isLinux();
+        return NativeSystem.isLinux();
     }
 
     public String lineSeparator() {
-        return System.lineSeparator();
+        return NativeSystem.lineSeparator();
     }
 
     public String pathSeparator() {
-        return System.pathSeparator();
+        return NativeSystem.pathSeparator();
     }
 
     public String directorySeparator() {
-        return System.directorySeparator();
+        return NativeSystem.directorySeparator();
+    }
+
+    public String arch() {
+        return NativeSystem.arch();
+    }
+
+    public Int processorCount() {
+        return NativeSystem.processorCount();
+    }
+
+    public String userName() {
+        return NativeSystem.userName();
+    }
+
+    public String hostName() {
+        return NativeSystem.hostName();
+    }
+
+    public String homeDirectory() {
+        return NativeSystem.homeDirectory();
+    }
+
+    public String tempDirectory() {
+        return NativeSystem.tempDirectory();
     }
 }

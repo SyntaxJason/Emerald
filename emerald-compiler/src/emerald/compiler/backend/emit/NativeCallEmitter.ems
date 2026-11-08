@@ -1,0 +1,484 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::hyperallocflow::AllocationKind;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Collections::ArrayList;
+use Std::Llvm::Llvm;
+use Std::Llvm::LlvmFunction;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmRuntimeFunction;
+use Std::Llvm::LlvmValue;
+
+public class NativeCallEmitter {
+    private NativeEmitContext context;
+    private NativeLookup lookup;
+    private NativeExpressionTyper typer;
+    private NativeExpressionEmitter expressions;
+
+    public NativeCallEmitter(NativeEmitContext emitContext, NativeExpressionTyper expressionTyper, NativeExpressionEmitter expressionEmitter) {
+        this.context = emitContext;
+        this.lookup = NativeLookup();
+        this.typer = expressionTyper;
+        this.expressions = expressionEmitter;
+    }
+
+    public LlvmValue emitCall(Int expressionIndex, Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (expression.text() == "List") {
+            NativeListEmitter lists = NativeListEmitter(this.context, this.typer, this.expressions);
+            return lists.newReferenceList(backend);
+        }
+
+        LlvmValue objectValue = this.allocateObject(expressionIndex, expression, backend);
+        Bool tagged = this.setObjectClass(objectValue, expression.text(), program, backend);
+
+        // A stack object with only scalar fields and no class tag never
+        // registered any runtime state, so its scope exit needs no owner_leave.
+        if (!tagged && this.context.hyperAllocFlowReport().kindForExpression(expressionIndex).isLocal() && !this.context.classTable().find(expression.text()).hasFlowOwnedFields()) {
+            this.context.markStatelessLocal(expressionIndex);
+        }
+
+        MethodDeclaration constructor = this.constructorFor(expression, program, backend, locals);
+
+        if (!constructor.isMissing()) {
+            ArrayList<LlvmValue> args = ArrayList();
+            args.add(this.stableValue(objectValue));
+            this.addArguments(args, expression, constructor, program, backend, locals);
+            backend.builder().callFunction(this.context.typeMapper().methodType(constructor, backend), backend.llvmModule().getFunction(this.context.mangler().methodName(constructor)), args, "");
+            this.releaseConstructorTemporaries(expression, args, program, backend, locals);
+        }
+
+        return objectValue;
+    }
+
+    public LlvmValue emitMethodCall(Int expressionIndex, Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Bool staticCall = this.isStaticCall(expression, program, backend, locals);
+        String receiverType = this.receiverTypeFor(staticCall, expression, program, backend, locals);
+
+        if (staticCall) {
+            Expression receiver = program.expression(expression.leftIndex());
+            NativeRuntimeBridgeEmitter bridge = NativeRuntimeBridgeEmitter(this.context, this.expressions);
+
+            if (bridge.supports(receiver.text(), expression.text())) {
+                return this.applyFlowResult(expressionIndex, bridge.emit(receiver.text(), expression, program, backend, locals), backend);
+            }
+        }
+
+        NativeFoldedMethodEmitter foldedMethods = NativeFoldedMethodEmitter(this.context, this.expressions);
+
+        if (foldedMethods.supports(expression, program, backend, locals)) {
+            return foldedMethods.emit(expression, program, backend, locals);
+        }
+
+        NativeInlineBoundaryEmitter inlineBoundaries = NativeInlineBoundaryEmitter(this.context, this.expressions);
+
+        if (inlineBoundaries.supportsInlineReturnCall(expression, program)) {
+            return inlineBoundaries.emitInlineReturnValue(expression, program, backend, locals);
+        }
+
+        if (inlineBoundaries.supports(expression, program, backend, locals)) {
+            return inlineBoundaries.emit(expression, program, backend, locals);
+        }
+
+        if (this.typer.isListType(receiverType) && (expression.text() == "length" || expression.text() == "size" || expression.text() == "isEmpty" || expression.text() == "get" || expression.text() == "removeAt" || expression.text() == "add" || expression.text() == "set" || expression.text() == "addAt" || expression.text() == "clear" || expression.text() == "contains" || expression.text() == "remove" || expression.text() == "indexOf") && this.context.isRuntimeListReceiver(receiverType, program)) {
+            NativeListEmitter lists = NativeListEmitter(this.context, this.typer, this.expressions);
+            return lists.emit(expression, receiverType, program, backend, locals);
+        }
+
+        NativeBuiltinMethodEmitter builtins = NativeBuiltinMethodEmitter(this.context, this.expressions);
+
+        if (builtins.supports(receiverType, expression.text())) {
+            LlvmValue result = builtins.emit(expression, receiverType, program, backend, locals);
+            return this.applyFlowResult(expressionIndex, result, backend);
+        }
+
+        if (builtins.isBuiltinOnlyReceiver(receiverType)) {
+            this.context.reportError("Unsupported builtin method " + receiverType + "." + expression.text() + " at line " + expression.line().toString());
+            return backend.int32(0);
+        }
+
+        if (staticCall) {
+            return this.emitStaticCall(expressionIndex, expression, program, backend, locals);
+        }
+
+        return this.emitInstanceCall(expressionIndex, expression, program, backend, locals, receiverType);
+    }
+
+    private Bool setObjectClass(LlvmValue objectValue, String className, SyntaxProgram program, LlvmNativeBackend backend) {
+        ClassDeclaration declaration = this.lookup.findClass(program, className);
+        if (declaration.implementedInterfaces().isEmpty() && declaration.parentName().isEmpty()) { return false; }
+        Int index = 0;
+        while (index < program.classCount()) {
+            if (program.classAt(index).fullName() == declaration.fullName()) {
+                ArrayList<Std::Llvm::LlvmType> types = ArrayList();
+                types.add(backend.context().opaquePointerType());
+                types.add(backend.context().int32Type());
+                LlvmRuntimeFunction setter = backend.runtimeDeclarations().declare("emerald_object_set_class", backend.context().voidType(), types);
+                ArrayList<LlvmValue> args = ArrayList();
+                args.add(this.stableValue(objectValue));
+                args.add(backend.int32(index + 1));
+                backend.callRuntime(setter, args, "");
+                return true;
+            }
+            index = index + 1;
+        }
+        return false;
+    }
+
+    private LlvmValue emitInstanceCall(Int expressionIndex, Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals, String receiverType) {
+        MethodDeclaration method = this.lookup.findMethod(program, receiverType, expression.text(), expression.argumentIndexes().length());
+        LlvmValue receiver = this.expressions.emit(expression.leftIndex(), program, backend, locals);
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(this.stableValue(receiver));
+        this.addArguments(args, expression, method, program, backend, locals);
+        NativeVirtualDispatchEmitter virtualCalls = NativeVirtualDispatchEmitter(this.context);
+        LlvmFunction target = virtualCalls.target(receiverType, method, program, backend);
+        LlvmValue result = this.callFunction(method, target, args, backend);
+        this.releaseBorrowedStringArguments(expression, method, args, 1, program, backend, locals);
+        if (this.context.hyperAllocFlowReport().callReceiverIsIndependentView(expression)) {
+            this.expressions.releaseOwnedReferenceTemporary(expression.leftIndex(), receiver, program, backend, locals);
+        } else if (this.context.hyperAllocFlowReport().callReceiverIsView(expression)) {
+            this.expressions.deferOwnedTemporary(expression.leftIndex(), receiver, program, backend, locals);
+        }
+        return this.applyFlowResult(expressionIndex, result, backend);
+    }
+
+    private LlvmValue emitStaticCall(Int expressionIndex, Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Expression receiver = program.expression(expression.leftIndex());
+        NativeRuntimeBridgeEmitter bridge = NativeRuntimeBridgeEmitter(this.context, this.expressions);
+
+        if (bridge.supports(receiver.text(), expression.text())) {
+            return this.applyFlowResult(expressionIndex, bridge.emit(receiver.text(), expression, program, backend, locals), backend);
+        }
+
+        MethodDeclaration method = this.lookup.findStaticMethod(program, receiver.text(), expression.text(), expression.argumentIndexes().length());
+        ArrayList<LlvmValue> args = ArrayList();
+        this.addArguments(args, expression, method, program, backend, locals);
+        LlvmValue result = this.callMethod(method, args, backend);
+        this.releaseBorrowedStringArguments(expression, method, args, 0, program, backend, locals);
+        return this.applyFlowResult(expressionIndex, result, backend);
+    }
+
+    private Void releaseBorrowedStringArguments(Expression expression, MethodDeclaration method, ArrayList<LlvmValue> args, Int offset, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Int index = 0;
+
+        while (index < expression.argumentCount()) {
+            Int argumentIndex = expression.argumentIndexAt(index);
+
+            if (this.typer.typeOf(argumentIndex, program, locals, backend) == "String" && this.context.hyperAllocFlowReport().callStringArgumentIsIndependentView(expression, method, index)) {
+                LlvmValue value = LlvmValue(args.get(index + offset).handle());
+                this.expressions.releaseOwnedStringTemporary(argumentIndex, value, program, backend, locals);
+            } else if (this.context.hyperAllocFlowReport().callArgumentIsIndependentView(expression, index)) {
+                LlvmValue value = LlvmValue(args.get(index + offset).handle());
+                this.expressions.releaseOwnedReferenceTemporary(argumentIndex, value, program, backend, locals);
+            } else if (this.context.hyperAllocFlowReport().callArgumentIsView(expression, index)) {
+                LlvmValue value = LlvmValue(args.get(index + offset).handle());
+                this.expressions.deferOwnedTemporary(argumentIndex, value, program, backend, locals);
+            }
+
+            index = index + 1;
+        }
+    }
+
+    // Owned temporaries passed to constructor parameters that are only read.
+    private Void releaseConstructorTemporaries(Expression expression, ArrayList<LlvmValue> args, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Int index = 0;
+
+        while (index < expression.argumentCount()) {
+            Int argumentIndex = expression.argumentIndexAt(index);
+
+            if (this.context.hyperAllocFlowReport().releasesConstructorArgument(argumentIndex)) {
+                this.expressions.releaseOwnedReferenceTemporary(argumentIndex, LlvmValue(args.get(index + 1).handle()), program, backend, locals);
+            }
+
+            index = index + 1;
+        }
+    }
+
+    private MethodDeclaration constructorFor(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        ClassDeclaration declaration = this.lookup.findClass(program, expression.text());
+        Int resolvedIndex = expression.resolvedConstructorIndex();
+
+        if (resolvedIndex >= 0 && resolvedIndex < declaration.methods().length()) {
+            return declaration.methods().get(resolvedIndex).signatureCopy();
+        }
+
+        Int bestScore = -1;
+        Int bestIndex = -1;
+        Int index = 0;
+
+        while (index < declaration.methods().length()) {
+            MethodDeclaration candidate = declaration.methods().get(index);
+
+            if (candidate.isConstructor() && candidate.parameters().length() == expression.argumentIndexes().length()) {
+                Int score = this.constructorScore(expression, candidate, program, backend, locals);
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestIndex = index;
+                }
+            }
+
+            index = index + 1;
+        }
+
+        if (bestIndex < 0) {
+            return this.missingMethod();
+        }
+
+        return declaration.methods().get(bestIndex).signatureCopy();
+    }
+
+    private Int constructorScore(Expression expression, MethodDeclaration constructor, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Int score = 0;
+        Int index = 0;
+
+        while (index < constructor.parameters().length()) {
+            String actual = this.typer.typeOf(expression.argumentIndexes().get(index), program, locals, backend);
+            String expected = constructor.parameters().get(index).typeName();
+
+            if (actual == expected) {
+                score = score + 4;
+            } else if (this.compatibleConstructorType(actual, expected)) {
+                score = score + 1;
+            } else {
+                return -1;
+            }
+
+            index = index + 1;
+        }
+
+        return score;
+    }
+
+    private Bool compatibleConstructorType(String actual, String expected) {
+        if (actual.startsWith("List<") && (expected.startsWith("List<") || expected.startsWith("IList<"))) {
+            return true;
+        }
+
+        if (actual == "Path" && expected == "IPath") {
+            return true;
+        }
+
+        if (actual == "File" && expected == "IFile") {
+            return true;
+        }
+
+        return false;
+    }
+
+    private MethodDeclaration missingMethod() {
+        List<Parameter> parameters = List();
+        List<Statement> statements = List();
+        return MethodDeclaration("", "", "Void", parameters, statements, false, false, 1, 1);
+    }
+
+    private LlvmValue applyFlowResult(Int expressionIndex, LlvmValue result, LlvmNativeBackend backend) {
+        if (!this.context.hyperAllocFlowReport().hasExpression(expressionIndex)) {
+            return result;
+        }
+
+        AllocationKind kind = this.context.hyperAllocFlowReport().kindForExpression(expressionIndex);
+
+        if (kind.isBond()) {
+            ArrayList<LlvmValue> promoteArgs = ArrayList();
+            promoteArgs.add(this.stableValue(result));
+            LlvmValue promoted = backend.callRuntime(backend.runtimeDeclarations().bondPromote(), promoteArgs, "bond_promoted_" + this.context.nextTemp().toString());
+            this.context.hyperAllocFlowReport().recordLowering(expressionIndex, "hyperalloc_flow_bond_promote", "runtime-produced unique value is promoted only after Flow proves multiple owners");
+            return promoted;
+        }
+
+        if (this.context.hyperAllocFlowReport().isOwnershipTransfer(expressionIndex)) {
+            this.context.hyperAllocFlowReport().recordLowering(expressionIndex, "owned return transfer", "callee transfers one unique Root result into the caller scope without retain or copy");
+        } else if (this.context.hyperAllocFlowReport().isAllocation(expressionIndex) && kind.isRoot()) {
+            this.context.hyperAllocFlowReport().recordLowering(expressionIndex, "owned runtime result", "runtime-produced value enters the current scope as one uniquely owned Root");
+        }
+
+        return result;
+    }
+
+    private LlvmValue callMethod(MethodDeclaration method, ArrayList<LlvmValue> args, LlvmNativeBackend backend) {
+        return this.callFunction(method, backend.llvmModule().getFunction(this.context.mangler().methodName(method)), args, backend);
+    }
+
+    private LlvmValue callFunction(MethodDeclaration method, LlvmFunction function, ArrayList<LlvmValue> args, LlvmNativeBackend backend) {
+        if (method.returnTypeName() == "Void") {
+            return backend.builder().callFunction(this.context.typeMapper().methodType(method, backend), function, args, "");
+        }
+
+        return backend.builder().callFunction(this.context.typeMapper().methodType(method, backend), function, args, "call_" + this.context.nextTemp().toString());
+    }
+
+    private Void addArguments(ArrayList<LlvmValue> args, Expression expression, MethodDeclaration method, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Int index = 0;
+
+        while (index < expression.argumentIndexes().length()) {
+            String parameterType = "";
+
+            if (index < method.parameterCount()) {
+                parameterType = method.parameterAt(index).typeName();
+            }
+
+            LlvmValue value = this.expressions.emitAs(expression.argumentIndexes().get(index), parameterType, program, backend, locals);
+            args.add(this.stableValue(value));
+            index = index + 1;
+        }
+    }
+
+    private LlvmValue stableValue(LlvmValue value) {
+        return LlvmValue(value.handle());
+    }
+
+    private Bool isStaticCall(Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Expression receiver = program.expression(expression.leftIndex());
+
+        if (receiver.kind() != "name") {
+            return false;
+        }
+
+        if (!this.lookup.findLocal(receiver.text(), locals, backend).name().isEmpty()) {
+            return false;
+        }
+
+        return !this.lookup.findClass(program, receiver.text()).isMissing();
+    }
+
+    private String receiverTypeFor(Bool staticCall, Expression expression, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (staticCall) {
+            return program.expression(expression.leftIndex()).text();
+        }
+
+        return this.typer.typeOf(expression.leftIndex(), program, locals, backend);
+    }
+
+    private LlvmValue allocateObject(Int expressionIndex, Expression expression, LlvmNativeBackend backend) {
+        AllocationKind kind = this.context.hyperAllocFlowReport().kindForExpression(expressionIndex);
+
+        if (kind.isLocal()) {
+            this.context.hyperAllocFlowReport().recordLowering(expressionIndex, "alloca", "Local Flow uses stack allocation for this safe non-escaping object");
+            return this.allocateLocal(expression.text(), backend);
+        }
+
+        if (kind.isPool()) {
+            this.context.hyperAllocFlowReport().recordLowering(expressionIndex, "hyperalloc_flow_pool_acquire", "Pool Flow reuses one zeroed thread-local slot for this repeated non-escaping allocation site");
+            return this.allocatePool(expressionIndex, expression.text(), backend);
+        }
+
+        if (kind.isShard()) {
+            this.context.hyperAllocFlowReport().recordLowering(expressionIndex, "hyperalloc_flow_shard_alloc", "Shard Flow bump-allocates this object inside the active repeated scope");
+            return this.allocateShard(expression.text(), backend);
+        }
+
+        if (kind.isBond()) {
+            this.context.hyperAllocFlowReport().recordLowering(expressionIndex, "hyperalloc_flow_bond_alloc", "Bond Flow allocates one reference-counted object only because multiple owned storage sites were proven");
+            return this.allocateBond(expression.text(), backend);
+        }
+
+        this.context.hyperAllocFlowReport().recordLowering(expressionIndex, "hyperalloc_flow_alloc", "Root Flow uses runtime allocation because the object is not Local/Pool/Shard/Bond-lowered");
+        return this.allocateRoot(expression.text(), backend);
+    }
+
+    private LlvmValue allocateLocal(String className, LlvmNativeBackend backend) {
+        NativeClassLayout layout = this.context.classTable().find(className);
+        LlvmValue objectValue = backend.builder().entryAlloca(layout.type(), "local_" + className + "_" + this.context.nextTemp().toString());
+        this.zeroLocalFields(layout, objectValue, backend);
+
+        if (layout.hasFlowOwnedFields()) {
+            this.registerOwner(objectValue, backend);
+        }
+
+        return objectValue;
+    }
+
+    private Void zeroLocalFields(NativeClassLayout layout, LlvmValue objectValue, LlvmNativeBackend backend) {
+        if (layout.isMissing()) {
+            return;
+        }
+
+        Int index = 0;
+
+        while (index < layout.fields().length()) {
+            FieldDeclaration field = layout.fields().get(index);
+            LlvmValue fieldPointer = this.localFieldPointer(layout, objectValue, index, backend);
+            backend.builder().store(this.defaultValue(field.typeName(), backend), fieldPointer);
+            index = index + 1;
+        }
+    }
+
+    private LlvmValue localFieldPointer(NativeClassLayout layout, LlvmValue objectValue, Int fieldIndex, LlvmNativeBackend backend) {
+        ArrayList<LlvmValue> indices = ArrayList();
+        indices.add(backend.int64(0));
+        indices.add(backend.int32(fieldIndex));
+        return backend.builder().inboundsGep(layout.type(), objectValue, indices, "local_field_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue defaultValue(String typeName, LlvmNativeBackend backend) {
+        if (typeName == "Int") {
+            return backend.int64(0);
+        }
+
+        if (typeName == "Float") { return backend.floatLiteral("0.0"); }
+        if (typeName == "Char") { return backend.int32(0); }
+        if (typeName == "Bool") {
+            return backend.boolValue(false);
+        }
+
+        return Llvm.constPointerNull(backend.context().opaquePointerType());
+    }
+
+    private LlvmValue allocatePool(Int expressionIndex, String className, LlvmNativeBackend backend) {
+        NativeClassLayout layout = this.context.classTable().find(className);
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(backend.int64(expressionIndex));
+        args.add(layout.type().sizeOf());
+        LlvmRuntimeFunction acquire = backend.runtimeDeclarations().poolAcquire();
+        return backend.callRuntime(acquire, args, "pool_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue allocateShard(String className, LlvmNativeBackend backend) {
+        NativeClassLayout layout = this.context.classTable().find(className);
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(layout.type().sizeOf());
+        LlvmRuntimeFunction alloc = backend.runtimeDeclarations().shardAlloc();
+        LlvmValue objectValue = backend.callRuntime(alloc, args, "shard_" + this.context.nextTemp().toString());
+
+        if (layout.hasFlowOwnedFields()) {
+            this.registerShardOwner(objectValue, backend);
+        }
+
+        return objectValue;
+    }
+
+    private Void registerOwner(LlvmValue objectValue, LlvmNativeBackend backend) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(objectValue.handle()));
+        backend.callRuntime(backend.runtimeDeclarations().ownerEnter(), args, "");
+    }
+
+    private Void registerShardOwner(LlvmValue objectValue, LlvmNativeBackend backend) {
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(objectValue.handle()));
+        backend.callRuntime(backend.runtimeDeclarations().shardRegisterOwner(), args, "");
+    }
+
+    private LlvmValue allocateBond(String className, LlvmNativeBackend backend) {
+        NativeClassLayout layout = this.context.classTable().find(className);
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(layout.type().sizeOf());
+        LlvmRuntimeFunction alloc = backend.runtimeDeclarations().bondAlloc();
+        return backend.callRuntime(alloc, args, "bond_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue allocateRoot(String className, LlvmNativeBackend backend) {
+        NativeClassLayout layout = this.context.classTable().find(className);
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(layout.type().sizeOf());
+        LlvmRuntimeFunction alloc = backend.runtimeDeclarations().alloc();
+        return backend.callRuntime(alloc, args, "root_" + this.context.nextTemp().toString());
+    }
+}

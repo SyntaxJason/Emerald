@@ -1,0 +1,21 @@
+macro AddHello on Class {
+    StatementAST body = Stmt::return(
+        Expr::str("hello from " + class.name)
+    );
+
+    BlockAST block = Block::of([body]);
+    MethodAST method = MethodAST::create("hello", "String", [], block);
+    class.addMethod(method);
+}
+
+@AddHello
+public class Greeter {
+    public Greeter() {
+    }
+}
+
+main() {
+    Greeter greeter = Greeter();
+    println(greeter.hello());
+    return 0;
+}

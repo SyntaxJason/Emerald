@@ -1,0 +1,59 @@
+namespace emerald::prism::registry;
+
+use Std::Io::Directories;
+use Std::Io::Paths;
+use Std::Native::NativeSystem;
+
+public class PrismCache {
+    private String rootPath;
+
+    public PrismCache() {
+        this.rootPath = Paths.join(NativeSystem.homeDirectory(), ".emerald/prism");
+    }
+
+    public String root() {
+        return this.rootPath;
+    }
+
+    public String packageRoot() {
+        return Paths.join(this.rootPath, "packages");
+    }
+
+    public String assetRoot() {
+        return Paths.join(this.rootPath, "assets");
+    }
+
+    public String packagePath(String name, String version) {
+        return Paths.join(Paths.join(this.packageRoot(), name), version);
+    }
+
+    public String assetPath(String name, String version) {
+        return Paths.join(Paths.join(this.assetRoot(), name), version);
+    }
+
+    public Void ensure() {
+        this.createIfMissing(this.rootPath);
+        this.createIfMissing(this.packageRoot());
+        this.createIfMissing(this.assetRoot());
+    }
+
+    public Void ensurePackage(String name, String version) {
+        this.ensure();
+        this.createIfMissing(Paths.join(this.packageRoot(), name));
+        this.createIfMissing(this.packagePath(name, version));
+    }
+
+    public Void ensureAsset(String name, String version) {
+        this.ensure();
+        this.createIfMissing(Paths.join(this.assetRoot(), name));
+        this.createIfMissing(this.assetPath(name, version));
+    }
+
+    private Void createIfMissing(String path) {
+        if (Directories.exists(path)) {
+            return;
+        }
+
+        Directories.create(path);
+    }
+}

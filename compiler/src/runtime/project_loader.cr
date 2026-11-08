@@ -80,8 +80,8 @@ module Emerald
 
       return DEFAULT_ROOT_NAMESPACE unless project_root
 
-      abs_file = File.expand_path(file_path)
-      abs_root = File.expand_path(project_root)
+      abs_file = File.expand_path(file_path).gsub("\\", "/")
+      abs_root = File.expand_path(project_root).gsub("\\", "/")
       relative = abs_file.starts_with?(abs_root) ? abs_file[(abs_root.size + 1)..]? : nil
       return DEFAULT_ROOT_NAMESPACE if relative.nil? || relative.empty?
 

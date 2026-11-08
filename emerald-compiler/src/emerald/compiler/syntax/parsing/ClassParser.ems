@@ -1,0 +1,246 @@
+namespace emerald::compiler::syntax;
+
+public class ClassParser {
+    private ParserState state;
+    private TopLevelParser topLevel;
+    private ClassMemberParser members;
+    private Bool entryValue;
+    private String parentTypeValue;
+    private List<String> genericParameterItems;
+    private List<String> interfaceTypeItems;
+
+    public ClassParser(ParserState parserState, Bool entry) {
+        this.state = parserState;
+        this.topLevel = TopLevelParser(parserState);
+        this.members = ClassMemberParser(parserState);
+        this.entryValue = entry;
+        this.parentTypeValue = "";
+        this.interfaceTypeItems = List();
+    }
+
+    public SyntaxProgram parse() {
+        this.topLevel.consumeHeader();
+
+        while (!this.state.isAtEnd() && (this.state.checkSymbol("@") || this.isClassStart())) {
+            ClassDeclaration declaration = this.parseClass();
+
+            if (!declaration.isMissing()) {
+                this.state.program().addClass(declaration);
+            }
+
+            this.topLevel.consumeHeader();
+        }
+
+        if (this.entryValue) {
+            this.parseMain();
+        }
+
+        return this.state.program();
+    }
+
+    private Void parseMain() {
+        this.state.consumeIdentifier("main", "Expected main function");
+        this.state.consumeSymbol("(", "Expected '(' after main");
+        this.state.consumeSymbol(")", "Expected ')' after main parameters");
+        StatementParser statementParser = StatementParser(this.state);
+        List<Statement> statements = statementParser.parseBlockStatements();
+        Int index = 0;
+
+        while (index < statements.length()) {
+            this.state.program().add(statements.get(index));
+            index = index + 1;
+        }
+    }
+
+    private ClassDeclaration parseClass() {
+        List<Annotation> annotations = this.topLevel.consumeAnnotations();
+        this.consumeVisibility();
+
+        if (this.state.current().isIdentifier("interface")) {
+            return this.parseInterface(annotations);
+        }
+
+        Bool isData = this.consumeDataKeyword();
+        Token classToken = this.state.consumeIdentifier("class", "Expected class declaration");
+        Token nameToken = this.state.consumeKind("identifier", "Expected class name");
+        this.resetInheritance();
+        this.consumeGenericParameters();
+        List<FieldDeclaration> fields = this.members.parseDataFields(isData);
+        List<MethodDeclaration> methods = List();
+        DataClassBuilder dataBuilder = DataClassBuilder(this.state.program());
+
+        if (isData && !this.state.checkSymbol("{") && !this.state.current().isIdentifier("implements") && !this.state.current().isIdentifier("extends")) {
+            this.members.addDataMethods(dataBuilder, nameToken.text(), fields, methods, nameToken.line(), nameToken.column());
+            this.consumeOptionalSemicolon();
+            return this.classDeclaration(nameToken, classToken, true, false, annotations, fields, methods);
+        }
+
+        this.consumeInheritanceClause(false);
+        this.state.consumeSymbol("{", "Expected '{' after class name");
+
+        while (!this.state.isAtEnd() && !this.state.checkSymbol("}")) {
+            List<Annotation> memberAnnotations = this.topLevel.consumeAnnotations();
+            this.members.parseMember(nameToken.text(), fields, methods, memberAnnotations);
+        }
+
+        this.state.consumeSymbol("}", "Expected '}' after class body");
+
+        if (isData) {
+            this.members.addDataMethods(dataBuilder, nameToken.text(), fields, methods, nameToken.line(), nameToken.column());
+        }
+
+        return this.classDeclaration(nameToken, classToken, isData, false, annotations, fields, methods);
+    }
+
+    private ClassDeclaration parseInterface(List<Annotation> annotations) {
+        Token interfaceToken = this.state.consumeIdentifier("interface", "Expected interface declaration");
+        Token nameToken = this.state.consumeKind("identifier", "Expected interface name");
+        this.resetInheritance();
+        this.consumeGenericParameters();
+        this.consumeInheritanceClause(true);
+        this.state.consumeSymbol("{", "Expected '{' after interface name");
+
+        List<FieldDeclaration> fields = List();
+        List<MethodDeclaration> methods = List();
+
+        while (!this.state.isAtEnd() && !this.state.checkSymbol("}")) {
+            List<Annotation> memberAnnotations = this.topLevel.consumeAnnotations();
+            this.members.parseMember(nameToken.text(), fields, methods, memberAnnotations);
+        }
+
+        this.state.consumeSymbol("}", "Expected '}' after interface body");
+        return this.classDeclaration(nameToken, interfaceToken, false, true, annotations, fields, methods);
+    }
+
+    private Void consumeGenericParameters() {
+        this.genericParameterItems = List();
+        if (!this.state.checkSymbol("<")) {
+            return;
+        }
+
+        Int depth = 0;
+        Bool parsing = true;
+
+        while (parsing && !this.state.isAtEnd()) {
+            if (this.state.checkSymbol("<")) {
+                depth = depth + 1;
+                this.state.advance();
+                continue;
+            }
+
+            if (this.state.checkSymbol(">")) {
+                depth = depth - 1;
+                this.state.advance();
+
+                if (depth <= 0) {
+                    parsing = false;
+                }
+
+                continue;
+            }
+
+            if (depth == 1 && this.state.current().kindIs("identifier")) {
+                this.genericParameterItems.add(this.state.current().text() + "");
+            }
+            this.state.advance();
+        }
+    }
+
+    private Void consumeInheritanceClause(Bool interfaceMode) {
+        while (this.state.current().isIdentifier("implements") || this.state.current().isIdentifier("extends")) {
+            Bool extendsMode = this.state.current().isIdentifier("extends");
+            this.state.advance();
+            this.consumeInheritanceTypes(interfaceMode, extendsMode);
+        }
+    }
+
+    private Void consumeInheritanceTypes(Bool interfaceMode, Bool extendsMode) {
+        TypeParser types = TypeParser(this.state);
+        Bool parsing = true;
+
+        while (parsing && !this.state.isAtEnd()) {
+            String typeName = types.parse("Expected inherited type");
+            this.addInheritanceType(typeName, interfaceMode, extendsMode);
+
+            if (this.state.checkSymbol(",")) {
+                this.state.advance();
+                continue;
+            }
+
+            parsing = false;
+        }
+    }
+
+    private Void addInheritanceType(String typeName, Bool interfaceMode, Bool extendsMode) {
+        if (interfaceMode) {
+            this.interfaceTypeItems.add(typeName);
+            return;
+        }
+
+        if (extendsMode) {
+            this.parentTypeValue = typeName;
+            return;
+        }
+
+        this.interfaceTypeItems.add(typeName);
+    }
+
+    private Void resetInheritance() {
+        this.parentTypeValue = "";
+        this.interfaceTypeItems = List();
+    }
+
+    private ClassDeclaration classDeclaration(Token nameToken, Token classToken, Bool isData, Bool isInterface, List<Annotation> annotations, List<FieldDeclaration> fields, List<MethodDeclaration> methods) {
+        return ClassDeclaration(this.state.program().namespaceName(), nameToken.text(), isData, isInterface, this.parentTypeValue, this.interfaceTypeItems, annotations, fields, methods, classToken.line(), classToken.column()).withGenericParameters(this.genericParameterItems);
+    }
+
+    private Void consumeOptionalSemicolon() {
+        if (this.state.checkSymbol(";")) {
+            this.state.advance();
+        }
+    }
+
+    private Void consumeVisibility() {
+        if (this.state.current().isIdentifier("public")) {
+            this.state.advance();
+        }
+    }
+
+    private Bool consumeDataKeyword() {
+        if (this.state.current().isIdentifier("data")) {
+            this.state.advance();
+            return true;
+        }
+
+        return false;
+    }
+
+    private Bool isClassStart() {
+        if (this.state.current().isIdentifier("class")) {
+            return true;
+        }
+
+        if (this.state.current().isIdentifier("interface")) {
+            return true;
+        }
+
+        if (this.state.current().isIdentifier("data") && this.state.peek(1).isIdentifier("class")) {
+            return true;
+        }
+
+        if (!this.state.current().isIdentifier("public")) {
+            return false;
+        }
+
+        if (this.state.peek(1).isIdentifier("class")) {
+            return true;
+        }
+
+        if (this.state.peek(1).isIdentifier("interface")) {
+            return true;
+        }
+
+        return this.state.peek(1).isIdentifier("data") && this.state.peek(2).isIdentifier("class");
+    }
+
+}

@@ -1,0 +1,631 @@
+namespace emerald::compiler::binding;
+
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::UseDeclaration;
+
+public class BindingTypeCatalog {
+    private BindingContext context;
+
+    public BindingTypeCatalog(BindingContext bindingContext) {
+        this.context = bindingContext;
+    }
+
+    public Bool isReturnType(String value) {
+        if (value == "Void") {
+            return true;
+        }
+
+        return this.isUsableType(value);
+    }
+
+    public Bool isUsableType(String value) {
+        if (this.isBuiltinType(value)) {
+            return true;
+        }
+
+        if (this.isTypeParameter(value)) {
+            return true;
+        }
+
+        if (this.isListType(value)) {
+            return this.isUsableType(this.listElementType(value));
+        }
+
+        if (this.hasGenericArguments(value)) {
+            return this.isGenericTypeUsable(value);
+        }
+
+        return !this.findClass(value).isMissing();
+    }
+
+    public Bool isListType(String value) {
+        if (!value.endsWith(">")) {
+            return false;
+        }
+
+        return value.startsWith("List<") || value.startsWith("IList<") || value.startsWith("ArrayList<");
+    }
+
+    public String listElementType(String value) {
+        if (!this.isListType(value)) {
+            return "Void";
+        }
+
+        Int start = value.indexOf("<") + 1;
+        return value.substring(start, value.length() - 1);
+    }
+
+    public ClassDeclaration findClass(String name) {
+        if (this.hasGenericArguments(name)) {
+            ClassDeclaration template = this.findClass(this.genericBaseType(name));
+            // Raw-template inheritance can contain parameters outside the
+            // caller's scope. Do not create concrete classes with unknown types.
+            if (!this.isGenericTypeUsable(name)) { return template; }
+            GenericSpecializer specializer = GenericSpecializer(this.context.program(), this.context.typeParameters());
+            return specializer.instantiate(template, name).headerCopy();
+        }
+
+        ClassDeclaration direct = this.findClassDirect(name);
+
+        if (!direct.isMissing()) {
+            return direct;
+        }
+
+        String imported = this.resolveImportedName(name);
+
+        if (!imported.isEmpty()) {
+            return this.findClassDirect(imported);
+        }
+
+        return this.missingClass();
+    }
+
+    public FieldDeclaration findField(String className, String fieldName) {
+        ClassDeclaration declaration = this.findClass(className);
+        Int index = 0;
+
+        while (index < declaration.fields().length()) {
+            FieldDeclaration field = declaration.fields().get(index);
+
+            if (field.name() == fieldName) {
+                return FieldDeclaration(field.name(), field.typeName(), field.initializerIndex(), field.line(), field.column());
+            }
+
+            index = index + 1;
+        }
+
+        return FieldDeclaration("", "", 1, 1);
+    }
+
+    public MethodDeclaration findConstructor(String className, Int parameterCount) {
+        ClassDeclaration declaration = this.findClass(className);
+        Int index = 0;
+
+        while (index < declaration.methods().length()) {
+            MethodDeclaration method = declaration.methods().get(index);
+
+            if (method.isConstructor() && method.parameters().length() == parameterCount) {
+                return method.signatureCopy();
+            }
+
+            index = index + 1;
+        }
+
+        return this.missingMethod();
+    }
+
+    public Bool hasConstructor(String className) {
+        ClassDeclaration declaration = this.findClass(className);
+        Int index = 0;
+
+        while (index < declaration.methods().length()) {
+            if (declaration.methods().get(index).isConstructor()) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    public MethodDeclaration findMethod(String className, String methodName, Int parameterCount) {
+        List<String> visited = List();
+        return this.findInheritedMethod(className, methodName, parameterCount, visited);
+    }
+
+    public Bool hasMethod(String className, String methodName) {
+        List<String> visited = List();
+        return this.hasInheritedMethod(className, methodName, visited);
+    }
+
+    private MethodDeclaration findInheritedMethod(String className, String methodName, Int parameterCount, List<String> visited) {
+        ClassDeclaration declaration = this.findClass(className);
+
+        if (declaration.isMissing() || visited.contains(declaration.fullName())) {
+            return this.missingMethod();
+        }
+
+        visited.add(declaration.fullName());
+        Int index = 0;
+
+        while (index < declaration.methods().length()) {
+            MethodDeclaration method = declaration.methods().get(index);
+
+            if (!method.isConstructor() && !method.isStatic() && method.name() == methodName && method.parameters().length() == parameterCount) {
+                return method.signatureCopy();
+            }
+
+            index = index + 1;
+        }
+
+        if (!declaration.parentName().isEmpty()) {
+            MethodDeclaration parentMethod = this.findInheritedMethod(declaration.parentName(), methodName, parameterCount, visited);
+
+            if (!parentMethod.isMissing()) {
+                return parentMethod;
+            }
+        }
+
+        Int interfaceIndex = 0;
+
+        while (interfaceIndex < declaration.implementedInterfaces().length()) {
+            MethodDeclaration interfaceMethod = this.findInheritedMethod(declaration.implementedInterfaces().get(interfaceIndex), methodName, parameterCount, visited);
+
+            if (!interfaceMethod.isMissing()) {
+                return interfaceMethod;
+            }
+
+            interfaceIndex = interfaceIndex + 1;
+        }
+
+        return this.missingMethod();
+    }
+
+    private Bool hasInheritedMethod(String className, String methodName, List<String> visited) {
+        ClassDeclaration declaration = this.findClass(className);
+
+        if (declaration.isMissing() || visited.contains(declaration.fullName())) {
+            return false;
+        }
+
+        visited.add(declaration.fullName());
+        Int index = 0;
+
+        while (index < declaration.methods().length()) {
+            MethodDeclaration method = declaration.methods().get(index);
+
+            if (!method.isConstructor() && !method.isStatic() && method.name() == methodName) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        if (!declaration.parentName().isEmpty() && this.hasInheritedMethod(declaration.parentName(), methodName, visited)) {
+            return true;
+        }
+
+        Int interfaceIndex = 0;
+
+        while (interfaceIndex < declaration.implementedInterfaces().length()) {
+            if (this.hasInheritedMethod(declaration.implementedInterfaces().get(interfaceIndex), methodName, visited)) {
+                return true;
+            }
+
+            interfaceIndex = interfaceIndex + 1;
+        }
+
+        return false;
+    }
+
+    public MethodDeclaration findStaticMethod(String className, String methodName, Int parameterCount) {
+        ClassDeclaration declaration = this.findClass(className);
+        Int index = 0;
+
+        while (index < declaration.methods().length()) {
+            MethodDeclaration method = declaration.methods().get(index);
+
+            if (!method.isConstructor() && method.isStatic() && method.name() == methodName && method.parameters().length() == parameterCount) {
+                return method.signatureCopy();
+            }
+
+            index = index + 1;
+        }
+
+        return this.missingMethod();
+    }
+
+    public Bool hasStaticMethod(String className, String methodName) {
+        ClassDeclaration declaration = this.findClass(className);
+        Int index = 0;
+
+        while (index < declaration.methods().length()) {
+            MethodDeclaration method = declaration.methods().get(index);
+
+            if (!method.isConstructor() && method.isStatic() && method.name() == methodName) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    public Bool canAssign(String actual, String expected) {
+        if (actual == expected) {
+            return true;
+        }
+
+        // Compiler bridge parameters (NativeHash.of) accept any value.
+        if (expected == "Any") {
+            return true;
+        }
+
+        if (actual == "Error") {
+            return true;
+        }
+
+        if (this.isTypeParameter(actual)) {
+            return true;
+        }
+
+        if (this.isTypeParameter(expected)) {
+            return true;
+        }
+
+        if (this.sameTypeShape(actual, expected)) {
+            return true;
+        }
+
+        if (this.hasGenericArguments(actual) && this.hasGenericArguments(expected) && !this.compatibleGenericArguments(actual, expected)) { return false; }
+
+        String actualBase = this.genericBaseType(actual);
+        String expectedBase = this.genericBaseType(expected);
+
+        if (actualBase == expectedBase) {
+            return true;
+        }
+
+        if (this.isDeclaredInterfaceAssignment(actualBase, expectedBase)) {
+            return true;
+        }
+
+        if (this.isKnownInterfaceAssignment(actualBase, expectedBase)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private Bool compatibleGenericArguments(String actual, String expected) {
+        List<String> left = this.genericArguments(actual);
+        List<String> right = this.genericArguments(expected);
+        if (left.length() != right.length()) { return false; }
+        Int index = 0;
+        while (index < left.length()) {
+            if (!this.isTypeParameter(left.get(index)) && !this.isTypeParameter(right.get(index)) && !this.sameTypeShape(left.get(index), right.get(index))) { return false; }
+            index = index + 1;
+        }
+        return true;
+    }
+
+    public String simpleName(String value) {
+        String base = this.genericBaseType(value).replace(".", "::");
+        String current = base;
+        Int index = current.indexOf("::");
+
+        while (index >= 0) {
+            current = current.substring(index + 2, current.length());
+            index = current.indexOf("::");
+        }
+
+        return current;
+    }
+
+    public Bool isTypeParameter(String value) { return this.context.typeParameters().contains(value); }
+
+    public Bool hasFieldBefore(ClassDeclaration declaration, String name, Int beforeIndex) {
+        Int index = 0;
+
+        while (index < beforeIndex) {
+            FieldDeclaration field = declaration.fields().get(index);
+
+            if (field.name() == name) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    public MethodDeclaration missingMethod() {
+        List<Parameter> parameters = List();
+        List<Statement> statements = List();
+        return MethodDeclaration("", "", "", parameters, statements, false, false, 1, 1);
+    }
+
+
+    private Bool hasGenericArguments(String value) {
+        return value.indexOf("<") > 0 && value.endsWith(">");
+    }
+
+    private Bool isGenericTypeUsable(String value) {
+        String baseType = this.genericBaseType(value);
+
+        ClassDeclaration declaration = this.findClass(baseType);
+        if (declaration.isMissing()) { return false; }
+        List<String> arguments = this.genericArguments(value);
+        if (arguments.length() != declaration.genericParameters().length()) { return false; }
+        Int index = 0;
+
+        while (index < arguments.length()) {
+            if (!this.isUsableType(arguments.get(index))) {
+                return false;
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+
+    private String genericBaseType(String value) {
+        Int index = value.indexOf("<");
+
+        if (index < 0) {
+            return value + "";
+        }
+
+        return value.substring(0, index);
+    }
+
+    private List<String> genericArguments(String value) {
+        List<String> arguments = List();
+        Int start = value.indexOf("<") + 1;
+        Int end = value.length() - 1;
+        Int index = start;
+        Int depth = 0;
+        String current = "";
+
+        while (index < end) {
+            String part = value.substring(index, index + 1);
+
+            if (part == "<") {
+                depth = depth + 1;
+                current = current + part;
+                index = index + 1;
+                continue;
+            }
+
+            if (part == ">") {
+                depth = depth - 1;
+                current = current + part;
+                index = index + 1;
+                continue;
+            }
+
+            if (part == "," && depth == 0) {
+                arguments.add(current);
+                current = "";
+                index = index + 1;
+                continue;
+            }
+
+            current = current + part;
+            index = index + 1;
+        }
+
+        if (!current.isEmpty()) {
+            arguments.add(current);
+        }
+
+        return arguments;
+    }
+
+    private Bool isDeclaredInterfaceAssignment(String actual, String expected) {
+        ClassDeclaration declaration = this.findClass(actual);
+
+        if (declaration.isMissing()) {
+            return false;
+        }
+
+        Int index = 0;
+
+        while (index < declaration.implementedInterfaces().length()) {
+            String interfaceName = declaration.implementedInterfaces().get(index);
+
+            if (this.sameTypeName(interfaceName, expected)) {
+                return true;
+            }
+
+            ClassDeclaration interfaceDeclaration = this.findClass(interfaceName);
+
+            if (!interfaceDeclaration.isMissing() && this.isDeclaredInterfaceAssignment(interfaceDeclaration.name(), expected)) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    private Bool sameTypeName(String actual, String expected) {
+        String actualBase = this.genericBaseType(actual).replace(".", "::");
+        String expectedBase = this.genericBaseType(expected).replace(".", "::");
+
+        if (actualBase == expectedBase) {
+            return true;
+        }
+
+        return this.simpleName(actualBase) == this.simpleName(expectedBase);
+    }
+
+    private Bool sameTypeShape(String actual, String expected) {
+        if (!this.sameTypeName(actual, expected)) {
+            return false;
+        }
+
+        if (!this.hasGenericArguments(actual) && !this.hasGenericArguments(expected)) {
+            return true;
+        }
+
+        if (!this.hasGenericArguments(actual) || !this.hasGenericArguments(expected)) {
+            return false;
+        }
+
+        List<String> actualArguments = this.genericArguments(actual);
+        List<String> expectedArguments = this.genericArguments(expected);
+
+        if (actualArguments.length() != expectedArguments.length()) {
+            return false;
+        }
+
+        Int index = 0;
+
+        while (index < actualArguments.length()) {
+            if (!this.sameTypeShape(actualArguments.get(index), expectedArguments.get(index))) {
+                return false;
+            }
+
+            index = index + 1;
+        }
+
+        return true;
+    }
+
+    private Bool isKnownInterfaceAssignment(String actual, String expected) {
+        if ((actual == "Success" || actual == "Failure" || actual == "BoolSuccess") && expected.endsWith("IResult")) {
+            return true;
+        }
+
+        if (actual == "ArrayList" && expected.endsWith("IList")) {
+            return true;
+        }
+
+        if (actual == "ListIterator" && expected.endsWith("IIterator")) {
+            return true;
+        }
+
+        if (actual == "HashSet" && expected.endsWith("ISet")) {
+            return true;
+        }
+
+        if (actual == "HashMap" && expected.endsWith("IMap")) {
+            return true;
+        }
+
+        if (actual == "Path" && expected.endsWith("IPath")) {
+            return true;
+        }
+
+        if (actual == "File" && expected.endsWith("IFile")) {
+            return true;
+        }
+
+        if (actual == "Directory" && expected.endsWith("IDirectory")) {
+            return true;
+        }
+
+        if (actual == "FileInfo" && expected.endsWith("IFileInfo")) {
+            return true;
+        }
+
+        if (actual == "TextReader" && expected.endsWith("ITextReader")) {
+            return true;
+        }
+
+        if (actual == "TextWriter" && expected.endsWith("ITextWriter")) {
+            return true;
+        }
+
+        if (actual == "Endpoint" && expected.endsWith("IEndpoint")) {
+            return true;
+        }
+
+        if (actual == "TcpConnection" && expected.endsWith("ITcpConnection")) {
+            return true;
+        }
+
+        if (actual == "TcpListener" && expected.endsWith("ITcpListener")) {
+            return true;
+        }
+
+        if (actual == "UdpSocket" && expected.endsWith("IUdpSocket")) {
+            return true;
+        }
+
+        if (actual == "System" && expected.endsWith("ISystem")) {
+            return true;
+        }
+
+        if (actual == "Environment" && expected.endsWith("IEnvironment")) {
+            return true;
+        }
+
+        if (actual == "Process" && expected.endsWith("IProcess")) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private Bool isBuiltinType(String value) {
+        if (value == "Int" || value == "Float") {
+            return true;
+        }
+
+        if (value == "String" || value == "Char") {
+            return true;
+        }
+
+        return value == "Bool";
+    }
+
+    private ClassDeclaration findClassDirect(String name) {
+        String normalizedName = name.replace(".", "::");
+        Int index = 0;
+
+        while (index < this.context.program().classes().length()) {
+            ClassDeclaration declaration = this.context.program().classes().get(index);
+
+            if (declaration.name() == name || declaration.hasFullName(name) || declaration.hasFullName(normalizedName)) {
+                return declaration.headerCopy();
+            }
+
+            index = index + 1;
+        }
+
+        return this.missingClass();
+    }
+
+    private String resolveImportedName(String name) {
+        Int index = 0;
+
+        while (index < this.context.program().uses().length()) {
+            UseDeclaration useItem = this.context.program().uses().get(index);
+
+            if (useItem.matchesName(name)) {
+                return useItem.qualifiedName() + "";
+            }
+
+            index = index + 1;
+        }
+
+        return "";
+    }
+
+    private ClassDeclaration missingClass() {
+        List<FieldDeclaration> fields = List();
+        List<MethodDeclaration> methods = List();
+        return ClassDeclaration("", fields, methods, 1, 1);
+    }
+}

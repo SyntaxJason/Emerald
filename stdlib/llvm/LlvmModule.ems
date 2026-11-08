@@ -1,0 +1,121 @@
+namespace Std::Llvm;
+
+public class LlvmModule {
+    private Int moduleHandle;
+    private Int contextHandle;
+
+    public LlvmModule(Int handle, Int context) {
+        this.moduleHandle = handle;
+        this.contextHandle = context;
+    }
+
+    public Int handle() {
+        return this.moduleHandle;
+    }
+
+    public Int context() {
+        return this.contextHandle;
+    }
+
+    public Bool runPasses(String passes) {
+        return LlvmNative.runPasses(this.moduleHandle, passes);
+    }
+
+    public Void setTarget(String triple) {
+        LlvmNative.moduleSetTarget(this.moduleHandle, triple);
+    }
+
+    public Bool emitObjectFile(String path) {
+        String triple = Llvm.defaultTargetTriple();
+        return this.emitObjectFileFor(triple, path);
+    }
+
+    public Bool emitObjectFileFor(String triple, String path) {
+        if (!Llvm.initializeTarget(triple)) {
+            return false;
+        }
+
+        LlvmTarget target = Llvm.lookupTarget(triple);
+
+        if (target.isNull()) {
+            return false;
+        }
+
+        LlvmTargetMachine machine = target.createMachine(triple);
+
+        if (machine.isNull()) {
+            return false;
+        }
+
+        machine.applyDataLayout(this);
+        Bool emitted = machine.emitObjectFile(this, path);
+        machine.dispose();
+
+        return emitted;
+    }
+
+    public Bool emitAssemblyFile(String path) {
+        String triple = Llvm.defaultTargetTriple();
+        return this.emitAssemblyFileFor(triple, path);
+    }
+
+    public Bool emitAssemblyFileFor(String triple, String path) {
+        if (!Llvm.initializeTarget(triple)) {
+            return false;
+        }
+
+        LlvmTarget target = Llvm.lookupTarget(triple);
+
+        if (target.isNull()) {
+            return false;
+        }
+
+        LlvmTargetMachine machine = target.createMachine(triple);
+
+        if (machine.isNull()) {
+            return false;
+        }
+
+        machine.applyDataLayout(this);
+        Bool emitted = machine.emitAssemblyFile(this, path);
+        machine.dispose();
+
+        return emitted;
+    }
+
+    public LlvmFunction addFunction(String name, LlvmType functionType) {
+        return LlvmFunction(LlvmNative.addFunction(this.moduleHandle, name, functionType.handle()), this.contextHandle);
+    }
+
+    public LlvmFunction getFunction(String name) {
+        return LlvmFunction(LlvmNative.getFunction(this.moduleHandle, name), this.contextHandle);
+    }
+
+    public LlvmValue addGlobal(String name, LlvmType type) {
+        return LlvmValue(LlvmNative.addGlobal(this.moduleHandle, name, type.handle()));
+    }
+
+    public LlvmValue getGlobal(String name) {
+        return LlvmValue(LlvmNative.getGlobal(this.moduleHandle, name));
+    }
+
+    public String toIr() {
+        return LlvmNative.moduleToIr(this.moduleHandle);
+    }
+
+    public Bool writeIr(String path) {
+        return LlvmNative.moduleWriteIr(this.moduleHandle, path);
+    }
+
+    public Bool verify() {
+        return LlvmNative.moduleVerify(this.moduleHandle);
+    }
+
+    public String verifyMessage() {
+        return LlvmNative.moduleVerifyMessage(this.moduleHandle);
+    }
+
+    public Void dispose() {
+        LlvmNative.disposeModule(this.moduleHandle);
+    }
+}

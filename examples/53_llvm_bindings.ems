@@ -1,0 +1,36 @@
+use Std::Llvm::Llvm;
+use Std::Llvm::LlvmContext;
+use Std::Llvm::LlvmModule;
+use Std::Llvm::LlvmBuilder;
+use Std::Llvm::LlvmType;
+use Std::Llvm::LlvmValue;
+use Std::Llvm::LlvmFunction;
+use Std::Llvm::LlvmBasicBlock;
+
+main() {
+    LlvmContext context = Llvm.createContext();
+    LlvmModule llvmModule = context.createModule("emerald_stage_one");
+    LlvmBuilder builder = context.createBuilder();
+
+    LlvmType int32 = context.int32Type();
+    LlvmType mainType = context.functionType(int32);
+    LlvmFunction mainFunction = llvmModule.addFunction("main", mainType);
+    LlvmBasicBlock entry = mainFunction.appendBlock("entry");
+
+    builder.positionAtEnd(entry);
+
+    LlvmValue exitCode = Llvm.constInt(int32, 0);
+    builder.returnValue(exitCode);
+
+    if (!llvmModule.verify()) {
+        println(llvmModule.verifyMessage());
+        return;
+    }
+
+    llvmModule.writeIr("emerald-stage-one.ll");
+    println(llvmModule.toIr());
+
+    builder.dispose();
+    llvmModule.dispose();
+    context.dispose();
+}

@@ -5,6 +5,7 @@ module Emerald
     extend self
     private def build_string_methods : Hash(String, BuiltinMethod)
       m = {} of String => BuiltinMethod
+      m["hashCode"]    = BuiltinMethod.new("hashCode", [] of String, "Int", "((%recv%).hash >> 1).to_i64")
       m["length"]      = BuiltinMethod.new("length", [] of String, "Int", "(%recv%).size.to_i64")
       m["isEmpty"]     = BuiltinMethod.new("isEmpty", [] of String, "Bool", "(%recv%).empty?")
       m["charAt"]      = BuiltinMethod.new("charAt", ["Int"], "Char", "(%recv%)[%a0%]")

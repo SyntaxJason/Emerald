@@ -1,107 +1,249 @@
 namespace Std::Collections;
 
+use Std::Collections::IMap;
+use Std::Collections::IList;
+use Std::Collections::IMapEntry;
+use Std::Collections::MapEntry;
+use Std::Collections::ArrayList;
+use Std::Functional::IBiConsumer;
+use Std::Native::NativeHash;
+
+// Insertion-ordered hash map. Entries live in parallel lists; a removed entry
+// leaves a tombstone (cached hash -1) that is unlinked from its bucket chain
+// at once and reclaimed by compaction, so remove is O(1) amortized.
 public class HashMap<K, V> implements IMap<K, V> {
-    private Map<K, V> storage;
+    private List<K> keyItems;
+    private List<V> valueItems;
+    private List<Int> hashItems;
+    private List<Int> bucketHeads;
+    private List<Int> nextItems;
+    private Int liveCount;
+    private List<V> handoff;
 
     public HashMap() {
-        this.storage = Map();
+        this.keyItems = List();
+        this.valueItems = List();
+        this.hashItems = List();
+        this.bucketHeads = List();
+        this.nextItems = List();
+        this.liveCount = 0;
+        this.handoff = List();
+        this.rebuild(16);
     }
 
-    public HashMap(Map<K, V> values) {
-        this.storage = values;
-    }
-
-    public Int size() {
-        return this.storage.length();
-    }
-
-    public Bool isEmpty() {
-        return this.storage.isEmpty();
-    }
-
-    public Bool containsKey(K key) {
-        return this.storage.has(key);
-    }
+    public Int size() { return this.liveCount; }
+    public Bool isEmpty() { return this.liveCount == 0; }
+    public Bool containsKey(K key) { return this.indexOfKey(key, NativeHash.of(key)) >= 0; }
 
     public Bool containsValue(V value) {
-        return this.storage.values().contains(value);
+        Int index = 0;
+        while (index < this.hashItems.length()) {
+            if (this.hashItems.get(index) >= 0 && this.valueItems.get(index) == value) { return true; }
+            index = index + 1;
+        }
+        return false;
     }
 
     public V get(K key) {
-        return this.storage.get(key);
+        Int index = this.indexOfKey(key, NativeHash.of(key));
+        if (index < 0) { panic("HashMap key does not exist"); }
+        return this.valueItems.get(index);
     }
 
     public V getOr(K key, V fallback) {
-        if (this.storage.has(key)) {
-            return this.storage.get(key);
-        }
-
-        return fallback;
+        Int index = this.indexOfKey(key, NativeHash.of(key));
+        if (index < 0) { return fallback; }
+        return this.valueItems.get(index);
     }
 
     public Void put(K key, V value) {
-        this.storage.put(key, value);
+        Int hash = NativeHash.of(key);
+        Int previous = this.indexOfKey(key, hash);
+        if (previous >= 0) { this.valueItems.set(previous, value); return; }
+        this.insertNew(key, value, hash);
     }
 
     public Bool putIfAbsent(K key, V value) {
-        if (this.storage.has(key)) {
-            return false;
-        }
-
-        this.storage.put(key, value);
+        Int hash = NativeHash.of(key);
+        if (this.indexOfKey(key, hash) >= 0) { return false; }
+        this.insertNew(key, value, hash);
         return true;
     }
 
     public V remove(K key) {
-        V value = this.storage.get(key);
-        this.storage.remove(key);
-        return value;
+        Int hash = NativeHash.of(key);
+        Int index = this.unlinkKey(key, hash);
+        if (index < 0) { panic("HashMap key does not exist"); }
+        return this.takeValue(index);
     }
 
     public V removeOr(K key, V fallback) {
-        if (!this.storage.has(key)) {
-            return fallback;
-        }
+        Int hash = NativeHash.of(key);
+        Int index = this.unlinkKey(key, hash);
+        if (index < 0) { return fallback; }
+        return this.takeValue(index);
+    }
 
-        V value = this.storage.get(key);
-        this.storage.remove(key);
-        return value;
+    // Removes the key when present; reports whether it was.
+    public Bool removeIfPresent(K key) {
+        Int index = this.unlinkKey(key, NativeHash.of(key));
+        if (index < 0) { return false; }
+        this.afterUnlink();
+        return true;
     }
 
     public Void clear() {
-        this.storage.clear();
+        this.keyItems.clear();
+        this.valueItems.clear();
+        this.hashItems.clear();
+        this.liveCount = 0;
+        this.rebuild(16);
     }
 
     public IList<K> keys() {
-        return ArrayList(this.storage.keys());
+        ArrayList<K> result = ArrayList();
+        Int index = 0;
+        while (index < this.keyItems.length()) {
+            if (this.hashItems.get(index) >= 0) { result.add(this.keyItems.get(index)); }
+            index = index + 1;
+        }
+        return result;
     }
 
     public IList<V> values() {
-        return ArrayList(this.storage.values());
+        ArrayList<V> result = ArrayList();
+        Int index = 0;
+        while (index < this.valueItems.length()) {
+            if (this.hashItems.get(index) >= 0) { result.add(this.valueItems.get(index)); }
+            index = index + 1;
+        }
+        return result;
     }
 
     public IList<IMapEntry<K, V>> entries() {
         ArrayList<IMapEntry<K, V>> result = ArrayList();
-        List<K> keys = this.storage.keys();
         Int index = 0;
-
-        while (index < keys.length()) {
-            K key = keys.get(index);
-            IMapEntry<K, V> entry = MapEntry(key, this.storage.get(key));
-            result.add(entry);
+        while (index < this.keyItems.length()) {
+            if (this.hashItems.get(index) >= 0) {
+                IMapEntry<K, V> entry = MapEntry(this.keyItems.get(index), this.valueItems.get(index));
+                result.add(entry);
+            }
             index = index + 1;
         }
-
         return result;
     }
 
-    public Void forEach(Std::Functional::IBiConsumer<K, V> consumer) {
-        List<K> keys = this.storage.keys();
+    public Void forEach(IBiConsumer<K, V> consumer) {
         Int index = 0;
+        while (index < this.keyItems.length()) {
+            if (this.hashItems.get(index) >= 0) { consumer.accept(this.keyItems.get(index), this.valueItems.get(index)); }
+            index = index + 1;
+        }
+    }
 
-        while (index < keys.length()) {
-            K key = keys.get(index);
-            consumer.accept(key, this.storage.get(key));
+    // Slot-level iteration without copying (used by HashSet). Slots are
+    // stable while the map is not modified; removed slots report false.
+    public Int slotCount() { return this.keyItems.length(); }
+    public Bool slotIsLive(Int slot) { return this.hashItems.get(slot) >= 0; }
+    public K slotKey(Int slot) { return this.keyItems.get(slot); }
+
+    private Int bucketOf(Int hash) { return hash % this.bucketHeads.length(); }
+
+    private Int indexOfKey(K key, Int hash) {
+        Int index = this.bucketHeads.get(this.bucketOf(hash));
+        while (index >= 0) {
+            if (this.hashItems.get(index) == hash && this.keyItems.get(index) == key) { return index; }
+            index = this.nextItems.get(index);
+        }
+        return -1;
+    }
+
+    private Void insertNew(K key, V value, Int hash) {
+        Int bucket = this.bucketOf(hash);
+        Int index = this.keyItems.length();
+        this.keyItems.add(key);
+        this.valueItems.add(value);
+        this.hashItems.add(hash);
+        this.nextItems.add(this.bucketHeads.get(bucket));
+        this.bucketHeads.set(bucket, index);
+        this.liveCount = this.liveCount + 1;
+        if (this.keyItems.length() > this.bucketHeads.length() * 2) {
+            this.rebuild(this.bucketHeads.length() * 2);
+        }
+    }
+
+    // Unlinks the key from its bucket chain and tombstones its slot. Returns
+    // the slot (still holding the value) or -1 when the key is absent.
+    private Int unlinkKey(K key, Int hash) {
+        Int bucket = this.bucketOf(hash);
+        Int previous = -1;
+        Int index = this.bucketHeads.get(bucket);
+        while (index >= 0) {
+            if (this.hashItems.get(index) == hash && this.keyItems.get(index) == key) {
+                Int following = this.nextItems.get(index);
+                if (previous < 0) { this.bucketHeads.set(bucket, following); } else { this.nextItems.set(previous, following); }
+                this.hashItems.set(index, -1);
+                this.liveCount = this.liveCount - 1;
+                return index;
+            }
+            previous = index;
+            index = this.nextItems.get(index);
+        }
+        return -1;
+    }
+
+    // Hands the removed entry's value to the caller as an owned reference: the
+    // handoff list holds it while the tombstone (or compaction) lets go of it.
+    private V takeValue(Int index) {
+        this.handoff.add(this.valueItems.get(index));
+        this.afterUnlink();
+        return this.handoff.removeAt(0);
+    }
+
+    private Void afterUnlink() {
+        Int dead = this.keyItems.length() - this.liveCount;
+        if (dead > 16 && dead > this.liveCount) { this.compact(); }
+    }
+
+    // Drops tombstones, keeping insertion order, and rebuilds the chains.
+    private Void compact() {
+        Int write = 0;
+        Int read = 0;
+        Int total = this.keyItems.length();
+        while (read < total) {
+            if (this.hashItems.get(read) >= 0) {
+                if (read != write) {
+                    this.keyItems.set(write, this.keyItems.get(read));
+                    this.valueItems.set(write, this.valueItems.get(read));
+                    this.hashItems.set(write, this.hashItems.get(read));
+                }
+                write = write + 1;
+            }
+            read = read + 1;
+        }
+        while (this.keyItems.length() > write) {
+            this.keyItems.removeAt(this.keyItems.length() - 1);
+            this.valueItems.removeAt(this.valueItems.length() - 1);
+            this.hashItems.removeAt(this.hashItems.length() - 1);
+        }
+        this.rebuild(this.bucketHeads.length());
+    }
+
+    private Void rebuild(Int count) {
+        this.bucketHeads.clear();
+        this.nextItems.clear();
+        Int index = 0;
+        while (index < count) { this.bucketHeads.add(-1); index = index + 1; }
+        index = 0;
+        while (index < this.keyItems.length()) {
+            Int hash = this.hashItems.get(index);
+            if (hash >= 0) {
+                Int bucket = this.bucketOf(hash);
+                this.nextItems.add(this.bucketHeads.get(bucket));
+                this.bucketHeads.set(bucket, index);
+            } else {
+                this.nextItems.add(-1);
+            }
             index = index + 1;
         }
     }

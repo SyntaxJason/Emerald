@@ -1,0 +1,6 @@
+namespace Std::Native;
+
+public class NativeRandom {
+    // Next non-negative 63-bit pseudo-random value.
+    public static Int nextInt63() { return 0; }
+}

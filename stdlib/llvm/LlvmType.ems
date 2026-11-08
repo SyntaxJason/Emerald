@@ -1,0 +1,47 @@
+namespace Std::Llvm;
+
+use Std::Collections::IList;
+
+public class LlvmType {
+    private Int typeHandle;
+
+    public LlvmType(Int handle) {
+        this.typeHandle = handle;
+    }
+
+    public Int handle() {
+        return this.typeHandle;
+    }
+
+    public Bool isNull() {
+        return this.typeHandle == 0;
+    }
+
+    public LlvmType pointer() {
+        return LlvmType(LlvmNative.pointerType(this.typeHandle));
+    }
+
+    public LlvmType array(Int count) {
+        return LlvmType(LlvmNative.arrayType(this.typeHandle, count));
+    }
+
+    public LlvmType asFunctionType() {
+        return LlvmType(LlvmNative.functionType(this.typeHandle));
+    }
+
+    public Void setStructBody(IList<LlvmType> elementTypes, Bool packed) {
+        LlvmNative.structSetBody(this.typeHandle, elementTypes, packed);
+    }
+
+    public LlvmValue sizeOf() {
+        return LlvmValue(LlvmNative.sizeOf(this.typeHandle));
+    }
+
+    public LlvmValue alignOf() {
+        return LlvmValue(LlvmNative.alignOf(this.typeHandle));
+    }
+
+    public String toIr() {
+        return LlvmNative.typeToIr(this.typeHandle);
+    }
+}

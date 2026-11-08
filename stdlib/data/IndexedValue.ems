@@ -1,5 +1,7 @@
 namespace Std::Data;
 
+use Std::Data::IIndexedValue;
+
 public class IndexedValue<T> implements IIndexedValue<T> {
     private Int storedIndex;
     private T storedValue;

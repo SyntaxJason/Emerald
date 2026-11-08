@@ -1,0 +1,59 @@
+use Std::Collections::HashMap;
+use Std::Collections::HashSet;
+use Std::Collections::IList;
+class Plain { public Int v; public Plain(Int v) { this.v = v; } }
+class Keyed {
+    public Int v;
+    public Keyed(Int v) { this.v = v; }
+    public Int hashCode() { return this.v; }
+    public Bool equals(Keyed other) { return this.v == other.v; }
+}
+class Box { public String name; public Box(String name) { this.name = name; } }
+main() {
+    HashMap<Int, Int> numbers = HashMap();
+    Int index = 0;
+    while (index < 1000) { numbers.put(index, index * 2); index = index + 1; }
+    index = 0;
+    while (index < 1000) { if (index % 3 != 0) { numbers.remove(index); } index = index + 1; }
+    println(numbers.size());
+    println(numbers.get(999));
+    println(numbers.containsKey(998));
+    IList<Int> keys = numbers.keys();
+    println(keys.get(0));
+    println(keys.get(1));
+    println(keys.get(333));
+    numbers.put(1, 11);
+    println(numbers.keys().get(334));
+    HashMap<Float, Int> floats = HashMap();
+    floats.put(0.0, 1);
+    println(floats.getOr(-0.0, 9));
+    HashMap<Bool, Int> bools = HashMap();
+    bools.put(true, 5);
+    println(bools.getOr(false, 0));
+    HashMap<Plain, Int> identity = HashMap();
+    Plain first = Plain(1);
+    identity.put(first, 1);
+    identity.put(Plain(1), 2);
+    println(identity.size());
+    println(identity.get(first));
+    HashMap<Keyed, Int> custom = HashMap();
+    custom.put(Keyed(7), 1);
+    custom.put(Keyed(7), 2);
+    println(custom.size());
+    println(custom.get(Keyed(7)));
+    HashMap<Int, Box> boxes = HashMap();
+    index = 0;
+    while (index < 100) { boxes.put(index, Box("v" + index.toString())); index = index + 1; }
+    Box taken = boxes.remove(5);
+    index = 0;
+    while (index < 100) { if (index != 5) { boxes.remove(index); } index = index + 1; }
+    index = 0;
+    while (index < 100) { boxes.put(1000 + index, Box("w" + index.toString())); index = index + 1; }
+    println(taken.name);
+    HashSet<String> set = HashSet();
+    println(set.add("a"));
+    println(set.add("a"));
+    println(set.remove("a"));
+    println(set.remove("a"));
+    println(set.size());
+}

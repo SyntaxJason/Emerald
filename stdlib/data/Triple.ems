@@ -1,5 +1,7 @@
 namespace Std::Data;
 
+use Std::Data::ITriple;
+
 public class Triple<A, B, C> implements ITriple<A, B, C> {
     private A left;
     private B middle;

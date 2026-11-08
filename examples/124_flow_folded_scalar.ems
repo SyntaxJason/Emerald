@@ -1,0 +1,14 @@
+public class HyperAllocFlowFoldedPair {
+    public Int left;
+    public Int right;
+
+    public HyperAllocFlowFoldedPair(Int left, Int right) {
+        this.left = left;
+        this.right = right;
+    }
+}
+
+main() {
+    HyperAllocFlowFoldedPair pair = HyperAllocFlowFoldedPair(12, 30);
+    println((pair.left + pair.right).toString());
+}

@@ -1,0 +1,15 @@
+public class Words {
+    public static String make() { return "word" + "value"; }
+}
+main() {
+    String text = Words.make();
+    println((text + "").hashCode() == text.hashCode());
+    println(("" + text).hashCode() == text.hashCode());
+    println(((Words.make() + "") + "").length());
+    println(("" + Words.make()).substring(0, 4));
+    println((Words.make() + "").equals(text));
+    String owned = (Words.make() + "").toString();
+    println(owned);
+    println((42 + "").length());
+    println((text + "").charAt(0).toString());
+}

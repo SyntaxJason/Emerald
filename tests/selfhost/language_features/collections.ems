@@ -1,0 +1,32 @@
+use Std::Collections::HashMap;
+use Std::Collections::IList;
+use Std::Collections::IMapEntry;
+main() {
+    HashMap<String, Int> map = HashMap();
+    Int index = 0;
+    while (index < 200) { map.put("key" + index.toString(), 4000000000 + index); index = index + 1; }
+    index = 0;
+    while (index < 200) {
+        if (map.get("key" + index.toString()) != 4000000000 + index) { panic("HashMap lookup failed"); }
+        index = index + 1;
+    }
+    println(map.size());
+    map.put("key42", 8000000000);
+    println(map.get("key42"));
+    println(map.putIfAbsent("key42", 0).toString());
+    println(map.remove("key42"));
+    println(map.containsKey("key42").toString());
+    println(map.getOr("missing", -5000000000));
+    println(map.keys().size());
+    println(map.values().get(198));
+    IList<IMapEntry<String, Int>> entries = map.entries();
+    println(entries.get(0).key());
+    println(entries.get(0).value());
+    map.clear();
+    println(map.isEmpty().toString());
+    map.put("again", 7000000000);
+    println(map.get("again"));
+    HashMap<Int, String> reverse = HashMap();
+    reverse.put(4000000000, "wide-key");
+    println(reverse.get(4000000000));
+}

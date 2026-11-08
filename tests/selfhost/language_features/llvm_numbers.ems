@@ -1,0 +1,7 @@
+use Std::Llvm::LlvmPrelude;
+
+main() {
+    LlvmContext context = Llvm.createContext();
+    println(Llvm.constInt(context.int64Type(), 4000000000).toIr());
+    println(Llvm.constInt(context.int64Type(), -9223372036854775808).toIr());
+}

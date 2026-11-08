@@ -1,0 +1,358 @@
+namespace emerald::compiler::macro;
+
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+
+public class MacroValueConverter {
+    private MacroInterpreterContext context;
+    private MacroAstFactory ast;
+
+    public MacroValueConverter(MacroInterpreterContext interpreterContext, MacroAstFactory astFactory) {
+        this.context = interpreterContext;
+        this.ast = astFactory;
+    }
+
+    public Bool truthy(MacroValue value) {
+        if (value.isKind("bool")) {
+            return value.boolData();
+        }
+
+        if (value.isKind("int")) {
+            return value.intData() != 0;
+        }
+
+        if (value.isKind("string")) {
+            return !value.stringData().isEmpty();
+        }
+
+        if (value.isKind("list")) {
+            return value.values().length() > 0;
+        }
+
+        return !value.isKind("void");
+    }
+
+    public String valueToString(MacroValue value) {
+        if (value.isKind("string")) {
+            return value.stringData();
+        }
+
+        if (value.isKind("int")) {
+            return value.intData().toString();
+        }
+
+        if (value.isKind("bool")) {
+            if (value.boolData()) {
+                return "true";
+            }
+
+            return "false";
+        }
+
+        if (value.isKind("expression")) {
+            return this.expressionToString(value.expressionIndex());
+        }
+
+        if (value.isKind("method")) {
+            return "<MethodAST>";
+        }
+
+        if (value.isKind("class")) {
+            return "<ClassAST>";
+        }
+
+        if (value.isKind("statement")) {
+            return "<StatementAST>";
+        }
+
+        if (value.isKind("block")) {
+            return "<BlockAST>";
+        }
+
+        if (value.isKind("list")) {
+            return "<List>";
+        }
+
+        return "";
+    }
+
+    public String expressionToString(Int expressionIndex) {
+        Expression expression = this.context.program().expression(expressionIndex);
+
+        if (expression.kind() == "string") {
+            return expression.text();
+        }
+
+        if (expression.kind() == "int") {
+            return expression.intValue().toString();
+        }
+
+        if (expression.kind() == "bool") {
+            if (expression.boolValue()) {
+                return "true";
+            }
+
+            return "false";
+        }
+
+        if (expression.kind() == "name") {
+            return expression.text();
+        }
+
+        return expression.text();
+    }
+
+    public Int expressionToInt(Int expressionIndex, Int line, Int column) {
+        Expression expression = this.context.program().expression(expressionIndex);
+
+        if (expression.kind() == "int") {
+            return expression.intValue();
+        }
+
+        if (expression.kind() == "string") {
+            return expression.text().toInt();
+        }
+
+        this.context.error("cannot convert expression to Int", line, column);
+        return 0;
+    }
+
+    public Bool expressionToBool(Int expressionIndex, Int line, Int column) {
+        Expression expression = this.context.program().expression(expressionIndex);
+
+        if (expression.kind() == "bool") {
+            return expression.boolValue();
+        }
+
+        if (expression.kind() == "string") {
+            return expression.text() == "true";
+        }
+
+        this.context.error("cannot convert expression to Bool", line, column);
+        return false;
+    }
+
+    public Int expectIntFromValue(MacroValue value, Int line, Int column) {
+        if (value.isKind("int")) {
+            return value.intData();
+        }
+
+        if (value.isKind("expression")) {
+            return this.expressionToInt(value.expressionIndex(), line, column);
+        }
+
+        this.context.error("expected Int macro value", line, column);
+        return 0;
+    }
+
+    public MacroValue expectArgument(List<MacroValue> arguments, Int index, Int line, Int column) {
+        if (index < arguments.length()) {
+            return arguments.get(index);
+        }
+
+        return this.context.error("missing macro argument", line, column);
+    }
+
+    public String expectString(List<MacroValue> arguments, Int index, Int line, Int column) {
+        MacroValue value = this.expectArgument(arguments, index, line, column);
+
+        if (value.isKind("string")) {
+            return value.stringData();
+        }
+
+        if (value.isKind("int")) {
+            return value.intData().toString();
+        }
+
+        if (value.isKind("bool")) {
+            return this.valueToString(value);
+        }
+
+        if (value.isKind("expression")) {
+            return this.expressionToString(value.expressionIndex());
+        }
+
+        this.context.error("expected String macro argument", line, column);
+        return "";
+    }
+
+    public Int expectInt(List<MacroValue> arguments, Int index, Int line, Int column) {
+        MacroValue value = this.expectArgument(arguments, index, line, column);
+
+        if (value.isKind("int")) {
+            return value.intData();
+        }
+
+        if (value.isKind("expression")) {
+            return this.expressionToInt(value.expressionIndex(), line, column);
+        }
+
+        this.context.error("expected Int macro argument", line, column);
+        return 0;
+    }
+
+    public Bool expectBool(List<MacroValue> arguments, Int index, Int line, Int column) {
+        MacroValue value = this.expectArgument(arguments, index, line, column);
+
+        if (value.isKind("bool")) {
+            return value.boolData();
+        }
+
+        if (value.isKind("expression")) {
+            return this.expressionToBool(value.expressionIndex(), line, column);
+        }
+
+        this.context.error("expected Bool macro argument", line, column);
+        return false;
+    }
+
+    public Int expectExpression(List<MacroValue> arguments, Int index, Int line, Int column) {
+        MacroValue value = this.expectArgument(arguments, index, line, column);
+
+        if (value.isKind("expression")) {
+            return value.expressionIndex();
+        }
+
+        this.context.error("expected ExpressionAST macro argument", line, column);
+        return 0;
+    }
+
+    public ClassDeclaration expectClass(List<MacroValue> arguments, Int index, Int line, Int column) {
+        MacroValue value = this.expectArgument(arguments, index, line, column);
+
+        if (value.isKind("class")) {
+            return value.classDeclaration();
+        }
+
+        this.context.error("expected ClassAST macro argument", line, column);
+        List<FieldDeclaration> fields = List();
+        List<MethodDeclaration> methods = List();
+        return ClassDeclaration("", fields, methods, 1, 1);
+    }
+
+    public Statement expectStatement(List<MacroValue> arguments, Int index, Int line, Int column) {
+        MacroValue value = this.expectArgument(arguments, index, line, column);
+
+        if (value.isKind("statement")) {
+            return value.statement();
+        }
+
+        this.context.error("expected StatementAST macro argument", line, column);
+        return this.ast.simpleStatement("missing", "", "", 0, 0, line, column);
+    }
+
+    public MethodDeclaration expectMethod(List<MacroValue> arguments, Int index, Int line, Int column) {
+        MacroValue value = this.expectArgument(arguments, index, line, column);
+
+        if (value.isKind("method")) {
+            return value.method();
+        }
+
+        this.context.error("expected MethodAST macro argument", line, column);
+        return MethodDeclaration("", "", "Void", this.ast.emptyParameters(), this.ast.emptyStatements(), false, false, line, column);
+    }
+
+    public FieldDeclaration expectField(List<MacroValue> arguments, Int index, Int line, Int column) {
+        MacroValue value = this.expectArgument(arguments, index, line, column);
+
+        if (value.isKind("field")) {
+            return value.field();
+        }
+
+        this.context.error("expected FieldAST macro argument", line, column);
+        return FieldDeclaration("", "Void", line, column);
+    }
+
+    public List<Statement> expectBlock(List<MacroValue> arguments, Int index, Int line, Int column) {
+        MacroValue value = this.expectArgument(arguments, index, line, column);
+
+        if (value.isKind("block")) {
+            return value.blockStatements();
+        }
+
+        this.context.error("expected BlockAST macro argument", line, column);
+        return this.ast.emptyStatements();
+    }
+
+    public List<Int> expectExpressionList(List<MacroValue> arguments, Int index, Int line, Int column) {
+        MacroValue value = this.expectArgument(arguments, index, line, column);
+        List<Int> result = List();
+
+        if (!value.isKind("list")) {
+            this.context.error("expected List<ExpressionAST> macro argument", line, column);
+            return result;
+        }
+
+        Int itemIndex = 0;
+
+        while (itemIndex < value.values().length()) {
+            MacroValue item = value.values().get(itemIndex);
+
+            if (!item.isKind("expression")) {
+                this.context.error("expected ExpressionAST in macro list", line, column);
+                return result;
+            }
+
+            result.add(item.expressionIndex());
+            itemIndex = itemIndex + 1;
+        }
+
+        return result;
+    }
+
+    public List<Statement> expectStatementList(List<MacroValue> arguments, Int index, Int line, Int column) {
+        MacroValue value = this.expectArgument(arguments, index, line, column);
+        List<Statement> result = List();
+
+        if (!value.isKind("list")) {
+            this.context.error("expected List<StatementAST> macro argument", line, column);
+            return result;
+        }
+
+        Int itemIndex = 0;
+
+        while (itemIndex < value.values().length()) {
+            MacroValue item = value.values().get(itemIndex);
+
+            if (!item.isKind("statement")) {
+                this.context.error("expected StatementAST in macro list", line, column);
+                return result;
+            }
+
+            result.add(item.statement());
+            itemIndex = itemIndex + 1;
+        }
+
+        return result;
+    }
+
+    public List<Parameter> expectParameterList(List<MacroValue> arguments, Int index, Int line, Int column) {
+        MacroValue value = this.expectArgument(arguments, index, line, column);
+        List<Parameter> result = List();
+
+        if (!value.isKind("list")) {
+            this.context.error("expected List<ParamAST> macro argument", line, column);
+            return result;
+        }
+
+        Int itemIndex = 0;
+
+        while (itemIndex < value.values().length()) {
+            MacroValue item = value.values().get(itemIndex);
+
+            if (!item.isKind("parameter")) {
+                this.context.error("expected ParamAST in macro list", line, column);
+                return result;
+            }
+
+            result.add(item.parameter());
+            itemIndex = itemIndex + 1;
+        }
+
+        return result;
+    }
+}

@@ -1,0 +1,29 @@
+public class StrictSession {
+    private String name;
+
+    public StrictSession(String name) {
+        this.name = name;
+    }
+
+    public String label() {
+        return this.name;
+    }
+}
+
+public class StrictSessionBox {
+    private StrictSession session;
+
+    public StrictSessionBox(StrictSession session) {
+        this.session = session;
+    }
+
+    public String label() {
+        return this.session.label();
+    }
+}
+
+main() {
+    StrictSession session = StrictSession("Jason");
+    StrictSessionBox box = StrictSessionBox(session);
+    println(box.label());
+}

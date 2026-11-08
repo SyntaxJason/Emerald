@@ -1,0 +1,74 @@
+namespace Std::Llvm;
+
+public class Llvm {
+    public Llvm() {
+    }
+
+    public static Bool initializeNativeTarget() {
+        return LlvmNative.initializeNativeTarget();
+    }
+
+    public static Bool initializeTarget(String triple) {
+        return LlvmNative.initializeTarget(triple);
+    }
+
+    public static String defaultTargetTriple() {
+        return LlvmNative.defaultTargetTriple();
+    }
+
+    public static String normalizeTargetTriple(String triple) {
+        return LlvmNative.normalizeTargetTriple(triple);
+    }
+
+    public static LlvmTarget lookupTarget(String triple) {
+        return LlvmTarget(LlvmNative.lookupTarget(triple));
+    }
+
+    public static String lastError() {
+        return LlvmNative.lastError();
+    }
+
+    public static String nativeObjectExtension() {
+        return LlvmNative.nativeObjectExtension();
+    }
+
+    public static String nativeExecutableExtension() {
+        return LlvmNative.nativeExecutableExtension();
+    }
+
+    public static LlvmContext createContext() {
+        return LlvmContext(LlvmNative.createContext());
+    }
+
+    public static LlvmType functionType(LlvmType returnType) {
+        return LlvmType(LlvmNative.functionType(returnType.handle()));
+    }
+
+    public static LlvmValue constInt(LlvmType type, Int value) {
+        return LlvmValue(LlvmNative.constInt(type.handle(), value));
+    }
+
+    public static LlvmValue constBool(LlvmType type, Bool value) {
+        return LlvmValue(LlvmNative.constBool(type.handle(), value));
+    }
+
+    public static LlvmValue constNull(LlvmType type) {
+        return LlvmValue(LlvmNative.constNull(type.handle()));
+    }
+
+    public static LlvmValue constPointerNull(LlvmType type) {
+        return LlvmValue(LlvmNative.constPointerNull(type.handle()));
+    }
+
+    public static Int externalLinkage() {
+        return 0;
+    }
+
+    public static Int internalLinkage() {
+        return 7;
+    }
+
+    public static Int privateLinkage() {
+        return 8;
+    }
+}

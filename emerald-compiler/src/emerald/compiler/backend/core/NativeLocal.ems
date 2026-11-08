@@ -1,0 +1,194 @@
+namespace emerald::compiler::backend;
+
+use Std::Llvm::LlvmBuilder;
+use Std::Llvm::LlvmNativeVariable;
+use Std::Llvm::LlvmType;
+use Std::Llvm::LlvmValue;
+
+public class NativeLocal {
+    private String nameValue;
+    private String typeValue;
+    private String llvmNameValue;
+    private Int llvmTypeHandleValue;
+    private Int llvmPointerHandleValue;
+    private Int allocationExpressionIndexValue;
+    private String hyperAllocFlowKindValue;
+    private List<String> foldedFieldNameItems;
+    private List<LlvmValue> foldedFieldValueItems;
+
+    public NativeLocal() {
+        this.nameValue = "";
+        this.typeValue = "";
+        this.llvmNameValue = "";
+        this.llvmTypeHandleValue = 0;
+        this.llvmPointerHandleValue = 0;
+        this.allocationExpressionIndexValue = 0;
+        this.hyperAllocFlowKindValue = "Value";
+        this.foldedFieldNameItems = List();
+        this.foldedFieldValueItems = List();
+    }
+
+    public NativeLocal(String name, String typeName, LlvmNativeVariable variable) {
+        this.nameValue = name + "";
+        this.typeValue = typeName + "";
+        this.captureVariable(variable);
+        this.allocationExpressionIndexValue = 0;
+        this.hyperAllocFlowKindValue = "Value";
+        this.foldedFieldNameItems = List();
+        this.foldedFieldValueItems = List();
+    }
+
+    public NativeLocal(String name, String typeName, LlvmNativeVariable variable, Int allocationExpressionIndex, String hyperAllocFlowKind) {
+        this.nameValue = name + "";
+        this.typeValue = typeName + "";
+        this.captureVariable(variable);
+        this.allocationExpressionIndexValue = allocationExpressionIndex;
+        this.hyperAllocFlowKindValue = hyperAllocFlowKind + "";
+        this.foldedFieldNameItems = List();
+        this.foldedFieldValueItems = List();
+    }
+
+    public NativeLocal stableCopy() {
+        if (this.isFoldedFlow()) {
+            return NativeLocal(this.nameValue, this.typeValue, this.allocationExpressionIndexValue, this.hyperAllocFlowKindValue, this.foldedFieldNameItems, this.foldedFieldValueItems);
+        }
+
+        return NativeLocal(this.nameValue, this.typeValue, this.variable(), this.allocationExpressionIndexValue, this.hyperAllocFlowKindValue);
+    }
+
+    public NativeLocal(String name, String typeName, Int allocationExpressionIndex, String hyperAllocFlowKind, List<String> foldedFieldNames, List<LlvmValue> foldedFieldValues) {
+        this.nameValue = name + "";
+        this.typeValue = typeName + "";
+        this.llvmNameValue = "";
+        this.llvmTypeHandleValue = 0;
+        this.llvmPointerHandleValue = 0;
+        this.allocationExpressionIndexValue = allocationExpressionIndex;
+        this.hyperAllocFlowKindValue = hyperAllocFlowKind + "";
+        this.foldedFieldNameItems = List();
+        this.foldedFieldValueItems = List();
+        this.copyFoldedFieldNames(foldedFieldNames);
+        this.copyFoldedFieldValues(foldedFieldValues);
+    }
+
+    private Void captureVariable(LlvmNativeVariable variable) {
+        this.llvmNameValue = variable.name() + "";
+        this.llvmTypeHandleValue = variable.type().handle();
+        this.llvmPointerHandleValue = variable.pointer().handle();
+    }
+
+    private Void copyFoldedFieldNames(List<String> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            this.foldedFieldNameItems.add(source.get(index) + "");
+            index = index + 1;
+        }
+    }
+
+    private Void copyFoldedFieldValues(List<LlvmValue> source) {
+        Int index = 0;
+
+        while (index < source.length()) {
+            LlvmValue value = source.get(index);
+            this.foldedFieldValueItems.add(LlvmValue(value.handle()));
+            index = index + 1;
+        }
+    }
+
+    public String name() {
+        return this.nameValue + "";
+    }
+
+    public String typeName() {
+        return this.typeValue + "";
+    }
+
+    public LlvmNativeVariable variable() {
+        return LlvmNativeVariable(this.llvmNameValue + "", this.llvmType(), this.pointer());
+    }
+
+    public LlvmValue load(LlvmBuilder builder) {
+        return builder.load(this.llvmType(), this.pointer(), this.llvmNameValue + "_value");
+    }
+
+    public Void store(LlvmBuilder builder, LlvmValue value) {
+        builder.store(value, this.pointer());
+    }
+
+    public LlvmType llvmType() {
+        return LlvmType(this.llvmTypeHandleValue);
+    }
+
+    public LlvmValue pointer() {
+        return LlvmValue(this.llvmPointerHandleValue);
+    }
+
+    public Int allocationExpressionIndex() {
+        return this.allocationExpressionIndexValue;
+    }
+
+    public String hyperAllocFlowKind() {
+        return this.hyperAllocFlowKindValue + "";
+    }
+
+    public Bool hasFlowAllocation() {
+        return this.allocationExpressionIndexValue != 0;
+    }
+
+    public Bool isFoldedFlow() {
+        return this.hyperAllocFlowKindValue == "Folded";
+    }
+
+    public Bool isLocalFlow() {
+        return this.hyperAllocFlowKindValue == "Local";
+    }
+
+    public Bool isInlineFlow() {
+        return this.hyperAllocFlowKindValue == "Inline";
+    }
+
+    public Bool isShardFlow() {
+        return this.hyperAllocFlowKindValue == "Shard";
+    }
+
+    public Bool isPoolFlow() {
+        return this.hyperAllocFlowKindValue == "Pool";
+    }
+
+    public Bool isRootFlow() {
+        return this.hyperAllocFlowKindValue == "Root";
+    }
+
+    public Bool isBondFlow() {
+        return this.hyperAllocFlowKindValue == "Bond";
+    }
+
+    public Bool hasFoldedField(String name) {
+        Int index = 0;
+
+        while (index < this.foldedFieldNameItems.length()) {
+            if (this.foldedFieldNameItems.get(index) == name) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    public LlvmValue foldedFieldValue(String name) {
+        Int index = 0;
+
+        while (index < this.foldedFieldNameItems.length()) {
+            if (this.foldedFieldNameItems.get(index) == name) {
+                LlvmValue value = this.foldedFieldValueItems.get(index);
+                return LlvmValue(value.handle());
+            }
+
+            index = index + 1;
+        }
+
+        return LlvmValue(0);
+    }
+}

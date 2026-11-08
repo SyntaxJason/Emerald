@@ -1,0 +1,128 @@
+namespace emerald::compiler::syntax;
+
+use emerald::compiler::diagnostic::DiagnosticBag;
+
+public class LexerTokenReader {
+    private LexerCursor cursor;
+    private LexerRules rules;
+    private DiagnosticBag diagnostics;
+
+    public LexerTokenReader(LexerCursor lexerCursor, LexerRules lexerRules, DiagnosticBag bag) {
+        this.cursor = lexerCursor;
+        this.rules = lexerRules;
+        this.diagnostics = bag;
+    }
+
+    public Token readIdentifier() {
+        Int start = this.cursor.index();
+        Int startLine = this.cursor.line();
+        Int startColumn = this.cursor.column();
+
+        while (!this.cursor.isAtEnd() && this.rules.isIdentifierPart(this.cursor.peekText())) {
+            this.cursor.advanceText();
+        }
+
+        return Token("identifier", this.cursor.slice(start, this.cursor.index()), startLine, startColumn);
+    }
+
+    public Token readNumber() {
+        Int start = this.cursor.index();
+        Int startLine = this.cursor.line();
+        Int startColumn = this.cursor.column();
+
+        while (!this.cursor.isAtEnd() && this.rules.isDigit(this.cursor.peekText())) {
+            this.cursor.advanceText();
+        }
+
+        Bool real = false;
+
+        if (this.cursor.peekText() == "." && this.rules.isDigit(this.cursor.peekNextText())) {
+            real = true;
+            this.cursor.advanceText();
+            while (!this.cursor.isAtEnd() && this.rules.isDigit(this.cursor.peekText())) {
+                this.cursor.advanceText();
+            }
+        }
+
+        if (this.cursor.peekText() == "e" || this.cursor.peekText() == "E") {
+            real = true;
+            this.cursor.advanceText();
+            if (this.cursor.peekText() == "+" || this.cursor.peekText() == "-") {
+                this.cursor.advanceText();
+            }
+            if (!this.rules.isDigit(this.cursor.peekText())) {
+                this.diagnostics.error("Expected exponent digits", this.cursor.line(), this.cursor.column());
+            }
+            while (!this.cursor.isAtEnd() && this.rules.isDigit(this.cursor.peekText())) {
+                this.cursor.advanceText();
+            }
+        }
+
+        if (real) {
+            return Token("float", this.cursor.slice(start, this.cursor.index()), startLine, startColumn);
+        }
+        return Token("number", this.cursor.slice(start, this.cursor.index()), startLine, startColumn);
+    }
+
+    public Token readString() {
+        Int startLine = this.cursor.line();
+        Int startColumn = this.cursor.column();
+        String text = "";
+
+        this.cursor.advanceText();
+
+        while (!this.cursor.isAtEnd() && this.cursor.peekText() != "\"") {
+            if (this.cursor.peekText() == "\\") {
+                this.cursor.advanceText();
+                text = text + this.readEscape();
+                continue;
+            }
+
+            text = text + this.cursor.advanceText();
+        }
+
+        if (this.cursor.isAtEnd()) {
+            this.diagnostics.error("Unterminated string literal", startLine, startColumn);
+            return Token("string", text, startLine, startColumn);
+        }
+
+        this.cursor.advanceText();
+        return Token("string", text, startLine, startColumn);
+    }
+
+    public Void skipLineComment() {
+        while (!this.cursor.isAtEnd() && this.cursor.peekText() != "\n") {
+            this.cursor.advanceText();
+        }
+    }
+
+    private String readEscape() {
+        if (this.cursor.isAtEnd()) {
+            return "";
+        }
+
+        String value = this.cursor.advanceText();
+
+        if (value == "n") {
+            return "\n";
+        }
+
+        if (value == "r") {
+            return "\r";
+        }
+
+        if (value == "t") {
+            return "\t";
+        }
+
+        if (value == "\"") {
+            return "\"";
+        }
+
+        if (value == "\\") {
+            return "\\";
+        }
+
+        return value;
+    }
+}

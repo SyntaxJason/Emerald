@@ -1,0 +1,288 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::hyperallocflow::analysis::inline::HyperAllocFlowInlineBoundaryAnalyzer;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Collections::ArrayList;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmValue;
+
+public class NativeListEmitter {
+    private NativeEmitContext context;
+    private NativeLookup lookup;
+    private NativeExpressionTyper typer;
+    private NativeExpressionEmitter expressions;
+
+    public NativeListEmitter(NativeEmitContext emitContext, NativeExpressionTyper expressionTyper, NativeExpressionEmitter expressionEmitter) {
+        this.context = emitContext;
+        this.lookup = NativeLookup();
+        this.typer = expressionTyper;
+        this.expressions = expressionEmitter;
+    }
+
+    public LlvmValue newReferenceList(LlvmNativeBackend backend) {
+        return backend.listNewTyped(1, backend.int64(8), "list_" + this.context.nextTemp().toString());
+    }
+
+    public LlvmValue newTypedList(String listType, SyntaxProgram program, LlvmNativeBackend backend) {
+        String elementType = this.typer.listElementType(listType);
+
+        if (elementType == "Int" || elementType == "Bool" || elementType == "Float" || elementType == "Char") {
+            return backend.listNewTyped(0, backend.int64(8), "list_primitive_" + this.context.nextTemp().toString());
+        }
+
+        if (this.isInlineElement(elementType, program)) {
+            NativeClassLayout layout = this.context.classTable().find(elementType);
+            return backend.listNewTyped(2, layout.type().sizeOf(), "list_inline_" + this.context.nextTemp().toString());
+        }
+
+        return backend.listNewTyped(1, backend.int64(8), "list_reference_" + this.context.nextTemp().toString());
+    }
+
+    public LlvmValue emit(Expression expression, String receiverType, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        LlvmValue receiverObject = this.expressions.emit(expression.leftIndex(), program, backend, locals);
+        LlvmValue receiver = this.listStorage(receiverObject, receiverType, backend);
+        String elementType = this.typer.listElementType(receiverType);
+
+        // An owned temporary list (e.g. `text.split(",").length()`) is released
+        // once the enclosing scalar expression no longer borrows it.
+        if (expression.text() == "length" || expression.text() == "size" || expression.text() == "isEmpty" || expression.text() == "get" || expression.text() == "contains" || expression.text() == "indexOf") {
+            this.expressions.deferOwnedTemporary(expression.leftIndex(), receiverObject, program, backend, locals);
+        }
+
+        if (expression.text() == "length" || expression.text() == "size") {
+            return backend.listLength(receiver, "list_len_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "isEmpty") {
+            LlvmValue length = backend.listLength(receiver, "list_len_" + this.context.nextTemp().toString());
+            return backend.builder().intEqual(length, backend.int64(0), "list_empty_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "add") {
+            Int valueIndex = expression.argumentIndexes().get(0);
+            backend.listAdd(receiver, this.pack(valueIndex, elementType, program, backend, locals));
+            this.recordContainerOperation(elementType, program);
+            return backend.int32(0);
+        }
+
+        if (expression.text() == "addAt") {
+            LlvmValue index = this.expressions.emit(expression.argumentIndexes().get(0), program, backend, locals);
+            Int valueIndex = expression.argumentIndexes().get(1);
+            backend.listAddAt(receiver, index, this.pack(valueIndex, elementType, program, backend, locals));
+            this.recordContainerOperation(elementType, program);
+            return backend.int32(0);
+        }
+
+        if (expression.text() == "get") {
+            LlvmValue index = this.expressions.emit(expression.argumentIndexes().get(0), program, backend, locals);
+
+            if (this.isInlineElement(elementType, program)) {
+                NativeClassLayout layout = this.context.classTable().find(elementType);
+                LlvmValue output = backend.builder().entryAlloca(layout.type(), "inline_list_get_" + this.context.nextTemp().toString());
+                backend.listGetInto(receiver, index, output);
+                return output;
+            }
+
+            LlvmValue value = backend.listGet(receiver, index, "list_get_" + this.context.nextTemp().toString());
+            return this.unpack(value, elementType, backend);
+        }
+
+        if (expression.text() == "set") {
+            LlvmValue index = this.expressions.emit(expression.argumentIndexes().get(0), program, backend, locals);
+            Int valueIndex = expression.argumentIndexes().get(1);
+            LlvmValue packedValue = this.pack(valueIndex, elementType, program, backend, locals);
+
+            if (this.isPrimitiveElement(elementType)) {
+                backend.listSetPrimitive(receiver, index, packedValue);
+                return backend.int32(0);
+            }
+
+            backend.listSet(receiver, index, packedValue);
+            this.recordContainerOperation(elementType, program);
+            return backend.int32(0);
+        }
+
+        if (expression.text() == "contains") {
+            Int valueIndex = expression.argumentIndexes().get(0);
+            LlvmValue packed = this.pack(valueIndex, elementType, program, backend, locals);
+
+            if (elementType == "String") {
+                LlvmValue rawString = backend.listIndexOfString(receiver, packed, "list_contains_raw_" + this.context.nextTemp().toString());
+                return backend.builder().intSignedGreaterOrEqual(rawString, backend.int32(0), "list_contains_" + this.context.nextTemp().toString());
+            }
+
+            LlvmValue raw = backend.listIndexOf(receiver, packed, "list_contains_raw_" + this.context.nextTemp().toString());
+            return backend.builder().intSignedGreaterOrEqual(raw, backend.int32(0), "list_contains_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "remove") {
+            Int valueIndex = expression.argumentIndexes().get(0);
+            LlvmValue packed = this.pack(valueIndex, elementType, program, backend, locals);
+
+            if (elementType == "String") {
+                LlvmValue rawString = backend.listRemoveString(receiver, packed, "list_remove_" + this.context.nextTemp().toString());
+                this.recordContainerOperation(elementType, program);
+                return backend.builder().intNotEqual(rawString, backend.int32(0), "list_removed_" + this.context.nextTemp().toString());
+            }
+
+            LlvmValue raw = backend.listRemove(receiver, packed, "list_remove_" + this.context.nextTemp().toString());
+            this.recordContainerOperation(elementType, program);
+            return backend.builder().intNotEqual(raw, backend.int32(0), "list_removed_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "removeAt") {
+            LlvmValue index = this.expressions.emit(expression.argumentIndexes().get(0), program, backend, locals);
+            this.recordContainerOperation(elementType, program);
+
+            if (this.isInlineElement(elementType, program)) {
+                NativeClassLayout layout = this.context.classTable().find(elementType);
+                LlvmValue output = backend.builder().entryAlloca(layout.type(), "inline_list_remove_at_" + this.context.nextTemp().toString());
+                backend.listRemoveAtInto(receiver, index, output);
+                return output;
+            }
+
+            LlvmValue value = backend.listRemoveAt(receiver, index, "list_remove_at_" + this.context.nextTemp().toString());
+            return this.unpack(value, elementType, backend);
+        }
+
+        if (expression.text() == "indexOf") {
+            Int valueIndex = expression.argumentIndexes().get(0);
+            LlvmValue packed = this.pack(valueIndex, elementType, program, backend, locals);
+
+            if (elementType == "String") {
+                return backend.listIndexOfString(receiver, packed, "list_index_" + this.context.nextTemp().toString());
+            }
+
+            return backend.listIndexOf(receiver, packed, "list_index_" + this.context.nextTemp().toString());
+        }
+
+        if (expression.text() == "clear") {
+            backend.listClear(receiver);
+            this.recordContainerOperation(elementType, program);
+            return backend.int32(0);
+        }
+
+        return backend.int32(0);
+    }
+
+    private LlvmValue listStorage(LlvmValue receiver, String receiverType, LlvmNativeBackend backend) {
+        if (receiverType.startsWith("List<")) {
+            return receiver;
+        }
+
+        NativeClassLayout layout = this.context.classTable().find("ArrayList");
+        ArrayList<LlvmValue> indices = ArrayList();
+        indices.add(backend.int32(0));
+        indices.add(backend.int32(this.context.fieldIndex(layout, "items")));
+        LlvmValue pointer = backend.builder().inboundsGep(layout.type(), receiver, indices, "list_storage_pointer_" + this.context.nextTemp().toString());
+        return backend.builder().load(backend.context().opaquePointerType(), pointer, "list_storage_" + this.context.nextTemp().toString());
+    }
+
+    private LlvmValue pack(Int expressionIndex, String typeName, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (this.isInlineElement(typeName, program)) {
+            Expression expression = program.expression(expressionIndex);
+
+            if (expression.kind() == "name") {
+                NativeLocal local = this.lookup.findLocal(expression.text(), locals, backend);
+
+                if (local.isInlineFlow()) {
+                    return local.pointer();
+                }
+            }
+
+            NativeInlineBoundaryEmitter boundaries = NativeInlineBoundaryEmitter(this.context, this.expressions);
+
+            if (boundaries.supportsInlineReturn(expression, typeName, program)) {
+                return boundaries.emitInlineReturnValue(expression, program, backend, locals);
+            }
+
+            if (expression.kind() == "call" && expression.text() == typeName) {
+                NativeClassLayout layout = this.context.classTable().find(typeName);
+                LlvmValue temporary = backend.builder().entryAlloca(layout.type(), "inline_list_value_" + this.context.nextTemp().toString());
+                Int index = 0;
+
+                while (index < expression.argumentIndexes().length()) {
+                    LlvmValue fieldValue = this.expressions.emit(expression.argumentIndexes().get(index), program, backend, locals);
+                    ArrayList<LlvmValue> indices = ArrayList();
+                    indices.add(backend.int32(0));
+                    indices.add(backend.int32(index));
+                    LlvmValue pointer = backend.builder().inboundsGep(layout.type(), temporary, indices, "inline_list_field_" + this.context.nextTemp().toString());
+                    backend.builder().store(fieldValue, pointer);
+                    index = index + 1;
+                }
+
+                this.context.hyperAllocFlowReport().recordLowering(expressionIndex, "inline container temporary", "small data value is materialized only as a temporary aggregate copied into contiguous container storage");
+                return temporary;
+            }
+        }
+
+        LlvmValue value = this.expressions.emitAs(expressionIndex, typeName, program, backend, locals);
+
+        if (typeName == "Int") {
+            LlvmValue wide = backend.builder().signExtend(value, backend.context().int64Type(), "list_i64_" + this.context.nextTemp().toString());
+            return backend.builder().intToPointer(wide, backend.context().opaquePointerType(), "list_ptr_" + this.context.nextTemp().toString());
+        }
+
+        if (typeName == "Float") {
+            LlvmValue bits = backend.builder().bitCast(value, backend.context().int64Type(), "list_float_bits_" + this.context.nextTemp().toString());
+            return backend.builder().intToPointer(bits, backend.context().opaquePointerType(), "list_float_ptr_" + this.context.nextTemp().toString());
+        }
+        if (typeName == "Char") {
+            LlvmValue wide = backend.builder().zeroExtend(value, backend.context().int64Type(), "list_char_bits_" + this.context.nextTemp().toString());
+            return backend.builder().intToPointer(wide, backend.context().opaquePointerType(), "list_char_ptr_" + this.context.nextTemp().toString());
+        }
+
+        if (typeName == "Bool") {
+            LlvmValue wide = backend.builder().zeroExtend(value, backend.context().int64Type(), "list_b64_" + this.context.nextTemp().toString());
+            return backend.builder().intToPointer(wide, backend.context().opaquePointerType(), "list_bptr_" + this.context.nextTemp().toString());
+        }
+
+        return value;
+    }
+
+    private LlvmValue unpack(LlvmValue value, String typeName, LlvmNativeBackend backend) {
+        if (typeName == "Int") {
+            LlvmValue raw = backend.builder().pointerToInt(value, backend.context().int64Type(), "list_i64_" + this.context.nextTemp().toString());
+            return raw;
+        }
+
+        if (typeName == "Float") {
+            LlvmValue bits = backend.builder().pointerToInt(value, backend.context().int64Type(), "list_float_bits_" + this.context.nextTemp().toString());
+            return backend.builder().bitCast(bits, backend.context().doubleType(), "list_float_" + this.context.nextTemp().toString());
+        }
+        if (typeName == "Char") {
+            LlvmValue bits = backend.builder().pointerToInt(value, backend.context().int64Type(), "list_char_bits_" + this.context.nextTemp().toString());
+            return backend.builder().truncate(bits, backend.context().int32Type(), "list_char_" + this.context.nextTemp().toString());
+        }
+
+        if (typeName == "Bool") {
+            LlvmValue raw = backend.builder().pointerToInt(value, backend.context().int64Type(), "list_b64_" + this.context.nextTemp().toString());
+            return backend.builder().truncate(raw, backend.context().boolType(), "list_bool_" + this.context.nextTemp().toString());
+        }
+
+        return value;
+    }
+
+    private Bool isInlineElement(String typeName, SyntaxProgram program) {
+        if (typeName == "Int" || typeName == "Bool" || typeName == "Float" || typeName == "Char" || typeName == "String") {
+            return false;
+        }
+
+        // Shared with Flow so container storage and ownership analysis agree.
+        HyperAllocFlowInlineBoundaryAnalyzer inlineTypes = HyperAllocFlowInlineBoundaryAnalyzer(this.context.hyperAllocFlowReport().programCatalog());
+        return inlineTypes.isInlineDeclaration(this.lookup.findClass(program, typeName), program);
+    }
+
+    private Bool isPrimitiveElement(String elementType) {
+        return elementType == "Int" || elementType == "Bool" || elementType == "Float" || elementType == "Char";
+    }
+
+    private Void recordContainerOperation(String elementType, SyntaxProgram program) {
+        if (!this.isPrimitiveElement(elementType)) {
+            this.context.hyperAllocFlowReport().recordContainerOwnedOperation();
+        }
+    }
+}

@@ -1,0 +1,180 @@
+namespace emerald::compiler;
+
+use emerald::compiler::backend::NativeEmitter;
+use emerald::compiler::binding::Binder;
+use emerald::compiler::binding::BoundProgram;
+use emerald::compiler::cli::Options;
+use emerald::compiler::debug::DebugLog;
+use emerald::compiler::diagnostic::DiagnosticBag;
+use emerald::compiler::hyperallocflow::HyperAllocFlowAnalyzer;
+use emerald::compiler::hyperallocflow::HyperAllocFlowReport;
+use emerald::compiler::hyperallocflow::HyperAllocFlowSafetyValidator;
+use emerald::compiler::hyperallocflow::HyperAllocFlowRamAnalyzer;
+use emerald::compiler::hyperallocflow::HyperAllocFlowStrictValidator;
+use emerald::compiler::macro::MacroExpander;
+use emerald::compiler::macro::MacroInterpreter;
+use emerald::compiler::source::ProjectClassRegistry;
+use emerald::compiler::source::ProjectImportValidator;
+use emerald::compiler::source::ProjectLoader;
+use emerald::compiler::source::ProjectSource;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Lexer;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parser;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+use emerald::compiler::syntax::Token;
+
+public class Compiler {
+    public Compiler() {
+    }
+
+    public Bool compile(Options options, DiagnosticBag diagnostics) {
+        DebugLog.log("compile " + options.sourcePath() + " -> " + options.outputBase());
+        ProjectLoader loader = ProjectLoader(options.sourcePath());
+        List<ProjectSource> sources = loader.load(options.sourcePath(), diagnostics);
+
+        if (diagnostics.hasErrors()) {
+            return false;
+        }
+
+        SyntaxProgram program = this.parseSources(sources, diagnostics);
+
+        if (diagnostics.hasErrors()) {
+            return false;
+        }
+
+        DebugLog.log("parsed program: " + program.classes().length().toString() + " classes, " + program.expressions().length().toString() + " expressions");
+        DebugLog.log("phase: macro expansion");
+        MacroExpander macros = MacroExpander();
+        MacroInterpreter macroInterpreter = MacroInterpreter(program, diagnostics);
+        macros.expand(program, macroInterpreter, diagnostics);
+
+        if (diagnostics.hasErrors()) {
+            return false;
+        }
+
+        DebugLog.log("phase: binding");
+        BoundProgram boundProgram = this.bindProgram(program, diagnostics);
+
+        if (diagnostics.hasErrors()) {
+            return false;
+        }
+
+        DebugLog.log("phase: flow analysis");
+        HyperAllocFlowAnalyzer hyperAllocFlowAnalyzer = HyperAllocFlowAnalyzer();
+        HyperAllocFlowReport hyperAllocFlowReport = hyperAllocFlowAnalyzer.analyze(boundProgram.syntax());
+
+        DebugLog.log("phase: flow safety validation");
+        HyperAllocFlowSafetyValidator safetyValidator = HyperAllocFlowSafetyValidator();
+        safetyValidator.validate(hyperAllocFlowReport, diagnostics);
+
+        if (diagnostics.hasErrors()) {
+            if (options.explainFlow()) {
+                hyperAllocFlowReport.print();
+            }
+
+            return false;
+        }
+
+        if (options.hyperAllocFlowStrict()) {
+            HyperAllocFlowStrictValidator strictValidator = HyperAllocFlowStrictValidator();
+            strictValidator.validate(hyperAllocFlowReport, diagnostics);
+
+            if (diagnostics.hasErrors()) {
+                if (options.explainFlow()) {
+                    hyperAllocFlowReport.print();
+                }
+
+                return false;
+            }
+        }
+
+        DebugLog.log("phase: native emission");
+        NativeEmitter emitter = NativeEmitter();
+        Bool emitted = emitter.emit(boundProgram, options, diagnostics, hyperAllocFlowReport);
+        DebugLog.log("phase: native emission done");
+
+        if (options.explainFlow()) {
+            hyperAllocFlowReport.print();
+        }
+
+        return emitted;
+    }
+
+
+    public Bool analyze(String sourcePath, DiagnosticBag diagnostics) {
+        ProjectLoader loader = ProjectLoader(sourcePath);
+        List<ProjectSource> sources = loader.load(sourcePath, diagnostics);
+
+        if (diagnostics.hasErrors()) {
+            return false;
+        }
+
+        SyntaxProgram program = this.parseSources(sources, diagnostics);
+
+        if (diagnostics.hasErrors()) {
+            return false;
+        }
+
+        MacroExpander macros = MacroExpander();
+        MacroInterpreter macroInterpreter = MacroInterpreter(program, diagnostics);
+        macros.expand(program, macroInterpreter, diagnostics);
+
+        if (diagnostics.hasErrors()) {
+            return false;
+        }
+
+        BoundProgram boundProgram = this.bindProgram(program, diagnostics);
+
+        if (diagnostics.hasErrors()) {
+            return false;
+        }
+
+        HyperAllocFlowAnalyzer hyperAllocFlowAnalyzer = HyperAllocFlowAnalyzer();
+        HyperAllocFlowReport hyperAllocFlowReport = hyperAllocFlowAnalyzer.analyze(boundProgram.syntax());
+        hyperAllocFlowReport.print();
+        HyperAllocFlowRamAnalyzer ram = HyperAllocFlowRamAnalyzer();
+        ram.print(hyperAllocFlowReport);
+        return true;
+    }
+
+    private BoundProgram bindProgram(SyntaxProgram program, DiagnosticBag diagnostics) {
+        Binder binder = Binder();
+        return binder.bind(program, diagnostics);
+    }
+
+    private SyntaxProgram parseSources(List<ProjectSource> sources, DiagnosticBag diagnostics) {
+        SyntaxProgram merged = SyntaxProgram();
+        ProjectClassRegistry classRegistry = ProjectClassRegistry();
+        ProjectImportValidator importValidator = ProjectImportValidator();
+        Int index = 0;
+
+        while (index < sources.length()) {
+            ProjectSource projectSource = sources.get(index);
+            diagnostics.enterSource(projectSource.source().path());
+            Lexer lexer = Lexer(projectSource.source().text(), diagnostics);
+            List<Token> tokens = lexer.tokenize();
+            Parser parser = Parser(tokens, diagnostics, projectSource.isEntry());
+            SyntaxProgram parsed = parser.parse();
+            DebugLog.log("parsed " + projectSource.source().path() + ": " + tokens.length().toString() + " tokens, " + parsed.classes().length().toString() + " classes");
+            diagnostics.leaveSource();
+            this.registerClasses(projectSource, parsed, classRegistry, diagnostics);
+            importValidator.validate(projectSource, parsed, diagnostics);
+            merged.merge(parsed);
+            index = index + 1;
+        }
+
+        return merged;
+    }
+
+    private Void registerClasses(ProjectSource source, SyntaxProgram program, ProjectClassRegistry registry, DiagnosticBag diagnostics) {
+        Int index = 0;
+
+        while (index < program.classes().length()) {
+            ClassDeclaration declaration = program.classes().get(index);
+            registry.register(declaration, source.source().path(), diagnostics);
+            index = index + 1;
+        }
+    }
+}

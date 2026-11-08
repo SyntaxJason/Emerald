@@ -1,0 +1,11 @@
+public data class HyperAllocFlowInlineMutable(Int value) {
+    public Int increment() {
+        this.value = this.value + 1;
+        return this.value;
+    }
+}
+
+main() {
+    HyperAllocFlowInlineMutable value = HyperAllocFlowInlineMutable(41);
+    println(value.increment().toString());
+}

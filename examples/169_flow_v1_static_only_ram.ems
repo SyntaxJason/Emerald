@@ -1,0 +1,4 @@
+main() {
+    String value = "42";
+    println(value);
+}

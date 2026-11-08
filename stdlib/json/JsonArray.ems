@@ -87,11 +87,12 @@ public class JsonArray implements IJsonValue {
         String output = "[";
         Int index = 0;
 
-        for (value in this.values) {
+        while (index < this.values.size()) {
             if (index > 0) {
                 output = output + ",";
             }
 
+            IJsonValue value = this.values.get(index);
             output = output + value.toJson();
             index = index + 1;
         }

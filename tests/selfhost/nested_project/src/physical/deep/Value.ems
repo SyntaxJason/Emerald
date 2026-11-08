@@ -1,0 +1,10 @@
+namespace Selfhost::Nested;
+
+public class Value {
+    public Value() {
+    }
+
+    public static Int answer() {
+        return 42;
+    }
+}

@@ -1,0 +1,17 @@
+public class StringHelper {
+    @Deprecated("use modernUpper() instead")
+    public String oldUpper(String s) {
+        return s.toUpper();
+    }
+
+    public String modernUpper(String s) {
+        return s.toUpper();
+    }
+}
+
+main() {
+    StringHelper h = StringHelper();
+    String a = h.oldUpper("hello");
+    String b = h.modernUpper("world");
+    println("$(a) $(b)");
+}

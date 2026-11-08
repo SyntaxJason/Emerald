@@ -1,0 +1,20 @@
+namespace Std::Collections;
+
+use Std::Collections::Deque;
+
+// First-in first-out queue.
+public class Queue<T> {
+    private Deque<T> items;
+
+    public Queue() {
+        this.items = Deque();
+    }
+
+    public Int size() { return this.items.size(); }
+    public Bool isEmpty() { return this.items.isEmpty(); }
+    public Void clear() { this.items.clear(); }
+    public Void enqueue(T value) { this.items.addLast(value); }
+    public T dequeue() { return this.items.removeFirst(); }
+    public T peek() { return this.items.peekFirst(); }
+    public T peekOr(T fallback) { return this.items.peekFirstOr(fallback); }
+}

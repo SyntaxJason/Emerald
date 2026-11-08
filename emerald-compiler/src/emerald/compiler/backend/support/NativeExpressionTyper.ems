@@ -1,0 +1,261 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Llvm::LlvmNativeBackend;
+
+public class NativeExpressionTyper {
+    private NativeEmitContext context;
+    private NativeLookup lookup;
+    private NativeOperatorRules operators;
+
+    public NativeExpressionTyper(NativeEmitContext emitContext) {
+        this.context = emitContext;
+        this.lookup = NativeLookup();
+        this.operators = NativeOperatorRules();
+    }
+
+    public String typeOf(Int expressionIndex, SyntaxProgram program, List<NativeLocal> locals, LlvmNativeBackend backend) {
+        if (expressionIndex == 0) {
+            return "Void";
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "float") {
+            return "Float";
+        }
+        if (expression.kind() == "int") {
+            return "Int";
+        }
+
+        if (expression.kind() == "string") {
+            return "String";
+        }
+
+        if (expression.kind() == "bool") {
+            return "Bool";
+        }
+
+        if (expression.kind() == "name") {
+            return this.lookup.findLocal(expression.text(), locals, backend).typeName();
+        }
+
+        if (expression.kind() == "field") {
+            return this.fieldType(expression, program, locals, backend);
+        }
+
+        if (expression.kind() == "call") {
+            if (expression.text() == "List") {
+                return "List<Void>";
+            }
+
+            return expression.text();
+        }
+
+        if (expression.kind() == "methodcall") {
+            return this.methodCallType(expression, program, locals, backend);
+        }
+
+        if (expression.kind() == "unary") {
+            if (expression.text() == "!") {
+                return "Bool";
+            }
+
+            return this.typeOf(expression.leftIndex(), program, locals, backend);
+        }
+
+        if (expression.kind() == "binary") {
+            return this.binaryType(expression, program, locals, backend);
+        }
+
+        return "Int";
+    }
+
+    public String listElementType(String typeName) {
+        if (!this.isListType(typeName)) {
+            return "Void";
+        }
+
+        Int start = typeName.indexOf("<") + 1;
+        return typeName.substring(start, typeName.length() - 1);
+    }
+
+    public Bool isListType(String typeName) {
+        if (!typeName.endsWith(">")) {
+            return false;
+        }
+
+        return typeName.startsWith("List<") || typeName.startsWith("IList<") || typeName.startsWith("ArrayList<");
+    }
+
+    private String fieldType(Expression expression, SyntaxProgram program, List<NativeLocal> locals, LlvmNativeBackend backend) {
+        String fieldReceiverType = this.typeOf(expression.leftIndex(), program, locals, backend);
+        NativeClassLayout fieldLayout = this.context.classTable().find(fieldReceiverType);
+        return this.context.fieldTypeName(fieldLayout, expression.text());
+    }
+
+    private String methodCallType(Expression expression, SyntaxProgram program, List<NativeLocal> locals, LlvmNativeBackend backend) {
+        String receiverType = this.receiverType(expression, program, locals, backend);
+
+        if (this.isListType(receiverType) && (expression.text() == "length" || expression.text() == "size" || expression.text() == "isEmpty" || expression.text() == "get" || expression.text() == "removeAt" || expression.text() == "add" || expression.text() == "set" || expression.text() == "addAt" || expression.text() == "clear" || expression.text() == "contains" || expression.text() == "remove" || expression.text() == "indexOf")) {
+            return this.listMethodType(receiverType, expression.text());
+        }
+
+        if (receiverType == "String") {
+            return this.stringMethodType(expression.text());
+        }
+
+        if (receiverType == "Int") {
+            return this.intMethodType(expression.text());
+        }
+
+        if (receiverType == "Float") {
+            if (expression.textIs("toString")) { return "String"; }
+            return "Int";
+        }
+
+        if (receiverType == "Bool") {
+            return this.boolMethodType(expression.text());
+        }
+
+        if (receiverType == "Char") {
+            return this.charMethodType(expression.text());
+        }
+
+        if (receiverType == "Process") {
+            return this.processMethodType(expression.text());
+        }
+
+        MethodDeclaration method = this.methodFor(expression, program, locals, backend, receiverType);
+        return method.returnTypeName();
+    }
+
+    private MethodDeclaration methodFor(Expression expression, SyntaxProgram program, List<NativeLocal> locals, LlvmNativeBackend backend, String receiverType) {
+        Expression receiver = program.expression(expression.leftIndex());
+        NativeLocal local = this.lookup.findLocal(receiver.text(), locals, backend);
+
+        if (receiver.kind() == "name" && local.name().isEmpty() && !this.lookup.findClass(program, receiver.text()).isMissing()) {
+            return this.lookup.findStaticMethod(program, receiver.text(), expression.text(), expression.argumentIndexes().length());
+        }
+
+        return this.lookup.findMethod(program, receiverType, expression.text(), expression.argumentIndexes().length());
+    }
+
+    private String receiverType(Expression expression, SyntaxProgram program, List<NativeLocal> locals, LlvmNativeBackend backend) {
+        Expression receiver = program.expression(expression.leftIndex());
+        NativeLocal local = this.lookup.findLocal(receiver.text(), locals, backend);
+
+        if (receiver.kind() == "name" && local.name().isEmpty() && !this.lookup.findClass(program, receiver.text()).isMissing()) {
+            return receiver.text();
+        }
+
+        return this.typeOf(expression.leftIndex(), program, locals, backend);
+    }
+
+    private String listMethodType(String receiverType, String methodName) {
+        if (methodName == "length" || methodName == "size" || methodName == "indexOf") {
+            return "Int";
+        }
+
+        if (methodName == "isEmpty" || methodName == "contains" || methodName == "remove") {
+            return "Bool";
+        }
+
+        if (methodName == "get" || methodName == "removeAt") {
+            return this.listElementType(receiverType);
+        }
+
+        return "Void";
+    }
+
+    private String stringMethodType(String methodName) {
+        if (methodName == "length" || methodName == "size" || methodName == "indexOf" || methodName == "toInt" || methodName == "hashCode" || methodName == "lastIndexOf" || methodName == "compareTo") {
+            return "Int";
+        }
+
+        if (methodName == "charAt") {
+            return "Char";
+        }
+
+        if (methodName == "split") {
+            return "List<String>";
+        }
+
+        if (methodName == "isEmpty" || methodName == "equals" || methodName == "startsWith" || methodName == "endsWith" || methodName == "contains" || methodName == "isBlank") {
+            return "Bool";
+        }
+
+        return "String";
+    }
+
+    private String intMethodType(String methodName) {
+        if (methodName == "toFloat") { return "Float"; }
+        if (methodName == "toChar") { return "Char"; }
+        if (methodName == "toString") {
+            return "String";
+        }
+
+        return "Int";
+    }
+
+    private String boolMethodType(String methodName) {
+        if (methodName == "toString") {
+            return "String";
+        }
+
+        return "Bool";
+    }
+
+    private String charMethodType(String methodName) {
+        if (methodName == "code") { return "Int"; }
+        if (methodName == "toString") {
+            return "String";
+        }
+
+        return "Bool";
+    }
+
+    private String processMethodType(String methodName) {
+        if (methodName == "args") {
+            return "List<String>";
+        }
+
+        if (methodName == "command") {
+            return "String";
+        }
+
+        if (methodName == "exit") {
+            return "Void";
+        }
+
+        return "Int";
+    }
+
+    private String binaryType(Expression expression, SyntaxProgram program, List<NativeLocal> locals, LlvmNativeBackend backend) {
+        String leftType = this.typeOf(expression.leftIndex(), program, locals, backend);
+        String rightType = this.typeOf(expression.rightIndex(), program, locals, backend);
+        if (!this.operators.isComparison(expression.text()) && leftType != "String" && rightType != "String" && (leftType == "Float" || rightType == "Float")) {
+            return "Float";
+        }
+        if (expression.text() == "+") {
+
+            if (leftType == "String" || rightType == "String") {
+                return "String";
+            }
+
+            return "Int";
+        }
+
+        if (this.operators.isComparison(expression.text())) {
+            return "Bool";
+        }
+
+        if (this.operators.isBoolOperator(expression.text())) {
+            return "Bool";
+        }
+
+        return "Int";
+    }
+}

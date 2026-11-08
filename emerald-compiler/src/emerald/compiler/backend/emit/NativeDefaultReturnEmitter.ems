@@ -1,0 +1,38 @@
+namespace emerald::compiler::backend;
+
+use Std::Llvm::Llvm;
+use Std::Llvm::LlvmNativeBackend;
+
+public class NativeDefaultReturnEmitter {
+    private NativeEmitContext context;
+
+    public NativeDefaultReturnEmitter(NativeEmitContext emitContext) {
+        this.context = emitContext;
+    }
+
+    public Void emit(String typeName, LlvmNativeBackend backend) {
+        if (typeName == "Void") {
+            backend.builder().returnVoid();
+            return;
+        }
+
+        if (typeName == "Float") { backend.builder().returnValue(backend.floatLiteral("0.0")); return; }
+        if (typeName == "Char") { backend.builder().returnValue(backend.int32(0)); return; }
+        if (typeName == "Bool") {
+            backend.builder().returnValue(backend.boolValue(false));
+            return;
+        }
+
+        if (typeName == "String") {
+            backend.builder().returnValue(backend.runtimeString("", "default_string_" + this.context.nextTemp().toString()));
+            return;
+        }
+
+        if (typeName == "Int") {
+            backend.builder().returnValue(backend.int64(0));
+            return;
+        }
+
+        backend.builder().returnValue(Llvm.constPointerNull(backend.context().opaquePointerType()));
+    }
+}

@@ -1,0 +1,4 @@
+main() {
+    println("Hello from Emerald Compiler native output");
+    return 0;
+}

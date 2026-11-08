@@ -1,0 +1,23 @@
+class Node {
+    private Bool hasChild;
+
+    public Node() {
+        this.hasChild = false;
+    }
+
+    public Int sum() {
+        Int total = 0;
+
+        if (this.hasChild) {
+            total = total + 1;
+        }
+
+        return total;
+    }
+}
+
+main() {
+    Node n = Node();
+    println(n.sum().toString());
+    return 0;
+}

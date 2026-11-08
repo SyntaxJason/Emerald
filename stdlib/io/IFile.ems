@@ -1,5 +1,12 @@
 namespace Std::Io;
 
+use Std::Io::IAppendableText;
+use Std::Io::IFileInfo;
+use Std::Io::IFileSystemEntry;
+use Std::Io::IReadableText;
+use Std::Io::ITextReader;
+use Std::Io::ITextWriter;
+use Std::Io::IWritableText;
 public interface IFile extends IFileSystemEntry, IReadableText, IWritableText, IAppendableText {
     public Bool delete();
 

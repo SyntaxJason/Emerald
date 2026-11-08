@@ -1,0 +1,27 @@
+use Std::Functional::IConsumer;
+use Std::Functional::IPredicate;
+use Std::Data::IPair;
+use Std::Data::Pair;
+use Std::Option::IOption;
+use Std::Option::Some;
+use Std::Result::IResult;
+use Std::Result::Success;
+use Std::Compare::IComparator;
+use Std::Compare::NaturalIntComparator;
+
+main() {
+    IConsumer<String> consumer = (value) -> println(value);
+    IPredicate<Int> predicate = (value) -> value > 5;
+    IPair<String, Int> pair = Pair("answer", 42);
+    IOption<String> option = Some("emerald");
+    IResult<Int, String> result = Success(7);
+    IComparator<Int> comparator = NaturalIntComparator();
+
+    consumer.accept("namespace");
+    println(predicate.test(9).toString());
+    println(pair.first());
+    println(pair.second().toString());
+    println(option.unwrapOr("fallback"));
+    println(result.unwrapOr(0).toString());
+    println(comparator.compare(1, 3).toString());
+}

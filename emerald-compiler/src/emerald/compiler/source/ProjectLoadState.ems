@@ -1,0 +1,145 @@
+namespace emerald::compiler::source;
+
+public class ProjectLoadState {
+    private List<String> loadedPathItems;
+    private List<String> loadedHotPathItems;
+    private List<String> loadingPathItems;
+    private List<String> loadingHotPathItems;
+    private List<ProjectSource> sourceItems;
+
+    public ProjectLoadState() {
+        this.loadedPathItems = List();
+        this.loadedHotPathItems = List();
+        this.loadingPathItems = List();
+        this.loadingHotPathItems = List();
+        this.sourceItems = List();
+    }
+
+    public List<ProjectSource> sources() {
+        return this.sourceItems;
+    }
+
+    public Bool isLoaded(String path) {
+        if (this.containsHot(this.loadedHotPathItems, path)) {
+            return true;
+        }
+
+        Int index = 0;
+
+        while (index < this.loadedPathItems.length()) {
+            if (this.loadedPathItems.get(index) == path) {
+                this.rememberHot(this.loadedHotPathItems, path);
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    public Bool isLoading(String path) {
+        if (this.containsHot(this.loadingHotPathItems, path)) {
+            return true;
+        }
+
+        Int index = 0;
+
+        while (index < this.loadingPathItems.length()) {
+            if (this.loadingPathItems.get(index) == path) {
+                this.rememberHot(this.loadingHotPathItems, path);
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    public Void begin(String path) {
+        String copiedPath = path + "";
+        this.loadingPathItems.add(copiedPath);
+        this.rememberHot(this.loadingHotPathItems, copiedPath);
+    }
+
+    public Void complete(String path, ProjectSource source) {
+        this.removeLoading(path);
+        String copiedPath = path + "";
+        this.loadedPathItems.add(copiedPath);
+        this.rememberHot(this.loadedHotPathItems, copiedPath);
+        this.sourceItems.add(source);
+    }
+
+    public String chainTo(String path) {
+        String result = "";
+        Int index = 0;
+
+        while (index < this.loadingPathItems.length()) {
+            if (!result.isEmpty()) {
+                result = result + " -> ";
+            }
+
+            result = result + this.loadingPathItems.get(index);
+            index = index + 1;
+        }
+
+        if (!result.isEmpty()) {
+            result = result + " -> ";
+        }
+
+        return result + path;
+    }
+
+    private Void removeLoading(String path) {
+        Int index = this.loadingPathItems.length() - 1;
+
+        while (index >= 0) {
+            if (this.loadingPathItems.get(index) == path) {
+                this.loadingPathItems.removeAt(index);
+                this.removeHot(this.loadingHotPathItems, path);
+                return;
+            }
+
+            index = index - 1;
+        }
+    }
+
+    private Bool containsHot(List<String> hotItems, String path) {
+        Int index = 0;
+
+        while (index < hotItems.length()) {
+            if (hotItems.get(index) == path) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    private Void rememberHot(List<String> hotItems, String path) {
+        if (this.containsHot(hotItems, path)) {
+            return;
+        }
+
+        hotItems.add(path + "");
+
+        if (hotItems.length() > 16) {
+            hotItems.removeAt(0);
+        }
+    }
+
+    private Void removeHot(List<String> hotItems, String path) {
+        Int index = hotItems.length() - 1;
+
+        while (index >= 0) {
+            if (hotItems.get(index) == path) {
+                hotItems.removeAt(index);
+            }
+
+            index = index - 1;
+        }
+    }
+}

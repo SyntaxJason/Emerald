@@ -1,0 +1,40 @@
+public class HyperAllocFlowV1BorrowedReturnBox {
+    private Int amountValue;
+
+    public HyperAllocFlowV1BorrowedReturnBox(Int amount) {
+        this.amountValue = amount;
+    }
+
+    public Int amount() {
+        return this.amountValue;
+    }
+}
+
+public class HyperAllocFlowV1BorrowedReturnFactory {
+    public HyperAllocFlowV1BorrowedReturnFactory() {
+    }
+
+    public HyperAllocFlowV1BorrowedReturnBox create(Int amount) {
+        return HyperAllocFlowV1BorrowedReturnBox(amount);
+    }
+
+    private HyperAllocFlowV1BorrowedReturnBox unpack(HyperAllocFlowV1BorrowedReturnBox value, Bool copy) {
+        if (copy) {
+            return HyperAllocFlowV1BorrowedReturnBox(value.amount());
+        }
+
+        return value;
+    }
+
+    public HyperAllocFlowV1BorrowedReturnBox fetch(Int amount) {
+        HyperAllocFlowV1BorrowedReturnBox value = this.create(amount);
+        return this.unpack(value, false);
+    }
+}
+
+main() {
+    HyperAllocFlowV1BorrowedReturnFactory factory = HyperAllocFlowV1BorrowedReturnFactory();
+    HyperAllocFlowV1BorrowedReturnBox box = factory.fetch(42);
+    HyperAllocFlowV1BorrowedReturnBox other = factory.fetch(7);
+    println(box.amount().toString());
+}

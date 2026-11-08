@@ -1,0 +1,16 @@
+public class HyperAllocFlowV1SafeViewAliasBox {
+    public Int value;
+
+    public HyperAllocFlowV1SafeViewAliasBox(Int value) {
+        this.value = value;
+    }
+}
+
+main() {
+    List<HyperAllocFlowV1SafeViewAliasBox> values = List();
+    HyperAllocFlowV1SafeViewAliasBox owned = HyperAllocFlowV1SafeViewAliasBox(42);
+    values.add(owned);
+    HyperAllocFlowV1SafeViewAliasBox view = values.get(0);
+    HyperAllocFlowV1SafeViewAliasBox mirror = view;
+    println(mirror.value.toString());
+}

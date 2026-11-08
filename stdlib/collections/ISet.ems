@@ -1,5 +1,7 @@
 namespace Std::Collections;
 
+use Std::Collections::ICollection;
+
 public interface ISet<T> extends ICollection<T> {
     public Bool add(T value);
 

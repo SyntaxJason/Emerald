@@ -1,0 +1,65 @@
+namespace emerald::compiler::syntax;
+
+public class LexerCursor {
+    private String source;
+    private Int indexValue;
+    private Int lineValue;
+    private Int columnValue;
+
+    public LexerCursor(String text) {
+        this.source = text;
+        this.indexValue = 0;
+        this.lineValue = 1;
+        this.columnValue = 1;
+    }
+
+    public Bool isAtEnd() {
+        return this.indexValue >= this.source.length();
+    }
+
+    public Int index() {
+        return this.indexValue;
+    }
+
+    public Int line() {
+        return this.lineValue;
+    }
+
+    public Int column() {
+        return this.columnValue;
+    }
+
+    public String slice(Int start, Int end) {
+        return this.source.substring(start, end);
+    }
+
+    public String peekText() {
+        if (this.isAtEnd()) {
+            return "";
+        }
+
+        return this.source.charAt(this.indexValue).toString();
+    }
+
+    public String peekNextText() {
+        if (this.indexValue + 1 >= this.source.length()) {
+            return "";
+        }
+
+        return this.source.charAt(this.indexValue + 1).toString();
+    }
+
+    public String advanceText() {
+        String value = this.peekText();
+        this.indexValue = this.indexValue + 1;
+
+        if (value == "\n") {
+            this.lineValue = this.lineValue + 1;
+            this.columnValue = 1;
+            return value;
+        }
+
+        this.columnValue = this.columnValue + 1;
+        return value;
+    }
+}

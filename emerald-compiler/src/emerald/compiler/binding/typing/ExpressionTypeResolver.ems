@@ -1,0 +1,94 @@
+namespace emerald::compiler::binding;
+
+use emerald::compiler::syntax::Expression;
+
+public class ExpressionTypeResolver {
+    private BindingContext context;
+    private ExpressionAccessTypeResolver access;
+    private ExpressionOperatorTypeResolver operators;
+    private BindingTypeCatalog catalog;
+
+    public ExpressionTypeResolver(BindingContext bindingContext, BindingTypeCatalog typeCatalog) {
+        this.context = bindingContext;
+        this.catalog = typeCatalog;
+        this.access = ExpressionAccessTypeResolver(bindingContext, typeCatalog, this);
+        this.operators = ExpressionOperatorTypeResolver(bindingContext, this);
+    }
+
+    public String typeOf(Int expressionIndex) {
+        return this.typeOfExpected(expressionIndex, "");
+    }
+
+    public String typeOfExpected(Int expressionIndex, String expected) {
+        if (expressionIndex == 0) {
+            return "Void";
+        }
+
+        Expression expression = this.context.program().expression(expressionIndex);
+
+        if (expression.kindIs("lambda")) {
+            LambdaLowerer lowerer = LambdaLowerer(this.context, this.catalog);
+            if (!lowerer.lower(expressionIndex, expected)) { return "Error"; }
+            return this.access.callType(expression, expected);
+        }
+
+        if (expression.kind() == "float") {
+            return "Float";
+        }
+        if (expression.kind() == "int") {
+            return "Int";
+        }
+
+        if (expression.kind() == "string") {
+            return "String";
+        }
+
+        if (expression.kind() == "bool") {
+            return "Bool";
+        }
+
+        if (expression.kind() == "name") {
+            return this.nameType(expression);
+        }
+
+        if (expression.kind() == "field") {
+            return this.access.fieldType(expression);
+        }
+
+        if (expression.kind() == "call") {
+            return this.access.callType(expression, expected);
+        }
+
+        if (expression.kind() == "methodcall") {
+            return this.access.methodCallType(expression);
+        }
+
+        if (expression.kind() == "unary") {
+            return this.operators.unaryType(expression);
+        }
+
+        if (expression.kind() == "binary") {
+            return this.operators.binaryType(expression);
+        }
+
+        if (expression.kind() == "index") {
+            // There is no indexing operator lowering; reject it instead of
+            // letting the backend evaluate it to a silent zero.
+            this.context.diagnostics().error("Index expressions are not supported; use list.get(index) or text.charAt(index)", expression.line(), expression.column());
+            return "Error";
+        }
+
+        return "Error";
+    }
+
+    private String nameType(Expression expression) {
+        VariableSymbol symbol = this.context.findSymbol(expression.text());
+
+        if (symbol.name().isEmpty()) {
+            this.context.diagnostics().error("Unknown variable: " + expression.text(), expression.line(), expression.column());
+            return "Error";
+        }
+
+        return symbol.typeName();
+    }
+}

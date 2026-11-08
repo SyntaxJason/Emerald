@@ -1,0 +1,40 @@
+namespace emerald::compiler::syntax;
+
+public class DataClassStringBuilder {
+    private DataClassExpressionBuilder expressions;
+
+    public DataClassStringBuilder(SyntaxProgram syntaxProgram) {
+        this.expressions = DataClassExpressionBuilder(syntaxProgram);
+    }
+
+    public MethodDeclaration toStringFor(String ownerName, List<FieldDeclaration> fields, Int line, Int column) {
+        List<Parameter> parameters = List();
+        List<Statement> statements = List();
+        Int value = this.stringExpression(ownerName, fields, line, column);
+        statements.add(Statement("return", "", "", value, 0, this.expressions.emptyStatements(), this.expressions.emptyStatements(), line, column));
+        return MethodDeclaration(ownerName, "toString", "String", parameters, statements, false, false, true, line, column);
+    }
+
+    private Int stringExpression(String ownerName, List<FieldDeclaration> fields, Int line, Int column) {
+        Int result = this.expressions.string(ownerName + " { ", line, column);
+        Int index = 0;
+
+        while (index < fields.length()) {
+            FieldDeclaration field = fields.get(index);
+
+            if (index > 0) {
+                result = this.concat(result, this.expressions.string(", ", field.line(), field.column()), field);
+            }
+
+            result = this.concat(result, this.expressions.string(field.name() + ": ", field.line(), field.column()), field);
+            result = this.concat(result, this.expressions.field("this", field), field);
+            index = index + 1;
+        }
+
+        return this.concat(result, this.expressions.string(" }", line, column), FieldDeclaration("", "String", line, column));
+    }
+
+    private Int concat(Int left, Int right, FieldDeclaration field) {
+        return this.expressions.binary("+", left, right, field.line(), field.column());
+    }
+}

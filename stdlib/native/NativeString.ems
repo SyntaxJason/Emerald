@@ -1,0 +1,8 @@
+namespace Std::Native;
+
+public class NativeString {
+    // Joins the parts with the separator between them. The result is a new String.
+    public static String join(List<String> parts, String separator) {
+        return separator + "";
+    }
+}

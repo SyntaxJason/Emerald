@@ -1,0 +1,147 @@
+namespace emerald::compiler::syntax;
+
+public class SyntaxProgram {
+    private String namespaceValue;
+    private List<UseDeclaration> useItems;
+    private List<ClassDeclaration> classItems;
+    private List<MacroDeclaration> macroItems;
+    private List<Statement> statementItems;
+    private List<Expression> expressionItems;
+
+    public SyntaxProgram() {
+        this.namespaceValue = "";
+        this.useItems = List();
+        this.classItems = List();
+        this.macroItems = List();
+        this.statementItems = List();
+        this.expressionItems = List();
+        this.expressionItems.add(Expression("missing", "", 0, false, 0, 0, this.emptyArguments(), 1, 1));
+    }
+
+    public Void setNamespace(String value) {
+        this.namespaceValue = value;
+    }
+
+    public String namespaceName() {
+        return this.namespaceValue + "";
+    }
+
+    public Void addUse(UseDeclaration declaration) {
+        this.useItems.add(declaration);
+    }
+
+    public List<UseDeclaration> uses() {
+        return this.useItems;
+    }
+
+    public Void addClass(ClassDeclaration declaration) {
+        this.classItems.add(declaration);
+    }
+
+    public Void addMacro(MacroDeclaration declaration) {
+        this.macroItems.add(declaration);
+    }
+
+    public Void add(Statement statement) {
+        this.statementItems.add(statement);
+    }
+
+    public Int addExpression(Expression expression) {
+        this.expressionItems.add(expression);
+        return this.expressionItems.length() - 1;
+    }
+
+    public Void merge(SyntaxProgram other) {
+        Int useIndex = 0;
+
+        while (useIndex < other.uses().length()) {
+            this.useItems.add(other.uses().get(useIndex));
+            useIndex = useIndex + 1;
+        }
+
+        Int expressionOffset = this.expressionItems.length();
+        Int macroIndex = 0;
+
+        while (macroIndex < other.macros().length()) {
+            this.macroItems.add(other.macros().get(macroIndex).shifted(expressionOffset - 1));
+            macroIndex = macroIndex + 1;
+        }
+        Int classIndex = 0;
+
+        while (classIndex < other.classes().length()) {
+            this.classItems.add(other.classes().get(classIndex).shifted(expressionOffset - 1));
+            classIndex = classIndex + 1;
+        }
+
+        Int expressionIndex = 1;
+
+        while (expressionIndex < other.expressions().length()) {
+            this.expressionItems.add(other.expressions().get(expressionIndex).shifted(expressionOffset - 1));
+            expressionIndex = expressionIndex + 1;
+        }
+
+        Int statementIndex = 0;
+
+        while (statementIndex < other.statements().length()) {
+            this.statementItems.add(other.statements().get(statementIndex).shifted(expressionOffset - 1));
+            statementIndex = statementIndex + 1;
+        }
+    }
+
+    public ClassDeclaration classAt(Int index) {
+        return this.classItems.get(index);
+    }
+
+    public Expression expression(Int index) {
+        return this.expressionItems.get(index);
+    }
+
+    public List<ClassDeclaration> classes() {
+        return this.classItems;
+    }
+
+    public List<MacroDeclaration> macros() {
+        return this.macroItems;
+    }
+
+    public List<Statement> statements() {
+        return this.statementItems;
+    }
+
+    public List<Expression> expressions() {
+        return this.expressionItems;
+    }
+
+    public Int classCount() {
+        return this.classItems.length();
+    }
+
+    public MacroDeclaration findMacro(String name) {
+        Int index = 0;
+
+        while (index < this.macroItems.length()) {
+            MacroDeclaration declaration = this.macroItems.get(index);
+
+            if (declaration.name() == name) {
+                return declaration;
+            }
+
+            index = index + 1;
+        }
+
+        return this.missingMacro();
+    }
+
+    public Int size() {
+        return this.statementItems.length();
+    }
+
+    private MacroDeclaration missingMacro() {
+        List<Statement> statements = List();
+        return MacroDeclaration("", "", statements, 1, 1);
+    }
+
+    private List<Int> emptyArguments() {
+        return List();
+    }
+}

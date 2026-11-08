@@ -1,0 +1,461 @@
+namespace emerald::compiler::syntax;
+
+public class ExpressionParser {
+    private ParserState state;
+
+    public ExpressionParser(ParserState parserState) {
+        this.state = parserState;
+    }
+
+    public Int parseExpression() {
+        return this.parseLogicalOr();
+    }
+
+    public Int parsePostfix() {
+        Int target = this.parsePrimary();
+        Bool parsing = true;
+
+        while (parsing) {
+            if (this.state.checkSymbol(".")) {
+                this.state.advance();
+                Token memberName = this.state.consumeKind("identifier", "Expected member name after '.'");
+
+                if (this.state.checkSymbol("(")) {
+                    List<Int> args = this.parseArgumentList();
+                    target = this.state.program().addExpression(Expression("methodcall", memberName.text(), 0, false, target, 0, args, memberName.line(), memberName.column()));
+                    continue;
+                }
+
+                target = this.state.program().addExpression(Expression("field", memberName.text(), 0, false, target, 0, this.state.emptyArguments(), memberName.line(), memberName.column()));
+                continue;
+            }
+
+            if (this.state.checkSymbol("[")) {
+                Token start = this.state.advance();
+                Int index = this.parseExpression();
+                this.state.consumeSymbol("]", "Expected ']' after index expression");
+                target = this.state.program().addExpression(Expression("index", "", 0, false, target, index, this.state.emptyArguments(), start.line(), start.column()));
+                continue;
+            }
+
+            parsing = false;
+        }
+
+        return target;
+    }
+
+    private Int parseLogicalOr() {
+        Int left = this.parseLogicalAnd();
+
+        while (this.state.checkSymbol("||")) {
+            Token op = this.state.advance();
+            Int right = this.parseLogicalAnd();
+            left = this.binaryExpression(op, left, right);
+        }
+
+        return left;
+    }
+
+    private Int parseLogicalAnd() {
+        Int left = this.parseEquality();
+
+        while (this.state.checkSymbol("&&")) {
+            Token op = this.state.advance();
+            Int right = this.parseEquality();
+            left = this.binaryExpression(op, left, right);
+        }
+
+        return left;
+    }
+
+    private Int parseEquality() {
+        Int left = this.parseComparison();
+
+        while (this.state.checkSymbol("==") || this.state.checkSymbol("!=")) {
+            Token op = this.state.advance();
+            Int right = this.parseComparison();
+            left = this.binaryExpression(op, left, right);
+        }
+
+        return left;
+    }
+
+    private Int parseComparison() {
+        Int left = this.parseRange();
+
+        while (this.state.checkSymbol("<") || this.state.checkSymbol("<=") || this.state.checkSymbol(">") || this.state.checkSymbol(">=")) {
+            Token op = this.state.advance();
+            Int right = this.parseRange();
+            left = this.binaryExpression(op, left, right);
+        }
+
+        return left;
+    }
+
+    private Int parseRange() {
+        Int left = this.parseTerm();
+
+        if (this.state.checkSymbol("..")) {
+            Token op = this.state.advance();
+            Int right = this.parseTerm();
+            return this.state.program().addExpression(Expression("range", op.text(), 0, false, left, right, this.state.emptyArguments(), op.line(), op.column()));
+        }
+
+        return left;
+    }
+
+    private Int parseTerm() {
+        Int left = this.parseFactor();
+
+        while (this.state.checkSymbol("+") || this.state.checkSymbol("-")) {
+            Token op = this.state.advance();
+            Int right = this.parseFactor();
+            left = this.binaryExpression(op, left, right);
+        }
+
+        return left;
+    }
+
+    private Int parseFactor() {
+        Int left = this.parseUnary();
+
+        while (this.state.checkSymbol("*") || this.state.checkSymbol("/") || this.state.checkSymbol("%")) {
+            Token op = this.state.advance();
+            Int right = this.parseUnary();
+            left = this.binaryExpression(op, left, right);
+        }
+
+        return left;
+    }
+
+    private Int parseUnary() {
+        if (this.state.checkSymbol("-") && this.state.peek(1).kindIs("number") && this.isMinimumIntMagnitude(this.state.peek(1))) {
+            Token sign = this.state.advance();
+            Token number = this.state.advance();
+            String text = "-" + number.text();
+            return this.state.program().addExpression(Expression("int", text, text.toInt(), false, 0, 0, this.state.emptyArguments(), sign.line(), sign.column()));
+        }
+        if (this.state.checkSymbol("!") || this.state.checkSymbol("-")) {
+            Token op = this.state.advance();
+            Int right = this.parseUnary();
+            return this.state.program().addExpression(Expression("unary", op.text(), 0, false, right, 0, this.state.emptyArguments(), op.line(), op.column()));
+        }
+
+        return this.parsePostfix();
+    }
+
+    private Int parsePrimary() {
+        if (this.state.current().kindIs("float")) {
+            Token number = this.state.advance();
+            return this.state.program().addExpression(Expression("float", number.text(), 0, false, 0, 0, this.state.emptyArguments(), number.line(), number.column()));
+        }
+
+        if (this.state.current().kindIs("number")) {
+            Token number = this.state.advance();
+            return this.state.program().addExpression(Expression("int", number.text(), this.parseIntLiteral(number), false, 0, 0, this.state.emptyArguments(), number.line(), number.column()));
+        }
+
+        if (this.state.current().kindIs("string")) {
+            Token text = this.state.advance();
+            return this.state.program().addExpression(Expression("string", text.text(), 0, false, 0, 0, this.state.emptyArguments(), text.line(), text.column()));
+        }
+
+        if (this.state.current().isIdentifier("true")) {
+            Token trueToken = this.state.advance();
+            return this.state.program().addExpression(Expression("bool", "", 0, true, 0, 0, this.state.emptyArguments(), trueToken.line(), trueToken.column()));
+        }
+
+        if (this.state.current().isIdentifier("false")) {
+            Token falseToken = this.state.advance();
+            return this.state.program().addExpression(Expression("bool", "", 0, false, 0, 0, this.state.emptyArguments(), falseToken.line(), falseToken.column()));
+        }
+
+        if (this.state.current().isIdentifier("quote")) {
+            return this.parseQuoteExpression();
+        }
+
+        if (this.state.checkSymbol("$")) {
+            return this.parseUnquoteExpression();
+        }
+
+        if (this.state.current().kindIs("identifier")) {
+            Token name = this.state.advance();
+
+            if (this.state.checkSymbol("::")) {
+                this.state.advance();
+                Token memberName = this.state.consumeKind("identifier", "Expected member name after '::'");
+                List<Int> args = this.parseArgumentList();
+                return this.state.program().addExpression(Expression("staticcall", name.text() + "::" + memberName.text(), 0, false, 0, 0, args, name.line(), name.column()));
+            }
+
+            if (this.state.checkSymbol("(")) {
+                List<Int> args = this.parseArgumentList();
+                return this.state.program().addExpression(Expression("call", name.text(), 0, false, 0, 0, args, name.line(), name.column()));
+            }
+
+            return this.state.program().addExpression(Expression("name", name.text(), 0, false, 0, 0, this.state.emptyArguments(), name.line(), name.column()));
+        }
+
+        if (this.state.checkSymbol("[")) {
+            return this.parseListLiteral();
+        }
+
+        if (this.state.checkSymbol("(") && this.isLambdaStart()) { return this.parseLambda(); }
+
+        if (this.state.checkSymbol("(")) {
+            this.state.advance();
+            Int value = this.parseExpression();
+            this.state.consumeSymbol(")", "Expected ')' after expression");
+            return value;
+        }
+
+        Token errorToken = this.state.current();
+        this.state.diagnostics().error("Expected expression", errorToken.line(), errorToken.column());
+        this.state.advance();
+        return 0;
+    }
+
+    private Int parseIntLiteral(Token number) {
+        String text = number.text();
+        Int value = 0;
+        Int index = 0;
+        while (index < text.length()) {
+            Int digit = text.substring(index, index + 1).toInt();
+            if (value > 922337203685477580 || (value == 922337203685477580 && digit > 7)) {
+                this.state.diagnostics().error("Int overflow: literal is outside the signed 64-bit range", number.line(), number.column());
+                return 0;
+            }
+            value = value * 10 + digit;
+            index = index + 1;
+        }
+        return value;
+    }
+
+    private Bool isMinimumIntMagnitude(Token number) {
+        String text = number.text();
+        Int index = 0;
+        while (index < text.length() && text.substring(index, index + 1) == "0") { index = index + 1; }
+        return text.substring(index, text.length()) == "9223372036854775808";
+    }
+
+    private Bool isLambdaStart() {
+        Int offset = 1;
+        if (this.state.peek(offset).textIs(")")) { return this.state.peek(offset + 1).textIs("->"); }
+        while (!this.state.peek(offset).kindIs("eof")) {
+            if (!this.state.peek(offset).kindIs("identifier")) { return false; }
+            offset = offset + 1;
+            if (this.state.peek(offset).textIs(")")) { return this.state.peek(offset + 1).textIs("->"); }
+            if (!this.state.peek(offset).textIs(",")) { return false; }
+            offset = offset + 1;
+        }
+        return false;
+    }
+
+    private Int parseLambda() {
+        Token start = this.state.advance();
+        List<Int> parameters = List();
+        while (!this.state.isAtEnd() && !this.state.checkSymbol(")")) {
+            Token name = this.state.consumeKind("identifier", "Expected lambda parameter name");
+            parameters.add(this.state.program().addExpression(Expression("name", name.text(), 0, false, 0, 0, this.state.emptyArguments(), name.line(), name.column())));
+            if (!this.state.checkSymbol(",")) { break; }
+            this.state.advance();
+        }
+        this.state.consumeSymbol(")", "Expected ')' after lambda parameters");
+        this.state.consumeSymbol("->", "Expected '->' after lambda parameters");
+        if (this.state.checkSymbol("{")) {
+            StatementParser parser = StatementParser(this.state);
+            List<Statement> bodyStatements = parser.parseBlockStatements();
+            return this.state.program().addExpression(Expression("lambda", "", 0, false, 0, 0, parameters, bodyStatements, this.missingMethod(), this.missingField(), start.line(), start.column()));
+        }
+        Int body = this.parseExpression();
+        return this.state.program().addExpression(Expression("lambda", "", 0, false, body, 0, parameters, this.emptyStatements(), this.missingMethod(), this.missingField(), start.line(), start.column()));
+    }
+
+    private Int parseQuoteExpression() {
+        Token start = this.state.advance();
+        Token kind = this.state.consumeKind("identifier", "Expected quote kind");
+        this.state.consumeSymbol("{", "Expected '{' after quote kind");
+
+        if (kind.text() == "expr") {
+            Int value = this.parseExpression();
+            this.state.consumeSymbol("}", "Expected '}' after quote expr");
+            return this.state.program().addExpression(Expression("quote", kind.text(), 0, false, value, 0, this.state.emptyArguments(), start.line(), start.column()));
+        }
+
+        if (kind.text() == "stmt") {
+            StatementParser statements = StatementParser(this.state);
+            Statement statement = statements.parseStatement();
+            List<Statement> quotedStatements = List();
+            quotedStatements.add(statement);
+            this.state.consumeSymbol("}", "Expected '}' after quote stmt");
+            return this.state.program().addExpression(Expression("quote", kind.text(), 0, false, 0, 0, this.state.emptyArguments(), quotedStatements, this.missingMethod(), this.missingField(), start.line(), start.column()));
+        }
+
+        if (kind.text() == "block") {
+            List<Statement> quotedStatements = List();
+            StatementParser statements = StatementParser(this.state);
+
+            while (!this.state.isAtEnd() && !this.state.checkSymbol("}")) {
+                Statement statement = statements.parseStatement();
+
+                if (!statement.isMissing()) {
+                    quotedStatements.add(statement);
+                }
+            }
+
+            this.state.consumeSymbol("}", "Expected '}' after quote block");
+            return this.state.program().addExpression(Expression("quote", kind.text(), 0, false, 0, 0, this.state.emptyArguments(), quotedStatements, this.missingMethod(), this.missingField(), start.line(), start.column()));
+        }
+
+        if (kind.text() == "method") {
+            MethodDeclaration method = this.parseQuotedMethod();
+            this.state.consumeSymbol("}", "Expected '}' after quote method");
+            return this.state.program().addExpression(Expression("quote", kind.text(), 0, false, 0, 0, this.state.emptyArguments(), this.emptyStatements(), method, this.missingField(), start.line(), start.column()));
+        }
+
+        if (kind.text() == "field") {
+            FieldDeclaration field = this.parseQuotedField();
+            this.state.consumeSymbol("}", "Expected '}' after quote field");
+            return this.state.program().addExpression(Expression("quote", kind.text(), 0, false, 0, 0, this.state.emptyArguments(), this.emptyStatements(), this.missingMethod(), field, start.line(), start.column()));
+        }
+
+        this.state.diagnostics().error("Unknown quote kind '" + kind.text() + "'. Expected expr, stmt, block, method or field", kind.line(), kind.column());
+        this.skipQuoteBody();
+        return this.state.program().addExpression(Expression("missing", "", 0, false, 0, 0, this.state.emptyArguments(), start.line(), start.column()));
+    }
+
+    private Int parseUnquoteExpression() {
+        Token start = this.state.advance();
+        this.state.consumeSymbol("(", "Expected '(' after '$'");
+        Int value = this.parseExpression();
+        this.state.consumeSymbol(")", "Expected ')' after unquote expression");
+        return this.state.program().addExpression(Expression("unquote", "", 0, false, value, 0, this.state.emptyArguments(), start.line(), start.column()));
+    }
+
+    private MethodDeclaration parseQuotedMethod() {
+        this.consumeVisibility();
+        Bool isStatic = this.consumeStaticKeyword();
+        TypeParser types = TypeParser(this.state);
+        String returnType = types.parse("Expected quoted method return type");
+        Token name = this.state.consumeKind("identifier", "Expected quoted method name");
+        ParameterParser parameters = ParameterParser(this.state);
+        List<Parameter> methodParameters = parameters.parse();
+        StatementParser statements = StatementParser(this.state);
+        List<Statement> body = statements.parseBlockStatements();
+        List<Annotation> annotations = List();
+        return MethodDeclaration("", name.text(), returnType, annotations, methodParameters, body, false, isStatic, name.line(), name.column());
+    }
+
+    private FieldDeclaration parseQuotedField() {
+        this.consumeVisibility();
+        TypeParser types = TypeParser(this.state);
+        String typeName = types.parse("Expected quoted field type");
+        Token name = this.state.consumeKind("identifier", "Expected quoted field name");
+        Int initializer = 0;
+
+        if (this.state.checkSymbol("=")) {
+            this.state.advance();
+            initializer = this.parseExpression();
+        }
+
+        this.state.consumeSymbol(";", "Expected ';' after quoted field");
+        return FieldDeclaration(name.text(), typeName, initializer, name.line(), name.column());
+    }
+
+    private Void consumeVisibility() {
+        if (this.state.current().isIdentifier("public") || this.state.current().isIdentifier("private")) {
+            this.state.advance();
+        }
+    }
+
+    private Bool consumeStaticKeyword() {
+        if (this.state.current().isIdentifier("static")) {
+            this.state.advance();
+            return true;
+        }
+
+        return false;
+    }
+
+    private Void skipQuoteBody() {
+        Int depth = 1;
+
+        while (!this.state.isAtEnd() && depth > 0) {
+            if (this.state.checkSymbol("{")) {
+                depth = depth + 1;
+            }
+
+            if (this.state.checkSymbol("}")) {
+                depth = depth - 1;
+            }
+
+            this.state.advance();
+        }
+    }
+
+    private MethodDeclaration missingMethod() {
+        List<Annotation> annotations = List();
+        List<Parameter> parameters = List();
+        List<Statement> statements = List();
+        return MethodDeclaration("", "", "Void", annotations, parameters, statements, false, false, 1, 1);
+    }
+
+    private FieldDeclaration missingField() {
+        return FieldDeclaration("", "Void", 1, 1);
+    }
+
+    private List<Statement> emptyStatements() {
+        List<Statement> result = List();
+        return result;
+    }
+
+    private Int parseListLiteral() {
+        Token start = this.state.advance();
+        List<Int> items = List();
+
+        if (!this.state.checkSymbol("]")) {
+            Bool parsing = true;
+
+            while (parsing && !this.state.isAtEnd()) {
+                items.add(this.parseExpression());
+
+                if (this.state.checkSymbol(",")) {
+                    this.state.advance();
+                    continue;
+                }
+
+                parsing = false;
+            }
+        }
+
+        this.state.consumeSymbol("]", "Expected ']' after list literal");
+        return this.state.program().addExpression(Expression("list", "", 0, false, 0, 0, items, start.line(), start.column()));
+    }
+
+    private List<Int> parseArgumentList() {
+        this.state.consumeSymbol("(", "Expected '(' before argument list");
+        List<Int> args = List();
+
+        if (!this.state.checkSymbol(")")) {
+            Bool parsing = true;
+
+            while (parsing && !this.state.isAtEnd()) {
+                args.add(this.parseExpression());
+
+                if (this.state.checkSymbol(",")) {
+                    this.state.advance();
+                    continue;
+                }
+
+                parsing = false;
+            }
+        }
+
+        this.state.consumeSymbol(")", "Expected ')' after argument list");
+        return args;
+    }
+
+    private Int binaryExpression(Token op, Int left, Int right) {
+        return this.state.program().addExpression(Expression("binary", op.text(), 0, false, left, right, this.state.emptyArguments(), op.line(), op.column()));
+    }
+}

@@ -1,0 +1,59 @@
+use Std::Ui::UiApplication;
+use Std::Ui::UiWindow;
+use Std::Ui::UiMacros;
+
+@UiState
+@EmHtml("examples/ui/smoke.emhtml")
+public class SmokeView {
+    private String titleValue;
+    private String descriptionValue;
+    private Int clicksValue;
+
+    public SmokeView() {
+        this.titleValue = "Emerald emhtml läuft";
+        this.descriptionValue = "Diese View kommt aus einer .emhtml Datei und wird über Macros an Emerald gebunden.";
+        this.clicksValue = 0;
+    }
+
+    @UiBind("title")
+    public String title() {
+        return this.titleValue;
+    }
+
+    @UiBind("description")
+    public String description() {
+        return this.descriptionValue;
+    }
+
+    @UiBind("clicks")
+    public String clicks() {
+        return this.clicksValue.toString();
+    }
+
+    @UiAction("increment")
+    public Void increment() {
+        this.clicksValue = this.clicksValue + 1;
+    }
+
+    public Bool onUiAction(String action) {
+        if (action.equals("increment")) {
+            this.increment();
+            return true;
+        }
+
+        return false;
+    }
+}
+
+main() {
+    UiApplication application = UiApplication();
+
+    UiWindow window = application.window("Emerald emhtml Smoke", 900, 600);
+
+    SmokeView view = SmokeView();
+
+    view.mount(window);
+    window.show();
+
+    view.run(application, window);
+}

@@ -1,0 +1,95 @@
+namespace emerald::prism::registry;
+
+use emerald::prism::config::PrismAsset;
+use emerald::prism::config::PrismDependency;
+use Std::Io::Files;
+use Std::Io::Paths;
+
+public class PrismRegistryClient {
+    private PrismCache cache;
+
+    public PrismRegistryClient() {
+        this.cache = PrismCache();
+    }
+
+    public PrismCache cacheRoot() {
+        return this.cache;
+    }
+
+    public Bool fetchPackage(String registry, PrismDependency dependency) {
+        if (dependency.isGitHub()) {
+            return this.fetchGitHubPackage(dependency);
+        }
+
+        if (dependency.isLocal()) {
+            return this.fetchLocalPackage(dependency);
+        }
+
+        return this.fetchRegistryPackage(registry, dependency);
+    }
+
+    private Bool fetchRegistryPackage(String registry, PrismDependency dependency) {
+        this.cache.ensurePackage(dependency.name(), dependency.cacheVersion());
+
+        String path = Paths.join(this.cache.packagePath(dependency.name(), dependency.cacheVersion()), "prism.package");
+        String text = "";
+        text = text + "name = \"" + dependency.name() + "\"\n";
+        text = text + "version = \"" + dependency.version() + "\"\n";
+        text = text + "sourceKind = \"registry\"\n";
+        text = text + "source = \"" + registry + "/packages/" + dependency.name() + "/" + dependency.version() + "\"\n";
+        text = text + "status = \"resolved\"\n";
+
+        Files.writeText(path, text);
+        return true;
+    }
+
+    private Bool fetchGitHubPackage(PrismDependency dependency) {
+        this.cache.ensurePackage(dependency.name(), dependency.cacheVersion());
+
+        String path = Paths.join(this.cache.packagePath(dependency.name(), dependency.cacheVersion()), "prism.package");
+        String text = "";
+        text = text + "name = \"" + dependency.name() + "\"\n";
+        text = text + "version = \"" + dependency.version() + "\"\n";
+        text = text + "sourceKind = \"github\"\n";
+        text = text + "repository = \"" + dependency.githubRepository() + "\"\n";
+        text = text + "source = \"" + dependency.githubUrl() + "\"\n";
+        text = text + "archive = \"" + dependency.githubArchiveUrl() + "\"\n";
+        text = text + "status = \"resolved\"\n";
+
+        Files.writeText(path, text);
+        return true;
+    }
+
+    private Bool fetchLocalPackage(PrismDependency dependency) {
+        this.cache.ensurePackage(dependency.name(), dependency.cacheVersion());
+
+        String path = Paths.join(this.cache.packagePath(dependency.name(), dependency.cacheVersion()), "prism.package");
+        String text = "";
+        text = text + "name = \"" + dependency.name() + "\"\n";
+        text = text + "version = \"local\"\n";
+        text = text + "sourceKind = \"path\"\n";
+        text = text + "source = \"" + dependency.localPath() + "\"\n";
+        text = text + "status = \"resolved\"\n";
+
+        Files.writeText(path, text);
+        return true;
+    }
+
+    public Bool fetchAsset(String registry, PrismAsset asset) {
+        this.cache.ensureAsset(asset.name(), asset.version());
+
+        String path = Paths.join(this.cache.assetPath(asset.name(), asset.version()), "prism.asset");
+        String text = "";
+        text = text + "name = \"" + asset.name() + "\"\n";
+        text = text + "version = \"" + asset.version() + "\"\n";
+        text = text + "source = \"" + registry + "/assets/" + asset.name() + "/" + asset.version() + "\"\n";
+        text = text + "status = \"resolved\"\n";
+
+        if (asset.name() == "webview2") {
+            text = text + "file = \"WebView2Loader.dll\"\n";
+        }
+
+        Files.writeText(path, text);
+        return true;
+    }
+}

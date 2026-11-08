@@ -1,0 +1,33 @@
+namespace emerald::compiler::source;
+
+public class SourceNamespaceScanner {
+    public SourceNamespaceScanner() {
+    }
+
+    public String scan(String text) {
+        List<String> lines = text.split("\n");
+        Int index = 0;
+
+        while (index < lines.length()) {
+            String line = lines.get(index).trim();
+
+            if (line.startsWith("namespace ")) {
+                return this.extract(line);
+            }
+
+            index = index + 1;
+        }
+
+        return "";
+    }
+
+    private String extract(String line) {
+        String value = line.substring(10, line.length()).trim();
+
+        if (value.endsWith(";")) {
+            value = value.substring(0, value.length() - 1).trim();
+        }
+
+        return value.replace(".", "::");
+    }
+}

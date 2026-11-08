@@ -1,0 +1,235 @@
+namespace emerald::prism::cli;
+
+use emerald::prism::build::PrismBuilder;
+use emerald::prism::config::PrismAsset;
+use emerald::prism::config::PrismDependency;
+use emerald::prism::config::PrismProject;
+use emerald::prism::config::PrismProjectWriter;
+use emerald::prism::config::PrismTomlParser;
+use emerald::prism::lock::PrismLockWriter;
+use emerald::prism::registry::PrismRegistryClient;
+use Std::Io::Directories;
+use Std::Io::Files;
+use Std::Process::Processes;
+
+public class PrismCli {
+    private PrismTomlParser parser;
+    private PrismBuilder builder;
+    private PrismRegistryClient registry;
+    private PrismLockWriter lockWriter;
+    private PrismProjectWriter projectWriter;
+
+    public PrismCli() {
+        this.parser = PrismTomlParser();
+        this.builder = PrismBuilder();
+        this.registry = PrismRegistryClient();
+        this.lockWriter = PrismLockWriter();
+        this.projectWriter = PrismProjectWriter();
+    }
+
+    public Int run() {
+        List<String> args = Processes.args();
+
+        if (args.length() < 1) {
+            this.printUsage();
+            return 1;
+        }
+
+        String command = args.get(0);
+
+        if (command == "help") {
+            this.printUsage();
+            return 0;
+        }
+
+        if (command == "--help") {
+            this.printUsage();
+            return 0;
+        }
+
+        if (command == "init") {
+            return this.init(args);
+        }
+
+        if (command == "build") {
+            return this.build();
+        }
+
+        if (command == "run") {
+            return this.runProject();
+        }
+
+        if (command == "fetch") {
+            return this.fetch();
+        }
+
+        if (command == "install") {
+            return this.fetch();
+        }
+
+        if (command == "update") {
+            return this.fetch();
+        }
+
+        if (command == "lock") {
+            return this.lock();
+        }
+
+        if (command == "clean") {
+            return this.clean();
+        }
+
+        if (command == "info") {
+            return this.info();
+        }
+
+        println("Unknown Prism command: " + command);
+        this.printUsage();
+        return 1;
+    }
+
+    private Int init(List<String> args) {
+        String name = "app";
+
+        if (args.length() >= 2) {
+            name = args.get(1);
+        }
+
+        if (!Directories.exists("src")) {
+            Directories.create("src");
+        }
+
+        if (!Files.exists("src/Main.ems")) {
+            Files.writeText("src/Main.ems", this.defaultMain());
+        }
+
+        if (!this.projectWriter.writeDefault("prism.toml", name)) {
+            println("prism.toml already exists");
+            return 1;
+        }
+
+        println("Created prism.toml");
+        println("Created src/Main.ems");
+        return 0;
+    }
+
+    private Int build() {
+        PrismProject project = this.loadProject();
+        return this.builder.build(project);
+    }
+
+    private Int runProject() {
+        Int result = this.build();
+
+        if (result != 0) {
+            return result;
+        }
+
+        println("Prism run: process spawning is not wired yet. Run the built binary from the output path above.");
+        return 0;
+    }
+
+    private Int fetch() {
+        PrismProject project = this.loadProject();
+        this.registry.cacheRoot().ensure();
+
+        Int dependencyIndex = 0;
+
+        while (dependencyIndex < project.dependencies().length()) {
+            PrismDependency dependency = project.dependencies().get(dependencyIndex);
+            this.registry.fetchPackage(project.registry(), dependency);
+            println("Resolved package " + dependency.name() + " " + dependency.version() + " from " + dependency.displaySource());
+            dependencyIndex = dependencyIndex + 1;
+        }
+
+        Int assetIndex = 0;
+
+        while (assetIndex < project.assets().length()) {
+            PrismAsset asset = project.assets().get(assetIndex);
+            this.registry.fetchAsset(project.registry(), asset);
+            println("Resolved asset " + asset.name() + " " + asset.version());
+            assetIndex = assetIndex + 1;
+        }
+
+        this.lockWriter.write("prism.lock", project);
+        println("Wrote prism.lock");
+        println("Cache: " + this.registry.cacheRoot().root());
+        return 0;
+    }
+
+    private Int lock() {
+        PrismProject project = this.loadProject();
+        this.lockWriter.write("prism.lock", project);
+        println("Wrote prism.lock");
+        return 0;
+    }
+
+    private Int clean() {
+        if (Directories.exists("build")) {
+            Directories.delete("build");
+            println("Removed build");
+            return 0;
+        }
+
+        println("Nothing to clean");
+        return 0;
+    }
+
+    private Int info() {
+        PrismProject project = this.loadProject();
+        println("Package:      " + project.name());
+        println("Version:      " + project.version());
+        println("Main:         " + project.mainPath());
+        println("Output:       " + project.output());
+        println("Target:       " + project.target());
+        println("Emit:         " + project.emitMode());
+        println("Registry:     " + project.registry());
+        println("Dependencies: " + project.dependencies().length().toString());
+
+        Int dependencyIndex = 0;
+
+        while (dependencyIndex < project.dependencies().length()) {
+            PrismDependency dependency = project.dependencies().get(dependencyIndex);
+            println("  - " + dependency.name() + " " + dependency.version() + " from " + dependency.displaySource());
+            dependencyIndex = dependencyIndex + 1;
+        }
+
+        println("Assets:       " + project.assets().length().toString());
+        return 0;
+    }
+
+    private PrismProject loadProject() {
+        if (!Files.exists("prism.toml")) {
+            println("Prism error: prism.toml not found. Run prism init first.");
+            return PrismProject();
+        }
+
+        return this.parser.parseFile("prism.toml");
+    }
+
+    private String defaultMain() {
+        String text = "";
+        text = text + "main() {\n";
+        text = text + "    println(\"Hello from Prism\");\n";
+        text = text + "}\n";
+        return text;
+    }
+
+    private Void printUsage() {
+        println("Prism - Emerald Package Manager");
+        println("Usage:");
+        println("  prism init [name]");
+        println("  prism build");
+        println("  prism run");
+        println("  prism fetch");
+        println("  prism install");
+        println("  prism update");
+        println("  prism lock");
+        println("  prism clean");
+        println("  prism info");
+        println("");
+        println("Project file: prism.toml");
+        println("Registry:     https://prism.emerald-lang.eu by default");
+        println("GitHub deps:  name = \"github:owner/repo@ref\"");
+    }
+}

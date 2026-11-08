@@ -1,0 +1,20 @@
+public class HyperAllocFlowRootCycleNode {
+    public HyperAllocFlowRootCycleNode next;
+    private Int number;
+
+    public HyperAllocFlowRootCycleNode(Int number) {
+        this.number = number;
+    }
+
+    public Int value() {
+        return this.number;
+    }
+}
+
+main() {
+    HyperAllocFlowRootCycleNode left = HyperAllocFlowRootCycleNode(4);
+    HyperAllocFlowRootCycleNode right = HyperAllocFlowRootCycleNode(5);
+    left.next = right;
+    right.next = left;
+    println((left.value() + right.value()).toString());
+}

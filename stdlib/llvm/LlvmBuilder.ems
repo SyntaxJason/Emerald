@@ -1,0 +1,223 @@
+namespace Std::Llvm;
+
+use Std::Collections::IList;
+
+public class LlvmBuilder {
+    private Int builderHandle;
+
+    public LlvmBuilder(Int handle) {
+        this.builderHandle = handle;
+    }
+
+    public Int handle() {
+        return this.builderHandle;
+    }
+
+    public Void positionAtEnd(LlvmBasicBlock block) {
+        LlvmNative.positionAtEnd(this.builderHandle, block.handle());
+    }
+
+    public LlvmBasicBlock currentBlock() {
+        return LlvmBasicBlock(LlvmNative.currentBlock(this.builderHandle));
+    }
+
+    public Void returnVoid() {
+        LlvmNative.returnVoid(this.builderHandle);
+    }
+
+    public Void returnValue(LlvmValue value) {
+        LlvmNative.returnValue(this.builderHandle, value.handle());
+    }
+
+    public LlvmValue branch(LlvmBasicBlock block) {
+        return LlvmValue(LlvmNative.buildBranch(this.builderHandle, block.handle()));
+    }
+
+    public LlvmValue conditionalBranch(LlvmValue condition, LlvmBasicBlock trueBlock, LlvmBasicBlock falseBlock) {
+        return LlvmValue(LlvmNative.buildConditionalBranch(this.builderHandle, condition.handle(), trueBlock.handle(), falseBlock.handle()));
+    }
+
+    public LlvmValue unreachable() {
+        return LlvmValue(LlvmNative.buildUnreachable(this.builderHandle));
+    }
+
+    public LlvmValue extractValue(LlvmValue value, Int index, String name) {
+        return LlvmValue(LlvmNative.buildExtractValue(this.builderHandle, value.handle(), index, name));
+    }
+
+    public LlvmValue add(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildAdd(this.builderHandle, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue sub(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildSub(this.builderHandle, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue mul(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildMul(this.builderHandle, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue signedDiv(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildSignedDiv(this.builderHandle, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue unsignedDiv(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildUnsignedDiv(this.builderHandle, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue signedRem(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildSignedRem(this.builderHandle, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue unsignedRem(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildUnsignedRem(this.builderHandle, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue negate(LlvmValue value, String name) {
+        return LlvmValue(LlvmNative.buildNeg(this.builderHandle, value.handle(), name));
+    }
+
+    public LlvmValue bitAnd(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildAnd(this.builderHandle, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue bitOr(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildOr(this.builderHandle, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue bitXor(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildXor(this.builderHandle, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue bitNot(LlvmValue value, String name) {
+        return LlvmValue(LlvmNative.buildNot(this.builderHandle, value.handle(), name));
+    }
+
+    public LlvmValue shiftLeft(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildShiftLeft(this.builderHandle, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue logicalShiftRight(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildLogicalShiftRight(this.builderHandle, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue arithmeticShiftRight(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildArithmeticShiftRight(this.builderHandle, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue intEqual(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildIntCompare(this.builderHandle, 32, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue intNotEqual(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildIntCompare(this.builderHandle, 33, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue intUnsignedGreaterThan(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildIntCompare(this.builderHandle, 34, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue intUnsignedGreaterOrEqual(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildIntCompare(this.builderHandle, 35, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue intUnsignedLessThan(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildIntCompare(this.builderHandle, 36, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue intUnsignedLessOrEqual(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildIntCompare(this.builderHandle, 37, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue intSignedGreaterThan(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildIntCompare(this.builderHandle, 38, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue intSignedGreaterOrEqual(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildIntCompare(this.builderHandle, 39, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue intSignedLessThan(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildIntCompare(this.builderHandle, 40, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue intSignedLessOrEqual(LlvmValue left, LlvmValue right, String name) {
+        return LlvmValue(LlvmNative.buildIntCompare(this.builderHandle, 41, left.handle(), right.handle(), name));
+    }
+
+    public LlvmValue entryAlloca(LlvmType type, String name) {
+        return LlvmValue(LlvmNative.buildEntryAlloca(this.builderHandle, type.handle(), name));
+    }
+
+    public LlvmValue alloca(LlvmType type, String name) {
+        return LlvmValue(LlvmNative.buildAlloca(this.builderHandle, type.handle(), name));
+    }
+
+    public LlvmValue load(LlvmType type, LlvmValue pointer, String name) {
+        return LlvmValue(LlvmNative.buildLoad(this.builderHandle, type.handle(), pointer.handle(), name));
+    }
+
+    public LlvmValue store(LlvmValue value, LlvmValue pointer) {
+        return LlvmValue(LlvmNative.buildStore(this.builderHandle, value.handle(), pointer.handle()));
+    }
+
+    public LlvmValue gep(LlvmType sourceType, LlvmValue pointer, IList<LlvmValue> indices, String name) {
+        return LlvmValue(LlvmNative.buildGep(this.builderHandle, sourceType.handle(), pointer.handle(), indices, name));
+    }
+
+    public LlvmValue inboundsGep(LlvmType sourceType, LlvmValue pointer, IList<LlvmValue> indices, String name) {
+        return LlvmValue(LlvmNative.buildInboundsGep(this.builderHandle, sourceType.handle(), pointer.handle(), indices, name));
+    }
+
+    public LlvmValue globalStringPointer(String value, String name) {
+        return LlvmValue(LlvmNative.buildGlobalStringPointer(this.builderHandle, value, name));
+    }
+
+    public LlvmValue call(LlvmType functionType, LlvmValue functionValue, IList<LlvmValue> args, String name) {
+        return LlvmValue(LlvmNative.buildCall(this.builderHandle, functionType.handle(), functionValue.handle(), args, name));
+    }
+
+    public LlvmValue callFunction(LlvmType functionType, LlvmFunction functionValue, IList<LlvmValue> args, String name) {
+        return LlvmValue(LlvmNative.buildCall(this.builderHandle, functionType.handle(), functionValue.handle(), args, name));
+    }
+
+    public LlvmValue phi(LlvmType type, String name) {
+        return LlvmValue(LlvmNative.buildPhi(this.builderHandle, type.handle(), name));
+    }
+
+    public Void addPhiIncoming(LlvmValue phi, LlvmValue value, LlvmBasicBlock block) {
+        LlvmNative.addIncoming(phi.handle(), value.handle(), block.handle());
+    }
+
+    public LlvmValue select(LlvmValue condition, LlvmValue trueValue, LlvmValue falseValue, String name) {
+        return LlvmValue(LlvmNative.buildSelect(this.builderHandle, condition.handle(), trueValue.handle(), falseValue.handle(), name));
+    }
+
+    public LlvmValue truncate(LlvmValue value, LlvmType type, String name) {
+        return LlvmValue(LlvmNative.buildTruncate(this.builderHandle, value.handle(), type.handle(), name));
+    }
+
+    public LlvmValue zeroExtend(LlvmValue value, LlvmType type, String name) {
+        return LlvmValue(LlvmNative.buildZeroExtend(this.builderHandle, value.handle(), type.handle(), name));
+    }
+
+    public LlvmValue signExtend(LlvmValue value, LlvmType type, String name) {
+        return LlvmValue(LlvmNative.buildSignExtend(this.builderHandle, value.handle(), type.handle(), name));
+    }
+
+    public LlvmValue pointerToInt(LlvmValue value, LlvmType type, String name) {
+        return LlvmValue(LlvmNative.buildPointerToInt(this.builderHandle, value.handle(), type.handle(), name));
+    }
+
+    public LlvmValue intToPointer(LlvmValue value, LlvmType type, String name) {
+        return LlvmValue(LlvmNative.buildIntToPointer(this.builderHandle, value.handle(), type.handle(), name));
+    }
+
+    public LlvmValue bitCast(LlvmValue value, LlvmType type, String name) {
+        return LlvmValue(LlvmNative.buildBitCast(this.builderHandle, value.handle(), type.handle(), name));
+    }
+
+    public Void dispose() {
+        LlvmNative.disposeBuilder(this.builderHandle);
+    }
+}

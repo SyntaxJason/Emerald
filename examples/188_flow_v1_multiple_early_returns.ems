@@ -1,0 +1,27 @@
+public class HyperAllocFlowV1EarlyReturnBox {
+    public String value;
+
+    public HyperAllocFlowV1EarlyReturnBox(Int value) {
+        this.value = value.toString();
+    }
+}
+
+public class HyperAllocFlowV1EarlyReturnFactory {
+    public static Int resolve(Int value) {
+        HyperAllocFlowV1EarlyReturnBox box = HyperAllocFlowV1EarlyReturnBox(value);
+
+        if (value == 42) {
+            return box.value.length() + 40;
+        }
+
+        if (value > 42) {
+            return 1;
+        }
+
+        return 0;
+    }
+}
+
+main() {
+    println(HyperAllocFlowV1EarlyReturnFactory.resolve(42).toString());
+}

@@ -1,0 +1,119 @@
+namespace emerald::compiler::cli;
+
+public class Options {
+    private String sourcePathValue;
+    private String outputBaseValue;
+    private Bool writeIrValue;
+    private String irPathValue;
+    private Bool verboseValue;
+    private String targetValue;
+    private String targetTripleValue;
+    private String emitModeValue;
+    private Bool keepTempsValue;
+    private String tempBaseValue;
+    private String executableExtensionValue;
+    private String objectExtensionValue;
+    private String ccValue;
+    private String sysrootValue;
+    private Bool explainFlowValue;
+    private Bool hyperAllocFlowStrictValue;
+
+    public Options(String sourcePath, String outputBase, Bool writeIr, String irPath, Bool verbose, String target, String targetTriple, String emitMode, Bool keepTemps, String tempBase, String executableExtension, String objectExtension, String cc, String sysroot, Bool explainFlow, Bool hyperAllocFlowStrict) {
+        this.sourcePathValue = sourcePath;
+        this.outputBaseValue = outputBase;
+        this.writeIrValue = writeIr;
+        this.irPathValue = irPath;
+        this.verboseValue = verbose;
+        this.targetValue = target;
+        this.targetTripleValue = targetTriple;
+        this.emitModeValue = emitMode;
+        this.keepTempsValue = keepTemps;
+        this.tempBaseValue = tempBase;
+        this.executableExtensionValue = executableExtension;
+        this.objectExtensionValue = objectExtension;
+        this.ccValue = cc;
+        this.sysrootValue = sysroot;
+        this.explainFlowValue = explainFlow;
+        this.hyperAllocFlowStrictValue = hyperAllocFlowStrict;
+    }
+
+    public String sourcePath() {
+        return this.sourcePathValue;
+    }
+
+    public String outputBase() {
+        return this.outputBaseValue;
+    }
+
+    public Bool writeIr() {
+        return this.writeIrValue;
+    }
+
+    public String irPath() {
+        return this.irPathValue;
+    }
+
+    public Bool verbose() {
+        return this.verboseValue;
+    }
+
+    public String target() {
+        return this.targetValue;
+    }
+
+    public String targetTriple() {
+        return this.targetTripleValue;
+    }
+
+    public String emitMode() {
+        return this.emitModeValue;
+    }
+
+    public Bool keepTemps() {
+        return this.keepTempsValue;
+    }
+
+    public String tempBase() {
+        return this.tempBaseValue;
+    }
+
+    public String executableExtension() {
+        return this.executableExtensionValue;
+    }
+
+    public String objectExtension() {
+        return this.objectExtensionValue;
+    }
+
+    public String cc() {
+        return this.ccValue;
+    }
+
+    public String sysroot() {
+        return this.sysrootValue;
+    }
+
+    public Bool explainFlow() {
+        return this.explainFlowValue;
+    }
+
+    public Bool hyperAllocFlowStrict() {
+        return this.hyperAllocFlowStrictValue;
+    }
+
+    public Bool emitExecutable() {
+        return this.emitModeValue == "exe";
+    }
+
+    public Bool emitObject() {
+        return this.emitModeValue == "obj";
+    }
+
+    public Bool emitAssembly() {
+        return this.emitModeValue == "asm";
+    }
+
+    public Bool emitLlvmIrOnly() {
+        return this.emitModeValue == "llvm-ir";
+    }
+}

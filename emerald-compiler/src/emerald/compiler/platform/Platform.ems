@@ -1,0 +1,264 @@
+namespace emerald::compiler::platform;
+
+use Std::Llvm::Llvm;
+use Std::Native::NativeSystem;
+
+public class Platform {
+    public Platform() {
+    }
+
+    public Bool isWindows() {
+        return NativeSystem.isWindows();
+    }
+
+    public Bool isLinux() {
+        return NativeSystem.isLinux();
+    }
+
+    public String osName() {
+        return NativeSystem.os();
+    }
+
+    public String directorySeparator() {
+        return NativeSystem.directorySeparator();
+    }
+
+    public String executableExtension() {
+        return Llvm.nativeExecutableExtension();
+    }
+
+    public String objectExtension() {
+        return Llvm.nativeObjectExtension();
+    }
+
+    public String normalizeTarget(String target) {
+        if (target.isEmpty()) {
+            return "native";
+        }
+
+        if (target == "host") {
+            return "native";
+        }
+
+        if (target == "linux") {
+            return "linux-x64";
+        }
+
+        if (target == "windows") {
+            return "windows-x64";
+        }
+
+        if (target == "win-x64") {
+            return "windows-x64";
+        }
+
+        if (target == "win64") {
+            return "windows-x64";
+        }
+
+        if (target == "x64-linux") {
+            return "linux-x64";
+        }
+
+        if (target == "arm64-linux") {
+            return "linux-arm64";
+        }
+
+        return target;
+    }
+
+    public Bool isKnownTarget(String target) {
+        String normalized = this.normalizeTarget(target);
+
+        if (normalized == "native") {
+            return true;
+        }
+
+        if (normalized == "linux-x64") {
+            return true;
+        }
+
+        if (normalized == "linux-arm64") {
+            return true;
+        }
+
+        if (normalized == "windows-x64") {
+            return true;
+        }
+
+        if (normalized == "x86_64-unknown-linux-gnu") {
+            return true;
+        }
+
+        if (normalized == "aarch64-unknown-linux-gnu") {
+            return true;
+        }
+
+        if (normalized == "x86_64-w64-windows-gnu") {
+            return true;
+        }
+
+        return false;
+    }
+
+    public String targetTriple(String target) {
+        String normalized = this.normalizeTarget(target);
+
+        if (normalized == "native") {
+            return Llvm.defaultTargetTriple();
+        }
+
+        if (normalized == "linux-x64") {
+            return "x86_64-unknown-linux-gnu";
+        }
+
+        if (normalized == "linux-arm64") {
+            return "aarch64-unknown-linux-gnu";
+        }
+
+        if (normalized == "windows-x64") {
+            return "x86_64-w64-windows-gnu";
+        }
+
+        return normalized;
+    }
+
+    public Bool targetIsWindows(String target) {
+        String normalized = this.normalizeTarget(target);
+
+        if (normalized == "windows-x64") {
+            return true;
+        }
+
+        return normalized.contains("windows") || normalized.contains("w64") || normalized.contains("mingw");
+    }
+
+    public Bool targetIsLinux(String target) {
+        String normalized = this.normalizeTarget(target);
+
+        if (normalized == "linux-x64") {
+            return true;
+        }
+
+        if (normalized == "linux-arm64") {
+            return true;
+        }
+
+        return normalized.contains("linux");
+    }
+
+    public String targetExecutableExtension(String target) {
+        if (this.targetIsWindows(target)) {
+            return ".exe";
+        }
+
+        if (this.normalizeTarget(target) == "native") {
+            return this.executableExtension();
+        }
+
+        return "";
+    }
+
+    public String targetObjectExtension(String target) {
+        if (this.normalizeTarget(target) == "native") {
+            return this.objectExtension();
+        }
+
+        return ".o";
+    }
+
+    public String normalizeOutputBase(String output) {
+        String value = output;
+
+        if (value.endsWith(".exe")) {
+            value = value.substring(0, value.length() - 4);
+        }
+
+        if (value.endsWith(".ll")) {
+            value = value.substring(0, value.length() - 3);
+        }
+
+        if (value.endsWith(".obj")) {
+            value = value.substring(0, value.length() - 4);
+        }
+
+        if (value.endsWith(".o")) {
+            value = value.substring(0, value.length() - 2);
+        }
+
+        if (value.endsWith(".s")) {
+            value = value.substring(0, value.length() - 2);
+        }
+
+        return value;
+    }
+
+    public String executablePath(String outputBase) {
+        String normalized = this.normalizeOutputBase(outputBase);
+        return normalized + this.executableExtension();
+    }
+
+    public String executablePathFor(String outputBase, String target) {
+        String normalized = this.normalizeOutputBase(outputBase);
+        return normalized + this.targetExecutableExtension(target);
+    }
+
+    public String objectPath(String outputBase) {
+        return this.normalizeOutputBase(outputBase) + this.objectExtension();
+    }
+
+    public String objectPathFor(String outputBase, String target) {
+        return this.normalizeOutputBase(outputBase) + this.targetObjectExtension(target);
+    }
+
+    public String assemblyPathFor(String outputBase) {
+        return this.normalizeOutputBase(outputBase) + ".s";
+    }
+
+    public String irPathFor(String outputBase) {
+        return this.normalizeOutputBase(outputBase) + ".ll";
+    }
+
+    public String defaultOutputBase(String sourcePath) {
+        String normalized = sourcePath.replace("\\", "/");
+        List<String> segments = normalized.split("/");
+        String name = normalized;
+
+        if (!segments.isEmpty()) {
+            name = segments.get(segments.length() - 1) + "";
+        }
+
+        if (name.endsWith(".ems")) {
+            return name.substring(0, name.length() - 4);
+        }
+
+        return name + "-out";
+    }
+
+    public String tempBuildBase(String outputBase) {
+        String root = NativeSystem.tempDirectory();
+        String separator = this.directorySeparator();
+
+        if (root.isEmpty()) {
+            root = ".";
+        }
+
+        return root + separator + this.moduleName(outputBase) + "-build";
+    }
+
+    public String moduleName(String outputBase) {
+        String value = this.normalizeOutputBase(outputBase);
+        value = value.replace("\\", "_");
+        value = value.replace("/", "_");
+        value = value.replace(".", "_");
+        value = value.replace("-", "_");
+        value = value.replace(" ", "_");
+        value = value.replace(":", "_");
+
+        if (value.isEmpty()) {
+            return "emerald_emerald_compiler_module";
+        }
+
+        return "emerald_emerald_compiler_" + value;
+    }
+}

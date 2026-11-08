@@ -32,9 +32,17 @@ module Emerald
           emit_stmt(io, d)
         end
       end
-      if md = main_decl
-        md.body.statements.each { |s| emit_stmt(io, s) }
-      end
+
+      return unless md = main_decl
+
+      reset_typed_locals
+
+      io << "def __emerald_main\n"
+      @indent += 1
+      md.body.statements.each { |s| emit_stmt(io, s) }
+      @indent -= 1
+      io << "end\n\n"
+      io << "__emerald_main\n"
     end
 
     private def emit_class_recursive(io : IO, decl : AST::ClassDecl, emitted : Set(String))

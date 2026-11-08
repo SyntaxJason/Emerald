@@ -1,0 +1,60 @@
+use Std::Env::Env;
+use Std::Env::Environment;
+use Std::Env::IEnvironment;
+use Std::Process::Process;
+use Std::Process::IProcess;
+use Std::System::System;
+use Std::System::ISystem;
+use Std::Random::Random;
+use Std::Random::IRandom;
+use Std::Time::Clock;
+use Std::Time::IClock;
+use Std::Time::Duration;
+use Std::Time::OffsetDateTime;
+
+main() {
+    println(Env.getOr("EMERALD_HOST_CAPABILITY_TEST", "missing"));
+    println(Env.has("PATH").toString());
+    println(Env.currentDirectory().length().toString());
+    println(Env.args().length().toString());
+
+    IEnvironment environment = Environment();
+    println(environment.getOr("EMERALD_HOST_CAPABILITY_TEST", "missing"));
+
+    println(Process.command());
+    println(Process.args().length().toString());
+
+    IProcess process = Process();
+    println(process.command());
+
+    println(System.os());
+    println(System.isWindows().toString());
+    println(System.isLinux().toString());
+    println(System.lineSeparator().length().toString());
+    println(System.pathSeparator().length().toString());
+    println(System.directorySeparator().length().toString());
+
+    ISystem system = System();
+    println(system.os());
+
+    Int randomValue = Random.nextInt(10);
+    Int rangedValue = Random.nextIntBetween(1, 3);
+    Bool randomBool = Random.nextBool();
+
+    println(randomValue.toString());
+    println(rangedValue.toString());
+    println(randomBool.toString());
+
+    IRandom random = Random();
+    println(random.nextInt(5).toString());
+
+    OffsetDateTime now = Clock.now();
+    OffsetDateTime utc = Clock.utcNow();
+    println(now.toString());
+    println(utc.toString());
+    println(Clock.millis().toString());
+
+    IClock clock = Clock();
+    println(clock.millis().toString());
+    Clock.sleep(Duration.millis(0));
+}

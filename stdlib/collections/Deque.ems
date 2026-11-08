@@ -1,0 +1,80 @@
+namespace Std::Collections;
+
+// Double-ended queue: O(1) amortized at both ends. The front half is stored
+// reversed in `front`, the back half in order in `back`; when the end being
+// consumed runs dry, half of the other side is moved over, so a mixed
+// workload stays amortized O(1). Elements only move between lists through
+// removeAt/add, so each element is always owned by exactly one slot.
+public class Deque<T> {
+    private List<T> front;
+    private List<T> back;
+
+    public Deque() {
+        this.front = List();
+        this.back = List();
+    }
+
+    public Int size() { return this.front.length() + this.back.length(); }
+    public Bool isEmpty() { return this.size() == 0; }
+
+    public Void clear() {
+        this.front.clear();
+        this.back.clear();
+    }
+
+    // Element at logical position index (0 is the front).
+    public T get(Int index) {
+        if (index < 0 || index >= this.size()) { panic("Deque index out of range"); }
+        if (index < this.front.length()) { return this.front.get(this.front.length() - 1 - index); }
+        return this.back.get(index - this.front.length());
+    }
+
+    public Void addLast(T value) { this.back.add(value); }
+    public Void addFirst(T value) { this.front.add(value); }
+
+    public T peekFirst() {
+        if (this.size() == 0) { panic("Deque is empty"); }
+        return this.get(0);
+    }
+
+    public T peekLast() {
+        if (this.size() == 0) { panic("Deque is empty"); }
+        return this.get(this.size() - 1);
+    }
+
+    public T peekFirstOr(T fallback) {
+        if (this.size() == 0) { return fallback; }
+        return this.get(0);
+    }
+
+    public T peekLastOr(T fallback) {
+        if (this.size() == 0) { return fallback; }
+        return this.get(this.size() - 1);
+    }
+
+    public T removeFirst() {
+        if (this.size() == 0) { panic("Deque is empty"); }
+        if (this.front.isEmpty()) { this.rebalance(this.back, this.front); }
+        return this.front.removeAt(this.front.length() - 1);
+    }
+
+    public T removeLast() {
+        if (this.size() == 0) { panic("Deque is empty"); }
+        if (this.back.isEmpty()) { this.rebalance(this.front, this.back); }
+        return this.back.removeAt(this.back.length() - 1);
+    }
+
+    // Moves the half of `source` nearest its start to `target`, reversed.
+    // `source` keeps the other half in its original order.
+    private Void rebalance(List<T> source, List<T> target) {
+        Int total = source.length();
+        Int moved = (total + 1) / 2;
+        List<T> reversed = List();
+        while (!source.isEmpty()) { reversed.add(source.removeAt(source.length() - 1)); }
+        Int index = total - 1 - moved;
+        while (index >= 0) { source.add(reversed.get(index)); index = index - 1; }
+        index = total - moved;
+        while (index < total) { target.add(reversed.get(index)); index = index + 1; }
+        reversed.clear();
+    }
+}

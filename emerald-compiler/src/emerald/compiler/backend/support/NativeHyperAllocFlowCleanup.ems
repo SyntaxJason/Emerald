@@ -1,0 +1,164 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Collections::ArrayList;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmValue;
+
+public class NativeHyperAllocFlowCleanup {
+    private NativeEmitContext context;
+
+    public NativeHyperAllocFlowCleanup(NativeEmitContext emitContext) {
+        this.context = emitContext;
+    }
+
+    public Void cleanupScope(List<NativeLocal> locals, Int startIndex, LlvmNativeBackend backend) {
+        // String scope references are cleared while their adopting owners
+        // are still alive. A Root adoption transfers the payload to that owner;
+        // releasing the owner first would leave a stale scope-cleanup pointer.
+        Int pass = 0;
+
+        while (pass < 2) {
+            Int index = locals.length();
+
+            while (index > startIndex) {
+                index = index - 1;
+                NativeLocal local = locals.get(index);
+
+                if ((pass == 0 && local.typeName() == "String") || (pass == 1 && local.typeName() != "String")) {
+                    this.cleanupLocal(local, "", backend);
+                }
+            }
+
+            pass = pass + 1;
+        }
+
+        while (locals.length() > startIndex) {
+            locals.removeAt(locals.length() - 1);
+        }
+    }
+
+    public Void cleanupLoopScope(NativeLoopFrame frame, List<NativeLocal> locals, LlvmNativeBackend backend) {
+        this.cleanupScope(locals, frame.localStart(), backend);
+
+        if (frame.usesShard()) {
+            ArrayList<LlvmValue> args = ArrayList();
+            args.add(frame.shardToken());
+            backend.callRuntime(backend.runtimeDeclarations().shardEnd(), args, "");
+            this.context.hyperAllocFlowReport().recordShardCleanup();
+        }
+    }
+
+    public Void cleanupActiveShards(LlvmNativeBackend backend) {
+        List<NativeLoopFrame> loops = this.context.activeLoops();
+        Int index = loops.length();
+
+        while (index > 0) {
+            index = index - 1;
+            NativeLoopFrame frame = loops.get(index);
+
+            if (frame.usesShard()) {
+                ArrayList<LlvmValue> args = ArrayList();
+                args.add(frame.shardToken());
+                backend.callRuntime(backend.runtimeDeclarations().shardEnd(), args, "");
+                this.context.hyperAllocFlowReport().recordShardCleanup();
+            }
+        }
+    }
+
+    public Void cleanupForReturn(Int expressionIndex, SyntaxProgram program, List<NativeLocal> locals, LlvmNativeBackend backend) {
+        String returnedName = this.directReturnedName(expressionIndex, program);
+        Int pass = 0;
+
+        while (pass < 2) {
+            Int index = locals.length();
+
+            while (index > 0) {
+                index = index - 1;
+                NativeLocal local = locals.get(index);
+
+                if (((pass == 0 && local.typeName() == "String") || (pass == 1 && local.typeName() != "String")) && !this.context.hyperAllocFlowReport().returnTransfersName(expressionIndex, local.name())) {
+                    this.cleanupLocal(local, returnedName, backend);
+                }
+            }
+
+            pass = pass + 1;
+        }
+    }
+
+    private Void cleanupLocal(NativeLocal local, String returnedName, LlvmNativeBackend backend) {
+        if (!local.hasFlowAllocation()) {
+            return;
+        }
+
+        if (!returnedName.isEmpty() && local.name() == returnedName) {
+            return;
+        }
+
+        if (local.isFoldedFlow() || local.isInlineFlow()) {
+            return;
+        }
+
+        LlvmValue objectValue = local.load(backend.builder());
+
+        if (local.typeName() == "String") {
+            ArrayList<LlvmValue> stringArgs = ArrayList();
+            stringArgs.add(LlvmValue(objectValue.handle()));
+            backend.callRuntime(backend.runtimeDeclarations().rootRelease(), stringArgs, "");
+
+            if (local.isRootFlow() || local.isBondFlow()) {
+                this.context.hyperAllocFlowReport().recordCleanup(local.allocationExpressionIndex(), "hyperalloc_flow_root_release", "String ownership slot releases its final dynamic value while Static strings remain no-op releases");
+            }
+
+            return;
+        }
+
+        ArrayList<LlvmValue> args = ArrayList();
+        args.add(LlvmValue(objectValue.handle()));
+
+        if (local.isRootFlow()) {
+            if (this.context.hyperAllocFlowReport().scopeCleanupAllowed(local.allocationExpressionIndex())) {
+                backend.callRuntime(backend.runtimeDeclarations().rootRelease(), args, "");
+                this.context.hyperAllocFlowReport().recordCleanup(local.allocationExpressionIndex(), "hyperalloc_flow_root_release", "Root Flow emits deterministic release for this scope-owned allocation");
+            }
+
+            return;
+        }
+
+        if (local.isBondFlow()) {
+            if (this.context.hyperAllocFlowReport().scopeCleanupAllowed(local.allocationExpressionIndex())) {
+                backend.callRuntime(backend.runtimeDeclarations().bondRelease(), args, "");
+                this.context.hyperAllocFlowReport().recordCleanup(local.allocationExpressionIndex(), "hyperalloc_flow_bond_release", "Bond Flow releases the scope's shared ownership reference deterministically");
+            }
+
+            return;
+        }
+
+        if (local.isPoolFlow()) {
+            backend.callRuntime(backend.runtimeDeclarations().ownerReset(), args, "");
+            this.context.hyperAllocFlowReport().recordCleanup(local.allocationExpressionIndex(), "hyperalloc_flow_owner_reset", "Pool Flow clears owned children before the reusable slot is overwritten");
+            this.context.hyperAllocFlowReport().recordPoolReset();
+            return;
+        }
+
+        if (local.isLocalFlow() && !this.context.isStatelessLocal(local.allocationExpressionIndex())) {
+            backend.callRuntime(backend.runtimeDeclarations().ownerLeave(), args, "");
+            this.context.hyperAllocFlowReport().recordCleanup(local.allocationExpressionIndex(), "hyperalloc_flow_owner_leave", "Local Flow releases owned children and class metadata before stack storage expires");
+        }
+    }
+
+    private String directReturnedName(Int expressionIndex, SyntaxProgram program) {
+        if (expressionIndex == 0) {
+            return "";
+        }
+
+        Expression expression = program.expression(expressionIndex);
+
+        if (expression.kind() == "name") {
+            return expression.text();
+        }
+
+        return "";
+    }
+}

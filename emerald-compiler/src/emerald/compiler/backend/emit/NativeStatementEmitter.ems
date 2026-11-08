@@ -1,0 +1,475 @@
+namespace emerald::compiler::backend;
+
+use emerald::compiler::hyperallocflow::analysis::inline::HyperAllocFlowInlineBoundaryAnalyzer;
+use emerald::compiler::hyperallocflow::analysis::support::HyperAllocFlowProgramCatalog;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+use Std::Collections::ArrayList;
+use Std::Llvm::LlvmFunction;
+use Std::Llvm::LlvmNativeBackend;
+use Std::Llvm::LlvmNativeVariable;
+use Std::Llvm::LlvmValue;
+
+public class NativeStatementEmitter {
+    private NativeEmitContext context;
+    private NativeLookup lookup;
+    private NativeExpressionEmitter expressions;
+    private NativePrintFormatter printFormatter;
+    private NativeControlFlowEmitter controlFlow;
+    private NativeHyperAllocFlowCleanup hyperAllocFlowCleanup;
+
+    public NativeStatementEmitter(NativeEmitContext emitContext) {
+        this.context = emitContext;
+        this.lookup = NativeLookup();
+        this.expressions = NativeExpressionEmitter(emitContext);
+        this.printFormatter = NativePrintFormatter(emitContext, this.expressions.typer(), this.expressions);
+        this.controlFlow = NativeControlFlowEmitter(emitContext, this, this.expressions);
+        this.hyperAllocFlowCleanup = NativeHyperAllocFlowCleanup(emitContext);
+    }
+
+    public EmitResult emit(List<Statement> statements, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals, String returnType, LlvmFunction currentFunction) {
+        this.context.setCurrentFunction(currentFunction);
+        Bool terminated = false;
+        Int scopeStart = locals.length();
+        Int index = 0;
+
+        while (index < statements.length()) {
+            if (!terminated) {
+                EmitResult result = this.emitOne(statements.get(index), program, backend, locals, returnType, currentFunction);
+                terminated = result.terminated();
+            }
+
+            index = index + 1;
+        }
+
+        if (!terminated) {
+            this.hyperAllocFlowCleanup.cleanupScope(locals, scopeStart, backend);
+        }
+
+        return EmitResult(terminated);
+    }
+
+    private EmitResult emitOne(Statement statement, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals, String returnType, LlvmFunction currentFunction) {
+        // Pending expression temporaries never cross a statement boundary.
+        this.expressions.discardPendingTemporaries();
+
+        if (statement.isPrintln()) {
+            Bool releaseTemporary = this.printFormatter.createsOwnedTemporary(statement.expressionIndex(), program, backend, locals);
+            LlvmValue printValue = this.printFormatter.printable(statement.expressionIndex(), program, backend, locals);
+            backend.println(printValue);
+
+            if (releaseTemporary) {
+                ArrayList<LlvmValue> releaseArgs = ArrayList();
+                releaseArgs.add(LlvmValue(printValue.handle()));
+                backend.callRuntime(backend.runtimeDeclarations().rootRelease(), releaseArgs, "");
+                this.context.hyperAllocFlowReport().recordTemporaryStringRelease();
+            }
+
+            this.expressions.releasePendingTemporaries(backend);
+            return EmitResult(false);
+        }
+
+        if (statement.isReturn()) {
+            return this.emitReturn(statement, program, backend, locals, returnType, currentFunction);
+        }
+
+        if (statement.isVariable()) {
+            return this.emitVariable(statement, program, backend, locals);
+        }
+
+        if (statement.isAssign()) {
+            return this.emitAssign(statement, program, backend, locals);
+        }
+
+        if (statement.isFieldAssign()) {
+            return this.emitFieldAssign(statement, program, backend, locals);
+        }
+
+        if (statement.isIf()) {
+            return this.controlFlow.emitIf(statement, program, backend, locals, returnType, currentFunction);
+        }
+
+        if (statement.isWhile()) {
+            this.controlFlow.emitWhile(statement, program, backend, locals, returnType, currentFunction);
+            return EmitResult(false);
+        }
+
+        if (statement.isBreak()) {
+            return this.emitBreak(locals, backend);
+        }
+
+        if (statement.isContinue()) {
+            return this.emitContinue(locals, backend);
+        }
+
+        if (statement.isPanic()) {
+            return this.emitPanic(statement, program, backend, locals);
+        }
+
+        if (statement.isExpression()) {
+            Int expressionIndex = statement.expressionIndex();
+            Expression expression = program.expression(expressionIndex);
+            String expressionType = this.expressions.typer().typeOf(expressionIndex, program, locals, backend);
+            LlvmValue expressionValue = this.expressions.emit(expressionIndex, program, backend, locals);
+            Bool released = false;
+
+            if (this.context.hyperAllocFlowReport().hasExpression(expressionIndex) && this.context.hyperAllocFlowReport().scopeCleanupAllowed(expressionIndex) && (this.context.hyperAllocFlowReport().isOwnershipTransfer(expressionIndex) || this.context.hyperAllocFlowReport().isAllocation(expressionIndex))) {
+                ArrayList<LlvmValue> releaseArgs = ArrayList();
+                releaseArgs.add(LlvmValue(expressionValue.handle()));
+
+                if (this.context.hyperAllocFlowReport().kindForExpression(expressionIndex).isBond()) {
+                    backend.callRuntime(backend.runtimeDeclarations().bondRelease(), releaseArgs, "");
+                    this.context.hyperAllocFlowReport().recordCleanup(expressionIndex, "hyperalloc_flow_bond_release", "unused promoted Bond result is released immediately in the caller");
+                } else {
+                    backend.callRuntime(backend.runtimeDeclarations().rootRelease(), releaseArgs, "");
+                    this.context.hyperAllocFlowReport().recordCleanup(expressionIndex, "hyperalloc_flow_root_release", "unused owned runtime result is released immediately in the caller");
+                }
+
+                released = true;
+            }
+
+            if (!released && expression.kind() == "methodcall" && expression.text() == "removeAt" && expressionType != "Int" && expressionType != "Bool" && expressionType != "Float" && expressionType != "Char") {
+                HyperAllocFlowInlineBoundaryAnalyzer inlineTypes = HyperAllocFlowInlineBoundaryAnalyzer(HyperAllocFlowProgramCatalog());
+
+                if (!inlineTypes.isInlineType(expressionType, program)) {
+                    ArrayList<LlvmValue> releaseArgs = ArrayList();
+                    releaseArgs.add(LlvmValue(expressionValue.handle()));
+                    backend.callRuntime(backend.runtimeDeclarations().rootRelease(), releaseArgs, "");
+                    released = true;
+                }
+            }
+
+            if (!released && expressionType == "String" && this.expressions.createsOwnedStringTemporary(expressionIndex, program, backend, locals)) {
+                ArrayList<LlvmValue> releaseArgs = ArrayList();
+                releaseArgs.add(LlvmValue(expressionValue.handle()));
+                backend.callRuntime(backend.runtimeDeclarations().rootRelease(), releaseArgs, "");
+                this.context.hyperAllocFlowReport().recordTemporaryStringRelease();
+            }
+
+            this.expressions.releasePendingTemporaries(backend);
+            return EmitResult(false);
+        }
+
+        return EmitResult(false);
+    }
+
+    private EmitResult emitReturn(Statement statement, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals, String returnType, LlvmFunction currentFunction) {
+        Bool isMainFunction = currentFunction.handle() == backend.mainFunction().handle();
+
+        if (statement.expressionIndex() == 0) {
+            this.hyperAllocFlowCleanup.cleanupForReturn(0, program, locals, backend);
+            this.hyperAllocFlowCleanup.cleanupActiveShards(backend);
+
+            if (returnType == "Void") {
+                if (isMainFunction) {
+                    backend.returnMainVoid();
+                    return EmitResult(true);
+                }
+
+                backend.builder().returnVoid();
+                return EmitResult(true);
+            }
+
+            backend.returnCode(0);
+            return EmitResult(true);
+        }
+
+        Expression returnExpression = program.expression(statement.expressionIndex());
+        NativeInlineBoundaryEmitter inlineBoundaries = NativeInlineBoundaryEmitter(this.context, this.expressions);
+        LlvmValue returnValue = this.emitOwnedReturnValue(statement.expressionIndex(), returnExpression, returnType, isMainFunction, inlineBoundaries, program, backend, locals);
+        this.hyperAllocFlowCleanup.cleanupForReturn(statement.expressionIndex(), program, locals, backend);
+        this.hyperAllocFlowCleanup.cleanupActiveShards(backend);
+
+        if (isMainFunction) {
+            backend.returnMainValue(returnValue);
+            return EmitResult(true);
+        }
+
+        backend.builder().returnValue(returnValue);
+        return EmitResult(true);
+    }
+
+    private LlvmValue emitOwnedReturnValue(Int expressionIndex, Expression expression, String returnType, Bool mainFunction, NativeInlineBoundaryEmitter inlineBoundaries, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        LlvmValue value = this.emitReturnValue(expressionIndex, expression, returnType, mainFunction, inlineBoundaries, program, backend, locals);
+
+        if (!this.context.hyperAllocFlowReport().requiresReturnCopy(expressionIndex)) {
+            this.expressions.discardPendingTemporaries();
+            return value;
+        }
+
+        // Owned String methods hand every caller a releasable value; literal and
+        // borrowed paths return a fresh copy instead of the shared storage, so
+        // temporaries the borrowed value came from can be released afterwards.
+        LlvmValue empty = backend.runtimeString("", "return_copy_empty_" + this.context.nextTemp().toString());
+        this.context.hyperAllocFlowReport().recordLowering(expressionIndex, "owned String return copy", "borrowed or literal String return is copied so the caller owns every result");
+        LlvmValue copy = backend.concatStrings(value, empty, "return_copy_" + this.context.nextTemp().toString());
+        this.expressions.releasePendingTemporaries(backend);
+        return copy;
+    }
+
+    private LlvmValue emitReturnValue(Int expressionIndex, Expression expression, String returnType, Bool mainFunction, NativeInlineBoundaryEmitter inlineBoundaries, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (!mainFunction && inlineBoundaries.supportsInlineReturn(expression, returnType, program)) {
+            return inlineBoundaries.emitOwnedInlineReturnValue(expressionIndex, expression, program, backend, locals);
+        }
+
+        return this.expressions.emitAs(expressionIndex, returnType, program, backend, locals);
+    }
+
+    private EmitResult emitBreak(List<NativeLocal> locals, LlvmNativeBackend backend) {
+        NativeLoopFrame frame = this.context.currentLoop();
+        this.hyperAllocFlowCleanup.cleanupLoopScope(frame, locals, backend);
+        backend.builder().branch(frame.exitBlock());
+        return EmitResult(true);
+    }
+
+    private EmitResult emitContinue(List<NativeLocal> locals, LlvmNativeBackend backend) {
+        NativeLoopFrame frame = this.context.currentLoop();
+        this.hyperAllocFlowCleanup.cleanupLoopScope(frame, locals, backend);
+        backend.builder().branch(frame.continueBlock());
+        return EmitResult(true);
+    }
+
+    private EmitResult emitPanic(Statement statement, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        LlvmValue message = this.expressions.emit(statement.expressionIndex(), program, backend, locals);
+        LlvmValue empty = backend.runtimeString("", "panic_empty_" + this.context.nextTemp().toString());
+        LlvmValue stableMessage = backend.concatStrings(message, empty, "panic_message_" + this.context.nextTemp().toString());
+        this.hyperAllocFlowCleanup.cleanupForReturn(0, program, locals, backend);
+        this.hyperAllocFlowCleanup.cleanupActiveShards(backend);
+        backend.panic(stableMessage);
+        backend.builder().unreachable();
+        return EmitResult(true);
+    }
+
+    private EmitResult emitVariable(Statement statement, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (this.isPrimitiveType(statement.typeName())) {
+            return this.emitPrimitiveVariable(statement, program, backend, locals);
+        }
+
+        if (statement.typeName() == "String" && this.context.hyperAllocFlowReport().isStringOwnershipSlot(statement.expressionIndex())) {
+            return this.emitStringOwnershipSlotVariable(statement, program, backend, locals);
+        }
+
+        if (this.context.hyperAllocFlowReport().kindForExpression(statement.expressionIndex()).isFolded()) {
+            return this.emitFoldedVariable(statement, program, backend, locals);
+        }
+
+        if (this.context.hyperAllocFlowReport().kindForExpression(statement.expressionIndex()).isInline()) {
+            return this.emitInlineVariable(statement, program, backend, locals);
+        }
+
+        Expression initializer = program.expression(statement.expressionIndex());
+
+        if (initializer.kind() == "call" && initializer.text() == "List") {
+            NativeListEmitter lists = NativeListEmitter(this.context, this.expressions.typer(), this.expressions);
+            LlvmValue listValue = lists.newTypedList(statement.typeName(), program, backend);
+            LlvmNativeVariable listVariable = backend.local(statement.name(), this.context.typeMapper().llvmType(statement.typeName(), backend));
+            String listKind = "Root";
+
+            if (this.context.hyperAllocFlowReport().kindForExpression(statement.expressionIndex()).isBond()) {
+                ArrayList<LlvmValue> promoteArgs = ArrayList();
+                promoteArgs.add(LlvmValue(listValue.handle()));
+                listVariable.store(backend.builder(), backend.callRuntime(backend.runtimeDeclarations().bondPromote(), promoteArgs, "bond_list_" + this.context.nextTemp().toString()));
+                this.context.hyperAllocFlowReport().recordLowering(statement.expressionIndex(), "hyperalloc_flow_bond_promote", "typed container is shared with a callee that may keep it, so the scope holds a counted Bond reference");
+                listKind = "Bond";
+            } else {
+                listVariable.store(backend.builder(), listValue);
+            }
+
+            locals.add(NativeLocal(statement.name(), statement.typeName(), listVariable, statement.expressionIndex(), listKind));
+            return EmitResult(false);
+        }
+
+        if (initializer.kind() == "name") {
+            NativeLocal source = this.lookup.findLocal(initializer.text(), locals, backend);
+
+            if (source.isInlineFlow()) {
+                return this.emitInlineCopyVariable(statement, source, backend, locals);
+            }
+        }
+
+        LlvmValue variableValue = this.expressions.emit(statement.expressionIndex(), program, backend, locals);
+        LlvmNativeVariable variable = backend.local(statement.name(), this.context.typeMapper().llvmType(statement.typeName(), backend));
+        variable.store(backend.builder(), variableValue);
+
+        if (this.context.hyperAllocFlowReport().hasExpression(statement.expressionIndex())) {
+            String hyperAllocFlowKind = this.context.hyperAllocFlowReport().kindForExpression(statement.expressionIndex()).name();
+            locals.add(NativeLocal(statement.name(), statement.typeName(), variable, statement.expressionIndex(), hyperAllocFlowKind));
+            return EmitResult(false);
+        }
+
+        locals.add(NativeLocal(statement.name(), statement.typeName(), variable));
+        return EmitResult(false);
+    }
+
+    private Bool isPrimitiveType(String typeName) {
+        return typeName == "Int" || typeName == "Float" || typeName == "Bool" || typeName == "Char";
+    }
+
+    private EmitResult emitPrimitiveVariable(Statement statement, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        LlvmValue variableValue = this.expressions.emit(statement.expressionIndex(), program, backend, locals);
+        LlvmNativeVariable variable = backend.local(statement.name(), this.context.typeMapper().llvmType(statement.typeName(), backend));
+        variable.store(backend.builder(), variableValue);
+        locals.add(NativeLocal(statement.name(), statement.typeName(), variable));
+        return EmitResult(false);
+    }
+
+    private EmitResult emitStringOwnershipSlotVariable(Statement statement, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        LlvmValue value = this.emitStringOwnershipSlotInitialValue(statement.expressionIndex(), program, backend, locals);
+        LlvmNativeVariable variable = backend.local(statement.name(), this.context.typeMapper().llvmType("String", backend));
+        variable.store(backend.builder(), value);
+        locals.add(NativeLocal(statement.name(), statement.typeName(), variable, statement.expressionIndex(), "Root"));
+        this.context.hyperAllocFlowReport().recordLowering(statement.expressionIndex(), "String ownership slot", "mutable String local owns its current dynamic value and safely treats Static values as no-op releases");
+        return EmitResult(false);
+    }
+
+    private LlvmValue emitStringOwnershipSlotInitialValue(Int expressionIndex, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        LlvmValue value = this.expressions.emit(expressionIndex, program, backend, locals);
+
+        if (!this.context.hyperAllocFlowReport().requiresStringOwnershipCopy(expressionIndex)) {
+            return value;
+        }
+
+        LlvmValue empty = backend.runtimeString("", "string_slot_empty_" + this.context.nextTemp().toString());
+        return backend.concatStrings(value, empty, "string_slot_copy_" + this.context.nextTemp().toString());
+    }
+
+    private EmitResult emitFoldedVariable(Statement statement, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Expression creation = program.expression(statement.expressionIndex());
+        ClassDeclaration declaration = this.lookup.findClass(program, creation.text());
+        List<String> fieldNames = List();
+        List<LlvmValue> fieldValues = List();
+        Int index = 0;
+
+        while (index < declaration.fields().length()) {
+            FieldDeclaration field = declaration.fields().get(index);
+            fieldNames.add(field.name());
+            fieldValues.add(this.expressions.emit(creation.argumentIndexes().get(index), program, backend, locals));
+            index = index + 1;
+        }
+
+        locals.add(NativeLocal(statement.name(), statement.typeName(), statement.expressionIndex(), "Folded", fieldNames, fieldValues));
+        this.context.hyperAllocFlowReport().recordLowering(statement.expressionIndex(), "scalar replacement", "Folded Flow emits constructor fields as SSA values and creates no runtime object allocation");
+        return EmitResult(false);
+    }
+
+    private EmitResult emitInlineVariable(Statement statement, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Expression creation = program.expression(statement.expressionIndex());
+        NativeClassLayout layout = this.context.classTable().find(statement.typeName());
+        LlvmNativeVariable variable = backend.local(statement.name(), layout.type());
+        NativeInlineBoundaryEmitter inlineBoundaries = NativeInlineBoundaryEmitter(this.context, this.expressions);
+
+        if (creation.kind() == "methodcall" && (creation.text() == "get" || creation.text() == "removeAt")) {
+            LlvmValue sourcePointer = this.expressions.emit(statement.expressionIndex(), program, backend, locals);
+            LlvmValue aggregate = backend.builder().load(layout.type(), sourcePointer, "inline_container_value_" + this.context.nextTemp().toString());
+            variable.store(backend.builder(), aggregate);
+            locals.add(NativeLocal(statement.name(), statement.typeName(), variable, statement.expressionIndex(), "Inline"));
+            this.context.hyperAllocFlowReport().recordLowering(statement.expressionIndex(), "inline container copy", "typed Inline container result is copied by value into an independent aggregate slot");
+            this.context.hyperAllocFlowReport().recordInlineCopy();
+            return EmitResult(false);
+        }
+
+        List<LlvmValue> fieldValues = this.inlineVariableFieldValues(creation, statement.typeName(), inlineBoundaries, program, backend, locals);
+        Int index = 0;
+
+        while (index < fieldValues.length()) {
+            backend.builder().store(fieldValues.get(index), this.inlineFieldPointer(layout, variable.pointer(), index, backend));
+            index = index + 1;
+        }
+
+        locals.add(NativeLocal(statement.name(), statement.typeName(), variable, statement.expressionIndex(), "Inline"));
+        this.context.hyperAllocFlowReport().recordLowering(statement.expressionIndex(), "inline aggregate", "Inline Flow stores fields directly inside one aggregate value slot without object or runtime allocation");
+        return EmitResult(false);
+    }
+
+    private List<LlvmValue> inlineVariableFieldValues(Expression creation, String typeName, NativeInlineBoundaryEmitter inlineBoundaries, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        if (inlineBoundaries.supportsInlineReturn(creation, typeName, program)) {
+            return inlineBoundaries.emitInlineReturnFields(creation, typeName, program, backend, locals);
+        }
+
+        List<LlvmValue> values = List();
+        Int index = 0;
+
+        while (index < creation.argumentIndexes().length()) {
+            values.add(this.expressions.emit(creation.argumentIndexes().get(index), program, backend, locals));
+            index = index + 1;
+        }
+
+        return values;
+    }
+
+    private EmitResult emitInlineCopyVariable(Statement statement, NativeLocal source, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        LlvmValue value = source.load(backend.builder());
+        LlvmNativeVariable variable = backend.local(statement.name(), source.llvmType());
+        variable.store(backend.builder(), value);
+        locals.add(NativeLocal(statement.name(), statement.typeName(), variable, 0, "Inline"));
+        this.context.hyperAllocFlowReport().recordInlineCopy();
+        return EmitResult(false);
+    }
+
+    private LlvmValue inlineFieldPointer(NativeClassLayout layout, LlvmValue valuePointer, Int fieldIndex, LlvmNativeBackend backend) {
+        ArrayList<LlvmValue> indices = ArrayList();
+        indices.add(backend.int32(0));
+        indices.add(backend.int32(fieldIndex));
+        return backend.builder().inboundsGep(layout.type(), valuePointer, indices, "inline_field_" + this.context.nextTemp().toString());
+    }
+
+    private EmitResult emitAssign(Statement statement, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        NativeLocal local = this.lookup.findLocal(statement.name(), locals, backend);
+        LlvmValue assignValue = this.expressions.emitAs(statement.expressionIndex(), local.typeName(), program, backend, locals);
+
+        if (local.typeName() == "String" && (this.context.hyperAllocFlowReport().isStringOwnershipSlot(local.allocationExpressionIndex()) || local.isRootFlow() || local.isBondFlow())) {
+            LlvmValue replacementValue = assignValue;
+
+            if (this.context.hyperAllocFlowReport().requiresStringOwnershipCopy(statement.expressionIndex())) {
+                LlvmValue empty = backend.runtimeString("", "string_assignment_empty_" + this.context.nextTemp().toString());
+                replacementValue = backend.concatStrings(assignValue, empty, "string_assignment_copy_" + this.context.nextTemp().toString());
+                this.context.hyperAllocFlowReport().recordLowering(local.allocationExpressionIndex(), "String ownership-slot copy", "borrowed String assignment is copied before replacing and releasing the previous owned value");
+            }
+
+            LlvmValue previousValue = local.load(backend.builder());
+            local.store(backend.builder(), replacementValue);
+            ArrayList<LlvmValue> releaseArgs = ArrayList();
+            releaseArgs.add(LlvmValue(previousValue.handle()));
+            backend.callRuntime(backend.runtimeDeclarations().rootRelease(), releaseArgs, "");
+            return EmitResult(false);
+        }
+
+        local.store(backend.builder(), assignValue);
+        return EmitResult(false);
+    }
+
+    private EmitResult emitFieldAssign(Statement statement, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        String fieldType = this.expressions.typer().typeOf(statement.targetIndex(), program, locals, backend);
+        LlvmValue fieldValue = this.emitFieldValue(statement, fieldType, program, backend, locals);
+
+        if (fieldType == "Int" || fieldType == "Float" || fieldType == "Char" || fieldType == "Bool") {
+            LlvmValue primitivePointer = this.expressions.emitFieldPointer(statement.targetIndex(), program, backend, locals);
+            backend.builder().store(fieldValue, primitivePointer);
+            return EmitResult(false);
+        }
+
+        Expression target = program.expression(statement.targetIndex());
+        LlvmValue ownerValue = this.expressions.emit(target.leftIndex(), program, backend, locals);
+        LlvmValue fieldPointer = this.expressions.emitFieldPointerWithReceiver(statement.targetIndex(), ownerValue, program, backend, locals);
+        LlvmValue previousValue = backend.builder().load(this.context.typeMapper().llvmType(fieldType, backend), fieldPointer, "previous_field_" + this.context.nextTemp().toString());
+        backend.builder().store(fieldValue, fieldPointer);
+        ArrayList<LlvmValue> replaceArgs = ArrayList();
+        replaceArgs.add(LlvmValue(ownerValue.handle()));
+        replaceArgs.add(LlvmValue(previousValue.handle()));
+        replaceArgs.add(LlvmValue(fieldValue.handle()));
+        backend.callRuntime(backend.runtimeDeclarations().rootReplace(), replaceArgs, "");
+        return EmitResult(false);
+    }
+    private LlvmValue emitFieldValue(Statement statement, String fieldType, SyntaxProgram program, LlvmNativeBackend backend, List<NativeLocal> locals) {
+        Expression expression = program.expression(statement.expressionIndex());
+        if (expression.kindIs("call") && expression.textIs("List")) {
+            NativeListEmitter lists = NativeListEmitter(this.context, this.expressions.typer(), this.expressions);
+            return lists.newTypedList(fieldType, program, backend);
+        }
+        return this.expressions.emit(statement.expressionIndex(), program, backend, locals);
+    }
+
+}

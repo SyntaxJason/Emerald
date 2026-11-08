@@ -1,0 +1,177 @@
+namespace emerald::compiler::hyperallocflow::analysis::assignment;
+
+use emerald::compiler::debug::DebugLog;
+use emerald::compiler::hyperallocflow::AllocationKind;
+use emerald::compiler::hyperallocflow::HyperAllocFlowDecision;
+use emerald::compiler::hyperallocflow::HyperAllocFlowReport;
+use emerald::compiler::hyperallocflow::FunctionSummary;
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Statement;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class HyperAllocFlowAssignmentSafetyAnalyzer {
+    public HyperAllocFlowAssignmentSafetyAnalyzer() {
+    }
+
+    public Void analyze(SyntaxProgram program, HyperAllocFlowReport report) {
+        List<String> topNames = List();
+        List<String> topTypes = List();
+        List<Int> topInitializers = List();
+        this.analyzeScope(program.statements(), program, report, topNames, topTypes, topInitializers);
+        Int classIndex = 0;
+
+        while (classIndex < program.classes().length()) {
+            ClassDeclaration declaration = program.classes().get(classIndex);
+            DebugLog.log("flow: assignment safety for class " + declaration.fullName());
+            Int methodIndex = 0;
+
+            while (methodIndex < declaration.methods().length()) {
+                MethodDeclaration method = declaration.methods().get(methodIndex);
+
+                if (!method.isGenerated()) {
+                    List<String> methodNames = List();
+                    List<String> methodTypes = List();
+                    List<Int> methodInitializers = List();
+                    this.analyzeScope(method.statements(), program, report, methodNames, methodTypes, methodInitializers);
+                }
+
+                methodIndex = methodIndex + 1;
+            }
+
+            classIndex = classIndex + 1;
+        }
+    }
+
+    private Void analyzeScope(List<Statement> statements, SyntaxProgram program, HyperAllocFlowReport report, List<String> names, List<String> types, List<Int> initializers) {
+        Int scopeStart = names.length();
+        Int index = 0;
+
+        while (index < statements.length()) {
+            Statement statement = statements.get(index);
+
+            if (statement.isVariable()) {
+                names.add(statement.name());
+                types.add(statement.typeName());
+                initializers.add(statement.expressionIndex());
+            }
+
+            if (statement.isAssign()) {
+                this.validateAssignment(statement, program, report, names, types, initializers);
+            }
+
+            if (statement.isIf() || statement.isWhile() || statement.isFor()) {
+                this.analyzeScope(statement.bodyStatements(), program, report, names, types, initializers);
+                this.analyzeScope(statement.elseStatements(), program, report, names, types, initializers);
+            }
+
+            index = index + 1;
+        }
+
+        while (names.length() > scopeStart) {
+            names.removeAt(names.length() - 1);
+            types.removeAt(types.length() - 1);
+            initializers.removeAt(initializers.length() - 1);
+        }
+    }
+
+    private Void validateAssignment(Statement statement, SyntaxProgram program, HyperAllocFlowReport report, List<String> names, List<String> types, List<Int> initializers) {
+        Int declarationIndex = this.findDeclaration(statement.name(), names);
+
+        if (declarationIndex < 0) {
+            return;
+        }
+
+        String typeName = types.get(declarationIndex) + "";
+
+        if (typeName == "Int" || typeName == "Bool" || typeName == "Float" || typeName == "Char") {
+            return;
+        }
+
+        Expression expression = program.expression(statement.expressionIndex());
+
+        if (typeName == "String") {
+            Int stringInitializerIndex = initializers.get(declarationIndex);
+            Expression stringInitializer = program.expression(stringInitializerIndex);
+            report.markStringOwnershipSlot(stringInitializerIndex, this.isBorrowedStringValue(stringInitializer, report), stringInitializer.line(), stringInitializer.column());
+
+            if (this.isBorrowedStringValue(expression, report)) {
+                report.markStringOwnershipCopy(statement.expressionIndex());
+            }
+
+            return;
+        }
+
+        Int initializerIndex = initializers.get(declarationIndex);
+        Bool initializerOwns = report.hasExpression(initializerIndex) && this.isOwningKind(report.kindForExpression(initializerIndex).name());
+        Bool assignmentOwns = report.hasExpression(statement.expressionIndex()) && this.isOwningKind(report.kindForExpression(statement.expressionIndex()).name());
+
+        if (!initializerOwns && !assignmentOwns) {
+            return;
+        }
+
+        String reason = "Flow-owned local reassignment requires ownership-slot replacement lowering; Flow v1 keeps Root, Bond, Local, Pool, and Shard object locals single-binding while View-to-View rebinding remains allowed";
+        report.markSafetyIssue(statement.expressionIndex(), typeName, reason, expression.line(), expression.column());
+    }
+
+    private Bool isOwningKind(String kindName) {
+        return kindName == "Root" || kindName == "Bond" || kindName == "Local" || kindName == "Pool" || kindName == "Shard";
+    }
+
+    private Bool isBorrowedStringValue(Expression expression, HyperAllocFlowReport report) {
+        if (expression.kind() == "name" || expression.kind() == "field") {
+            return true;
+        }
+
+        if (expression.kind() == "methodcall" && expression.text() == "get") {
+            return true;
+        }
+
+        if (!expression.hasResolvedMethod()) {
+            return false;
+        }
+
+        Int index = report.callSummaryIndex(expression);
+
+        if (index < 0) {
+            return false;
+        }
+
+        FunctionSummary summary = report.callSummary(index);
+
+        if (summary.returnsOwned()) {
+            return false;
+        }
+
+        if (summary.returnBorrowsReceiver()) {
+            return true;
+        }
+
+        Int parameterIndex = 0;
+
+        while (parameterIndex < expression.argumentIndexes().length()) {
+            if (summary.returnBorrowsParameter(parameterIndex)) {
+                return true;
+            }
+
+            parameterIndex = parameterIndex + 1;
+        }
+
+        return false;
+    }
+
+    private Int findDeclaration(String name, List<String> names) {
+        Int index = names.length() - 1;
+
+        while (index >= 0) {
+            if (names.get(index) == name) {
+                return index;
+            }
+
+            index = index - 1;
+        }
+
+        return -1;
+    }
+}

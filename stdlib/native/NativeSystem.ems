@@ -1,0 +1,54 @@
+namespace Std::Native;
+
+public class NativeSystem {
+    public NativeSystem() {
+    }
+
+    public static String os() {
+        return "unknown";
+    }
+
+    public static Bool isWindows() {
+        return false;
+    }
+
+    public static Bool isLinux() {
+        return false;
+    }
+
+    public static String lineSeparator() {
+        return "\n";
+    }
+
+    public static String pathSeparator() {
+        return ":";
+    }
+
+    public static String directorySeparator() {
+        return "/";
+    }
+
+    public static String arch() {
+        return "unknown";
+    }
+
+    public static Int processorCount() {
+        return 1;
+    }
+
+    public static String userName() {
+        return "";
+    }
+
+    public static String hostName() {
+        return "";
+    }
+
+    public static String homeDirectory() {
+        return "";
+    }
+
+    public static String tempDirectory() {
+        return "";
+    }
+}

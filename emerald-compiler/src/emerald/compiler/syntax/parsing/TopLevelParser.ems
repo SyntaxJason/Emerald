@@ -1,0 +1,124 @@
+namespace emerald::compiler::syntax;
+
+public class TopLevelParser {
+    private ParserState state;
+
+    public TopLevelParser(ParserState parserState) {
+        this.state = parserState;
+    }
+
+    public Void consumeHeader() {
+        Bool parsing = true;
+
+        while (parsing && !this.state.isAtEnd()) {
+            if (this.state.current().isIdentifier("namespace")) {
+                this.consumeNamespace();
+                continue;
+            }
+
+            if (this.state.current().isIdentifier("use")) {
+                this.consumeUse();
+                continue;
+            }
+
+            if (this.state.current().isIdentifier("macro")) {
+                this.consumeMacroDeclaration();
+                continue;
+            }
+
+            parsing = false;
+        }
+    }
+
+    public List<Annotation> consumeAnnotations() {
+        List<Annotation> annotations = List();
+
+        while (this.state.checkSymbol("@")) {
+            Token start = this.state.advance();
+            Token name = this.state.consumeKind("identifier", "Expected annotation name after '@'");
+            List<Int> arguments = this.consumeAnnotationArguments();
+            annotations.add(Annotation(name.text(), arguments, start.line(), start.column()));
+        }
+
+        return annotations;
+    }
+
+    private List<Int> consumeAnnotationArguments() {
+        List<Int> arguments = List();
+
+        if (!this.state.checkSymbol("(")) {
+            return arguments;
+        }
+
+        this.state.advance();
+        ExpressionParser expressions = ExpressionParser(this.state);
+
+        if (!this.state.checkSymbol(")")) {
+            Bool parsing = true;
+
+            while (parsing && !this.state.isAtEnd()) {
+                arguments.add(expressions.parseExpression());
+
+                if (this.state.checkSymbol(",")) {
+                    this.state.advance();
+                    continue;
+                }
+
+                parsing = false;
+            }
+        }
+
+        this.state.consumeSymbol(")", "Expected ')' after annotation arguments");
+        return arguments;
+    }
+
+    private Void consumeNamespace() {
+        this.state.advance();
+        String value = this.consumeQualifiedName();
+        this.state.program().setNamespace(value);
+        this.state.consumeSymbol(";", "Expected ';' after namespace declaration");
+    }
+
+    private Void consumeUse() {
+        Token start = this.state.advance();
+        String value = this.consumeQualifiedName();
+        String importAlias = "";
+
+        if (this.state.current().isIdentifier("as")) {
+            this.state.advance();
+            Token importAliasToken = this.state.consumeKind("identifier", "Expected alias name after as");
+            importAlias = importAliasToken.text();
+        }
+
+        this.state.program().addUse(UseDeclaration(value, importAlias, start.line(), start.column()));
+        this.state.consumeSymbol(";", "Expected ';' after use declaration");
+    }
+
+    private String consumeQualifiedName() {
+        Token first = this.state.consumeKind("identifier", "Expected qualified name");
+        String value = first.text();
+
+        while (this.state.checkSymbol("::") || this.state.checkSymbol(".")) {
+            String separator = this.state.advance().text();
+            Token segment = this.state.consumeKind("identifier", "Expected name segment");
+            value = value + separator + segment.text();
+        }
+
+        return value;
+    }
+
+    private Void consumeMacroDeclaration() {
+        Token start = this.state.advance();
+        Token name = this.state.consumeKind("identifier", "Expected macro name");
+        this.state.consumeIdentifier("on", "Expected 'on' after macro name");
+        Token target = this.state.consumeKind("identifier", "Expected macro target");
+
+        if (target.text() != "Method" && target.text() != "Class") {
+            this.state.diagnostics().error("Macro target must be Method or Class", target.line(), target.column());
+        }
+
+        StatementParser statements = StatementParser(this.state);
+        List<Statement> body = statements.parseBlockStatements();
+        this.state.program().addMacro(MacroDeclaration(name.text(), target.text(), body, start.line(), start.column()));
+    }
+}

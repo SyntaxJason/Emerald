@@ -1,0 +1,70 @@
+use Std::Collections::HashMap;
+use Std::Collections::ArrayList;
+
+public class PackedPoint {
+    public Int x;
+    public Int y;
+    public Int z;
+    public Int w;
+    public PackedPoint(Int x, Int y, Int z, Int w) {
+        this.x = x; this.y = y; this.z = z; this.w = w;
+    }
+}
+public class MutablePoint {
+    public Int x;
+    public MutablePoint(Int x) { this.x = x; }
+}
+public class IdentityPoint {
+    public Int x;
+    public IdentityPoint(Int x) { this.x = x; }
+}
+public class TemporaryLeaf {
+    public Int x;
+    public TemporaryLeaf(Int x) { this.x = x; }
+    public Int value() { return this.x; }
+}
+public class TemporaryReader {
+    public static Int read(TemporaryLeaf leaf) { return leaf.value(); }
+}
+main() {
+List<PackedPoint> points = List();
+Int i = 0;
+while (i < 2000000) {
+    PackedPoint p = PackedPoint(i, 2, 3, 4);
+    points.add(p);
+    i = i + 1;
+}
+Int sum = 0;
+i = 0;
+while (i < points.length()) {
+    PackedPoint p = points.get(i);
+    sum = sum + p.x;
+    i = i + 1;
+}
+if (sum != 1999999000000) { panic("packed sum"); }
+MutablePoint mutable = MutablePoint(7);
+List<MutablePoint> mutableItems = List();
+mutableItems.add(mutable);
+mutable.x = 9;
+if (mutableItems.get(0).x != 9) { panic("reference mutation"); }
+IdentityPoint first = IdentityPoint(1);
+IdentityPoint second = IdentityPoint(1);
+List<IdentityPoint> identities = List();
+identities.add(first);
+if (first == second || !identities.contains(first) || identities.contains(second)) { panic("reference identity"); }
+HashMap<String, Int> counts = HashMap();
+ArrayList<Int> integers = ArrayList();
+i = 0;
+while (i < 20000) {
+    String word = "literal";
+    counts.put(word, counts.getOr(word, 0) + 1);
+    integers.add(i);
+    if (TemporaryReader.read(TemporaryLeaf(i)) != i) { panic("stack temporary"); }
+    i = i + 1;
+}
+if (counts.get("literal") != 20000 || integers.get(19999) != 19999) { panic("collections"); }
+String zero = "a\0b";
+if (zero.length() != 3 || zero.charAt(2) != "b".charAt(0)) { panic("literal bytes"); }
+println(sum);
+println("general-optimization-ok");
+}

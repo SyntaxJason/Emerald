@@ -1,0 +1,43 @@
+public class Animal {
+    public Animal() { }
+    public String sound() { return "generic"; }
+    public String describe() { return "I say " + this.sound(); }
+    public Int legs() { return 4; }
+    public Int legPairs() { return this.legs() / 2; }
+    public String toString() { return "Animal"; }
+    public String label() { return "<" + this.toString() + ">"; }
+}
+
+public class Dog extends Animal {
+    public Dog() { }
+    public String sound() { return "Woof"; }
+}
+
+public class Puppy extends Dog {
+    public Puppy() { }
+    public String sound() { return "Yip"; }
+}
+
+public class Bird extends Animal {
+    public Bird() { }
+    public Int legs() { return 2; }
+    public String toString() { return "Bird"; }
+}
+
+main() {
+    println(Animal().describe());
+    println(Dog().describe());
+    println(Puppy().describe());
+    println(Bird().describe());
+    println(Bird().legPairs());
+    println(Puppy().legPairs());
+    println(Bird().label());
+    Int total = 0;
+    Int index = 0;
+    while (index < 1000) {
+        Bird visitor = Bird();
+        total = total + visitor.legPairs();
+        index = index + 1;
+    }
+    println(total);
+}

@@ -1,0 +1,22 @@
+public class HyperAllocFlowV1ReturnRemovedBox {
+    public Int value;
+
+    public HyperAllocFlowV1ReturnRemovedBox(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1ReturnRemovedFactory {
+    public static HyperAllocFlowV1ReturnRemovedBox create() {
+        List<HyperAllocFlowV1ReturnRemovedBox> values = List();
+        HyperAllocFlowV1ReturnRemovedBox value = HyperAllocFlowV1ReturnRemovedBox(42);
+        values.add(value);
+        HyperAllocFlowV1ReturnRemovedBox removed = values.removeAt(0);
+        return removed;
+    }
+}
+
+main() {
+    HyperAllocFlowV1ReturnRemovedBox value = HyperAllocFlowV1ReturnRemovedFactory.create();
+    println(value.value.toString());
+}

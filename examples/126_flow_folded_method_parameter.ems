@@ -1,0 +1,18 @@
+public class HyperAllocFlowFoldedOffsetPair {
+    private Int left;
+    private Int right;
+
+    public HyperAllocFlowFoldedOffsetPair(Int left, Int right) {
+        this.left = left;
+        this.right = right;
+    }
+
+    public Int sumWith(Int offset) {
+        return this.left + this.right + offset;
+    }
+}
+
+main() {
+    HyperAllocFlowFoldedOffsetPair pair = HyperAllocFlowFoldedOffsetPair(10, 20);
+    println(pair.sumWith(12).toString());
+}

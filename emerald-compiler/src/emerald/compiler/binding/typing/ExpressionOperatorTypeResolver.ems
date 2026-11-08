@@ -1,0 +1,80 @@
+namespace emerald::compiler::binding;
+
+use emerald::compiler::syntax::Expression;
+
+public class ExpressionOperatorTypeResolver {
+    private BindingContext context;
+    private BindingOperatorRules operators;
+    private ExpressionTypeResolver resolver;
+
+    public ExpressionOperatorTypeResolver(BindingContext bindingContext, ExpressionTypeResolver typeResolver) {
+        this.context = bindingContext;
+        this.operators = BindingOperatorRules();
+        this.resolver = typeResolver;
+    }
+
+    public String unaryType(Expression expression) {
+        String right = this.resolver.typeOf(expression.leftIndex());
+
+        if (expression.text() == "-" && (right == "Int" || right == "Float")) {
+            return right;
+        }
+
+        if (expression.text() == "!" && right == "Bool") {
+            return "Bool";
+        }
+
+        this.context.diagnostics().error("Invalid unary operator " + expression.text() + " for " + right, expression.line(), expression.column());
+        return "Error";
+    }
+
+    public String binaryType(Expression expression) {
+        String left = this.resolver.typeOf(expression.leftIndex());
+        String right = this.resolver.typeOf(expression.rightIndex());
+        String op = expression.text();
+
+        if (left == "Error" || right == "Error") {
+            return "Error";
+        }
+
+        if (op == "+" && this.canStringConcat(left, right)) {
+            return "String";
+        }
+
+        if (this.operators.isArithmetic(op) && (left == "Int" || left == "Float") && (right == "Int" || right == "Float")) {
+            if (left == "Float" || right == "Float") { return "Float"; }
+            return "Int";
+        }
+
+        if ((this.operators.isIntComparison(op) || this.operators.isEquality(op)) && (left == "Int" || left == "Float") && (right == "Int" || right == "Float")) {
+            return "Bool";
+        }
+
+        if (this.operators.isEquality(op) && left == right) {
+            return "Bool";
+        }
+
+        if (this.operators.isBoolOperator(op) && left == "Bool" && right == "Bool") {
+            return "Bool";
+        }
+
+        this.context.diagnostics().error("Invalid binary operator " + op + " for " + left + " and " + right, expression.line(), expression.column());
+        return "Error";
+    }
+
+    private Bool canStringConcat(String left, String right) {
+        if (left != "String" && right != "String") {
+            return false;
+        }
+
+        if (left == "Error" || right == "Error") {
+            return false;
+        }
+
+        if (left == "Void" || right == "Void") {
+            return false;
+        }
+
+        return true;
+    }
+}

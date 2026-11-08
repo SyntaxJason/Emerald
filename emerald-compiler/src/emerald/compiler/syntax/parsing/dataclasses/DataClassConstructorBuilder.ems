@@ -1,0 +1,30 @@
+namespace emerald::compiler::syntax;
+
+public class DataClassConstructorBuilder {
+    private DataClassExpressionBuilder expressions;
+
+    public DataClassConstructorBuilder(SyntaxProgram syntaxProgram) {
+        this.expressions = DataClassExpressionBuilder(syntaxProgram);
+    }
+
+    public MethodDeclaration constructorFor(String ownerName, List<FieldDeclaration> fields, Int line, Int column) {
+        List<Parameter> parameters = List();
+        List<Statement> statements = List();
+        Int index = 0;
+
+        while (index < fields.length()) {
+            FieldDeclaration field = fields.get(index);
+            parameters.add(Parameter(field.name(), field.typeName(), field.line(), field.column()));
+            statements.add(this.assignmentFor(field));
+            index = index + 1;
+        }
+
+        return MethodDeclaration(ownerName, ownerName, ownerName, parameters, statements, true, false, true, line, column);
+    }
+
+    private Statement assignmentFor(FieldDeclaration field) {
+        Int target = this.expressions.field("this", field);
+        Int value = this.expressions.name(field.name(), field.line(), field.column());
+        return Statement("fieldassign", "", "", value, target, this.expressions.emptyStatements(), this.expressions.emptyStatements(), field.line(), field.column());
+    }
+}

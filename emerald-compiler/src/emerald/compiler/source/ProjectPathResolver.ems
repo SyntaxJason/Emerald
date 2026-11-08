@@ -1,0 +1,328 @@
+namespace emerald::compiler::source;
+
+use Std::Collections::IList;
+use Std::Io::Directory;
+use Std::Io::File;
+use Std::Io::Path;
+use Std::Native::NativeEnv;
+
+public class ProjectPathResolver {
+    private String rootDirectory;
+    private String stdlibDirectory;
+    private SourceNamespaceScanner namespaceScanner;
+    private List<String> projectQualifiedNames;
+    private List<String> projectSourcePaths;
+    private List<String> stdlibResolvedNames;
+    private List<String> stdlibResolvedPaths;
+    private List<String> stdlibMissingNames;
+    private Bool projectIndexed;
+
+    public ProjectPathResolver(String entryPath) {
+        this.rootDirectory = Path(entryPath).parent().value();
+        this.stdlibDirectory = this.findStdlibDirectory(this.rootDirectory);
+        this.namespaceScanner = SourceNamespaceScanner();
+        this.projectQualifiedNames = List();
+        this.projectSourcePaths = List();
+        this.stdlibResolvedNames = List();
+        this.stdlibResolvedPaths = List();
+        this.stdlibMissingNames = List();
+        this.projectIndexed = false;
+    }
+
+    public String resolve(String currentPath, String qualifiedName) {
+        String relative = this.qualifiedToPath(qualifiedName);
+        String sibling = Path(currentPath).parent().join(relative).value();
+
+        if (File(sibling).isFile()) {
+            return sibling;
+        }
+
+        String rooted = Path(this.rootDirectory).join(relative).value();
+
+        if (File(rooted).isFile()) {
+            return rooted;
+        }
+
+        String stdlib = this.resolveStdlib(qualifiedName);
+
+        if (!stdlib.isEmpty()) {
+            return stdlib;
+        }
+
+        String indexed = this.resolveIndexedProjectSource(qualifiedName);
+
+        if (!indexed.isEmpty()) {
+            return indexed;
+        }
+
+        return rooted;
+    }
+
+    public String expectedNamespace(String path) {
+        String normalizedRoot = this.normalize(this.rootDirectory);
+        String normalizedPath = this.normalize(path);
+
+        if (!normalizedPath.startsWith(normalizedRoot)) {
+            return "";
+        }
+
+        String relative = normalizedPath.substring(normalizedRoot.length(), normalizedPath.length());
+
+        if (relative.startsWith("/")) {
+            relative = relative.substring(1, relative.length());
+        }
+
+        Int slash = this.lastSlash(relative);
+
+        if (slash < 0) {
+            return "";
+        }
+
+        String directory = relative.substring(0, slash);
+
+        if (directory.isEmpty()) {
+            return "";
+        }
+
+        return directory.replace("/", "::");
+    }
+
+    public String normalize(String path) {
+        return path.replace("\\", "/");
+    }
+
+    private String resolveStdlib(String qualifiedName) {
+        String cached = this.cachedStdlibResolved(qualifiedName);
+
+        if (!cached.isEmpty()) {
+            return cached;
+        }
+
+        if (this.cachedStdlibMissing(qualifiedName)) {
+            return "";
+        }
+
+        if (this.stdlibDirectory.isEmpty()) {
+            this.rememberStdlibMissing(qualifiedName);
+            return "";
+        }
+
+        String relative = this.qualifiedToStdlibPath(qualifiedName);
+
+        if (relative.isEmpty()) {
+            this.rememberStdlibMissing(qualifiedName);
+            return "";
+        }
+
+        String path = Path(this.stdlibDirectory).join(relative).value();
+
+        if (File(path).isFile()) {
+            this.rememberStdlibResolved(qualifiedName, path);
+            return path;
+        }
+
+        this.rememberStdlibMissing(qualifiedName);
+        return "";
+    }
+
+    private String resolveIndexedProjectSource(String qualifiedName) {
+        if (!this.projectIndexed) {
+            this.projectIndexed = true;
+            this.indexProjectDirectory(this.rootDirectory, 0);
+        }
+
+        String normalized = qualifiedName.replace(".", "::");
+        Int index = 0;
+
+        while (index < this.projectQualifiedNames.length()) {
+            if (this.projectQualifiedNames.get(index) == normalized) {
+                return this.projectSourcePaths.get(index) + "";
+            }
+
+            index = index + 1;
+        }
+
+        return "";
+    }
+
+    private Void indexProjectDirectory(String path, Int depth) {
+        if (depth > 64) {
+            return;
+        }
+
+        Directory directory = Directory(path);
+
+        if (!directory.exists()) {
+            return;
+        }
+
+        IList<String> entries = directory.list();
+        Int index = 0;
+
+        while (index < entries.size()) {
+            String name = entries.get(index) + "";
+            String sourcePath = Path(path).join(name).value();
+            File sourceFile = File(sourcePath);
+
+            if (sourceFile.isDirectory()) {
+                this.indexProjectDirectory(sourcePath, depth + 1);
+                index = index + 1;
+                continue;
+            }
+
+            if (sourceFile.isFile() && name.endsWith(".ems")) {
+                this.indexProjectSource(sourcePath, name, sourceFile);
+            }
+
+            index = index + 1;
+        }
+    }
+
+    private Void indexProjectSource(String path, String name, File sourceFile) {
+        String typeName = name.substring(0, name.length() - 4);
+        String namespaceName = this.namespaceScanner.scan(sourceFile.readText());
+        String qualifiedName = typeName;
+
+        if (!namespaceName.isEmpty()) {
+            qualifiedName = namespaceName + "::" + typeName;
+        }
+
+        // Both values outlive this indexing call. List.add receives borrowed
+        // Strings, so materialize independent owned values for the resolver's
+        // persistent cache instead of retaining recursive temporaries.
+        this.projectQualifiedNames.add(qualifiedName + "");
+        this.projectSourcePaths.add(path + "");
+    }
+
+
+    private String cachedStdlibResolved(String qualifiedName) {
+        Int index = 0;
+
+        while (index < this.stdlibResolvedNames.length()) {
+            if (this.stdlibResolvedNames.get(index) == qualifiedName) {
+                return this.stdlibResolvedPaths.get(index) + "";
+            }
+
+            index = index + 1;
+        }
+
+        return "";
+    }
+
+    private Bool cachedStdlibMissing(String qualifiedName) {
+        Int index = 0;
+
+        while (index < this.stdlibMissingNames.length()) {
+            if (this.stdlibMissingNames.get(index) == qualifiedName) {
+                return true;
+            }
+
+            index = index + 1;
+        }
+
+        return false;
+    }
+
+    private Void rememberStdlibResolved(String qualifiedName, String path) {
+        this.stdlibResolvedNames.add(qualifiedName + "");
+        this.stdlibResolvedPaths.add(path + "");
+    }
+
+    private Void rememberStdlibMissing(String qualifiedName) {
+        if (this.cachedStdlibMissing(qualifiedName)) {
+            return;
+        }
+
+        this.stdlibMissingNames.add(qualifiedName + "");
+    }
+
+    private String findStdlibDirectory(String startDirectory) {
+        String home = NativeEnv.getOr("EMERALD_HOME", "");
+        if (!home.isEmpty()) {
+            String configured = Path(home).join("stdlib").value();
+            if (File(configured).isDirectory()) { return configured; }
+        }
+        String current = startDirectory;
+        Int depth = 0;
+
+        while (depth < 12) {
+            String candidate = Path(current).join("stdlib").value();
+
+            if (File(candidate).exists()) {
+                return candidate;
+            }
+
+            String parent = Path(current).parent().value();
+
+            if (parent == current) {
+                return "";
+            }
+
+            current = parent + "";
+            depth = depth + 1;
+        }
+
+        return "";
+    }
+
+    private String qualifiedToStdlibPath(String qualifiedName) {
+        String normalized = qualifiedName.replace(".", "::");
+
+        if (!normalized.startsWith("Std::")) {
+            return "";
+        }
+
+        List<String> parts = normalized.split("::");
+
+        if (parts.length() < 2) {
+            return "";
+        }
+
+        String result = "";
+        Int index = 1;
+
+        while (index < parts.length()) {
+            String part = parts.get(index);
+
+            if (index < parts.length() - 1) {
+                part = part.toLowerCase();
+            }
+
+            if (result.isEmpty()) {
+                result = part + "";
+                index = index + 1;
+                continue;
+            }
+
+            result = result + "/" + part;
+            index = index + 1;
+        }
+
+        if (result.isEmpty()) {
+            return "";
+        }
+
+        return result + ".ems";
+    }
+
+    private Int lastSlash(String value) {
+        Int result = -1;
+        Int index = 0;
+
+        while (index < value.length()) {
+            if (value.substring(index, index + 1) == "/") {
+                result = index;
+            }
+
+            index = index + 1;
+        }
+
+        return result;
+    }
+
+    private String qualifiedToPath(String qualifiedName) {
+        String value = qualifiedName.replace("::", "/");
+        value = value.replace(".", "/");
+        return value + ".ems";
+    }
+}

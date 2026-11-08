@@ -1,0 +1,141 @@
+public interface IOption<T> {
+    public Bool isSome();
+
+    public Bool isNone();
+
+    public T unwrapOr(T fallback);
+
+    public T orElse(T fallback);
+}
+
+public class Some<T> implements IOption<T> {
+    private T value;
+
+    public Some(T value) {
+        this.value = value;
+    }
+
+    public Bool isSome() {
+        return true;
+    }
+
+    public Bool isNone() {
+        return false;
+    }
+
+    public T unwrapOr(T fallback) {
+        return this.value;
+    }
+
+    public T orElse(T fallback) {
+        return this.value;
+    }
+
+    public T value() {
+        return this.value;
+    }
+}
+
+public class None<T> implements IOption<T> {
+    public None() {
+    }
+
+    public Bool isSome() {
+        return false;
+    }
+
+    public Bool isNone() {
+        return true;
+    }
+
+    public T unwrapOr(T fallback) {
+        return fallback;
+    }
+
+    public T orElse(T fallback) {
+        return fallback;
+    }
+}
+
+public interface IResult<T, E> {
+    public Bool isSuccess();
+
+    public Bool isFailure();
+
+    public T unwrapOr(T fallback);
+
+    public E errorOr(E fallback);
+}
+
+public class Success<T, E> implements IResult<T, E> {
+    private T value;
+
+    public Success(T value) {
+        this.value = value;
+    }
+
+    public Bool isSuccess() {
+        return true;
+    }
+
+    public Bool isFailure() {
+        return false;
+    }
+
+    public T unwrapOr(T fallback) {
+        return this.value;
+    }
+
+    public E errorOr(E fallback) {
+        return fallback;
+    }
+
+    public T value() {
+        return this.value;
+    }
+}
+
+public class Failure<T, E> implements IResult<T, E> {
+    private E error;
+
+    public Failure(E error) {
+        this.error = error;
+    }
+
+    public Bool isSuccess() {
+        return false;
+    }
+
+    public Bool isFailure() {
+        return true;
+    }
+
+    public T unwrapOr(T fallback) {
+        return fallback;
+    }
+
+    public E errorOr(E fallback) {
+        return this.error;
+    }
+
+    public E error() {
+        return this.error;
+    }
+}
+
+main() {
+    Some<String> some = Some("Emerald");
+    None<String> none = None();
+
+    Success<Int, String> success = Success(42);
+    Failure<Int, String> failure = Failure("failed");
+
+    println(some.unwrapOr("fallback"));
+    println(none.unwrapOr("fallback"));
+    println(some.orElse("fallback"));
+    println(success.isSuccess().toString());
+    println(failure.isFailure().toString());
+    println(success.unwrapOr(0).toString());
+    println(failure.unwrapOr(0).toString());
+    println(failure.errorOr("none"));
+}

@@ -1,0 +1,6 @@
+main() {
+    String value = 20.toString();
+    String borrowed = value;
+    value = borrowed;
+    println(42.toString());
+}

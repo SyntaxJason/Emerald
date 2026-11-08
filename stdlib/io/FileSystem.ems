@@ -1,5 +1,16 @@
 namespace Std::Io;
 
+use Std::Io::Directory;
+use Std::Io::File;
+use Std::Io::FileInfo;
+use Std::Io::IDirectory;
+use Std::Io::IFile;
+use Std::Io::IFileInfo;
+use Std::Io::IFileSystem;
+use Std::Io::IPath;
+use Std::Io::Path;
+use Std::Io::Paths;
+
 public class FileSystem implements IFileSystem {
     public FileSystem() {
     }
@@ -9,7 +20,7 @@ public class FileSystem implements IFileSystem {
     }
 
     public IPath currentPath() {
-        return Path.current();
+        return Paths.current();
     }
 
     public IPath workingDirectory() {

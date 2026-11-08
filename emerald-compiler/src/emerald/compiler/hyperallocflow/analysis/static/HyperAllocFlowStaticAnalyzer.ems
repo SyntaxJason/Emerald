@@ -1,0 +1,28 @@
+namespace emerald::compiler::hyperallocflow::analysis::static;
+
+use emerald::compiler::hyperallocflow::AllocationKind;
+use emerald::compiler::hyperallocflow::HyperAllocFlowDecision;
+use emerald::compiler::hyperallocflow::HyperAllocFlowReport;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::SyntaxProgram;
+
+public class HyperAllocFlowStaticAnalyzer {
+    public HyperAllocFlowStaticAnalyzer() {
+    }
+
+    public Void analyze(SyntaxProgram program, HyperAllocFlowReport report) {
+        Int index = 1;
+
+        while (index < program.expressions().length()) {
+            Expression expression = program.expression(index);
+
+            if (!expression.isGenerated() && expression.kind() == "string" && !report.hasExpression(index)) {
+                HyperAllocFlowDecision decision = HyperAllocFlowDecision(index, "String", AllocationKind("Static"), "string literal is interned in static storage and never participates in runtime ownership", expression.line(), expression.column());
+                decision.setEstimatedBytes(expression.text().length() + 16);
+                report.add(decision);
+            }
+
+            index = index + 1;
+        }
+    }
+}

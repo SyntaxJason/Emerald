@@ -1,0 +1,11 @@
+public data class HyperAllocFlowV1ReceiverPoint(Int x, Int y) {
+    public Int sum(Int offset) {
+        return this.x + this.y + offset;
+    }
+}
+
+main() {
+    HyperAllocFlowV1ReceiverPoint point = HyperAllocFlowV1ReceiverPoint(11, 19);
+    HyperAllocFlowV1ReceiverPoint copy = point;
+    println(copy.sum(12).toString());
+}

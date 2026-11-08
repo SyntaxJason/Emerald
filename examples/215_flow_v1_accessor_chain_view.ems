@@ -1,0 +1,30 @@
+public class HyperAllocFlowV1AccessorChainItem {
+    public Int value;
+
+    public HyperAllocFlowV1AccessorChainItem(Int value) {
+        this.value = value;
+    }
+}
+
+public class HyperAllocFlowV1AccessorChainShelf {
+    private List<HyperAllocFlowV1AccessorChainItem> storedItems;
+
+    public HyperAllocFlowV1AccessorChainShelf() {
+        this.storedItems = List();
+        this.storedItems.add(HyperAllocFlowV1AccessorChainItem(42));
+    }
+
+    public List<HyperAllocFlowV1AccessorChainItem> items() {
+        return this.storedItems;
+    }
+
+    public Int firstValue() {
+        HyperAllocFlowV1AccessorChainItem view = this.items().get(0);
+        return view.value;
+    }
+}
+
+main() {
+    HyperAllocFlowV1AccessorChainShelf shelf = HyperAllocFlowV1AccessorChainShelf();
+    println(shelf.firstValue().toString());
+}

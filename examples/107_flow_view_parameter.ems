@@ -1,0 +1,28 @@
+public class HyperAllocFlowUser {
+    private String name;
+
+    public HyperAllocFlowUser(String name) {
+        this.name = name;
+    }
+
+    public String label() {
+        return this.name;
+    }
+}
+
+public class HyperAllocFlowPrinter {
+    public HyperAllocFlowPrinter() {
+    }
+
+    public Void print(HyperAllocFlowUser user) {
+        println(user.label());
+        return;
+    }
+}
+
+main() {
+    HyperAllocFlowUser user = HyperAllocFlowUser("Jason");
+    HyperAllocFlowPrinter printer = HyperAllocFlowPrinter();
+
+    printer.print(user);
+}

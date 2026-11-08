@@ -1,0 +1,221 @@
+namespace emerald::compiler::macro;
+
+use emerald::compiler::syntax::ClassDeclaration;
+use emerald::compiler::syntax::Expression;
+use emerald::compiler::syntax::FieldDeclaration;
+use emerald::compiler::syntax::MethodDeclaration;
+use emerald::compiler::syntax::Parameter;
+use emerald::compiler::syntax::Statement;
+use Std::Native::NativeFile;
+
+public class MacroBuilderEvaluator {
+    private MacroInterpreterContext context;
+    private MacroValueConverter values;
+    private MacroAstFactory ast;
+    private MacroEmHtmlCompiler emHtml;
+
+    public MacroBuilderEvaluator(MacroInterpreterContext interpreterContext, MacroValueConverter valueConverter, MacroAstFactory astFactory, MacroEmHtmlCompiler emHtmlCompiler) {
+        this.context = interpreterContext;
+        this.values = valueConverter;
+        this.ast = astFactory;
+        this.emHtml = emHtmlCompiler;
+    }
+
+    public Bool isBuilderName(String value) {
+        if (value == "Stmt") {
+            return true;
+        }
+
+        if (value == "Expr") {
+            return true;
+        }
+
+        if (value == "Block") {
+            return true;
+        }
+
+        if (value == "MethodAST") {
+            return true;
+        }
+
+        if (value == "FieldAST") {
+            return true;
+        }
+
+        if (value == "ParamAST") {
+            return true;
+        }
+
+        return value == "EmHtml";
+    }
+
+    public MacroValue evaluate(String name, List<MacroValue> arguments, Int line, Int column) {
+        if (name == "EmHtml::load") {
+            String path = this.values.expectString(arguments, 0, line, column);
+
+            if (!NativeFile.exists(path)) {
+                return this.context.error("emhtml template does not exist: " + path, line, column);
+            }
+
+            return this.context.factory().stringValue(NativeFile.readText(path));
+        }
+
+        if (name == "EmHtml::render") {
+            ClassDeclaration declaration = this.values.expectClass(arguments, 0, line, column);
+            String template = this.values.expectString(arguments, 1, line, column);
+            return this.context.factory().methodValue(this.emHtml.createRenderMethod(declaration, template, line, column));
+        }
+
+        if (name == "Stmt::expr") {
+            Int expressionIndex = this.values.expectExpression(arguments, 0, line, column);
+            Expression expression = this.context.program().expression(expressionIndex);
+
+            if (expression.kind() == "call" && expression.text() == "println" && expression.argumentIndexes().length() == 1) {
+                return this.context.factory().statementValue(this.ast.simpleStatement("println", "", "", expression.argumentIndexes().get(0), 0, line, column));
+            }
+
+            return this.context.factory().statementValue(this.ast.simpleStatement("expression", "", "", expressionIndex, 0, line, column));
+        }
+
+        if (name == "Stmt::println") {
+            return this.context.factory().statementValue(this.ast.simpleStatement("println", "", "", this.values.expectExpression(arguments, 0, line, column), 0, line, column));
+        }
+
+        if (name == "Stmt::return") {
+            return this.context.factory().statementValue(this.ast.simpleStatement("return", "", "", this.values.expectExpression(arguments, 0, line, column), 0, line, column));
+        }
+
+        if (name == "Stmt::returnVoid") {
+            return this.context.factory().statementValue(this.ast.simpleStatement("return", "", "", 0, 0, line, column));
+        }
+
+        if (name == "Stmt::var") {
+            String variableName = this.values.expectString(arguments, 0, line, column);
+            String typeName = this.values.expectString(arguments, 1, line, column);
+            Int expressionIndex = this.values.expectExpression(arguments, 2, line, column);
+            return this.context.factory().statementValue(this.ast.simpleStatement("variable", variableName, typeName, expressionIndex, 0, line, column));
+        }
+
+        if (name == "Stmt::assign") {
+            String variableName = this.values.expectString(arguments, 0, line, column);
+            Int expressionIndex = this.values.expectExpression(arguments, 1, line, column);
+            return this.context.factory().statementValue(this.ast.simpleStatement("assign", variableName, "", expressionIndex, 0, line, column));
+        }
+
+        if (name == "Stmt::fieldAssign") {
+            Int targetIndex = this.values.expectExpression(arguments, 0, line, column);
+            Int expressionIndex = this.values.expectExpression(arguments, 1, line, column);
+            return this.context.factory().statementValue(Statement("fieldassign", "", "", expressionIndex, targetIndex, this.ast.emptyStatements(), this.ast.emptyStatements(), line, column));
+        }
+
+        if (name == "Stmt::forRange") {
+            String variableName = this.values.expectString(arguments, 0, line, column);
+            Int startExpression = this.values.expectExpression(arguments, 1, line, column);
+            Int endExpression = this.values.expectExpression(arguments, 2, line, column);
+            Int rangeExpression = this.context.program().addExpression(this.ast.simpleExpression("range", "..", 0, false, startExpression, endExpression, line, column));
+            List<Statement> body = this.values.expectBlock(arguments, 3, line, column);
+            return this.context.factory().statementValue(Statement("for", variableName, "", rangeExpression, 0, body, this.ast.emptyStatements(), line, column));
+        }
+
+        if (name == "Stmt::if") {
+            Int condition = this.values.expectExpression(arguments, 0, line, column);
+            List<Statement> body = this.values.expectBlock(arguments, 1, line, column);
+            return this.context.factory().statementValue(Statement("if", "", "", condition, 0, body, this.ast.emptyStatements(), line, column));
+        }
+
+        if (name == "Stmt::ifElse") {
+            Int condition = this.values.expectExpression(arguments, 0, line, column);
+            List<Statement> body = this.values.expectBlock(arguments, 1, line, column);
+            List<Statement> elseBody = this.values.expectBlock(arguments, 2, line, column);
+            return this.context.factory().statementValue(Statement("if", "", "", condition, 0, body, elseBody, line, column));
+        }
+
+        if (name == "Stmt::while") {
+            Int condition = this.values.expectExpression(arguments, 0, line, column);
+            List<Statement> body = this.values.expectBlock(arguments, 1, line, column);
+            return this.context.factory().statementValue(Statement("while", "", "", condition, 0, body, this.ast.emptyStatements(), line, column));
+        }
+
+        if (name == "Expr::int") {
+            return this.context.factory().expressionValue(this.context.program().addExpression(this.ast.simpleExpression("int", "", this.values.expectInt(arguments, 0, line, column), false, 0, 0, line, column)));
+        }
+
+        if (name == "Expr::str") {
+            return this.context.factory().expressionValue(this.context.program().addExpression(this.ast.simpleExpression("string", this.values.expectString(arguments, 0, line, column), 0, false, 0, 0, line, column)));
+        }
+
+        if (name == "Expr::bool") {
+            return this.context.factory().expressionValue(this.context.program().addExpression(this.ast.simpleExpression("bool", "", 0, this.values.expectBool(arguments, 0, line, column), 0, 0, line, column)));
+        }
+
+        if (name == "Expr::ident") {
+            return this.context.factory().expressionValue(this.context.program().addExpression(this.ast.simpleExpression("name", this.values.expectString(arguments, 0, line, column), 0, false, 0, 0, line, column)));
+        }
+
+        if (name == "Expr::this") {
+            return this.context.factory().expressionValue(this.context.program().addExpression(this.ast.simpleExpression("name", "this", 0, false, 0, 0, line, column)));
+        }
+
+        if (name == "Expr::call") {
+            return this.context.factory().expressionValue(this.context.program().addExpression(Expression("call", this.values.expectString(arguments, 0, line, column), 0, false, 0, 0, this.values.expectExpressionList(arguments, 1, line, column), line, column)));
+        }
+
+        if (name == "Expr::methodCall") {
+            return this.context.factory().expressionValue(this.context.program().addExpression(Expression("methodcall", this.values.expectString(arguments, 1, line, column), 0, false, this.values.expectExpression(arguments, 0, line, column), 0, this.values.expectExpressionList(arguments, 2, line, column), line, column)));
+        }
+
+        if (name == "Expr::memberAccess") {
+            return this.context.factory().expressionValue(this.context.program().addExpression(this.ast.simpleExpression("field", this.values.expectString(arguments, 1, line, column), 0, false, this.values.expectExpression(arguments, 0, line, column), 0, line, column)));
+        }
+
+        if (name == "Expr::binary") {
+            return this.context.factory().expressionValue(this.context.program().addExpression(this.ast.simpleExpression("binary", this.values.expectString(arguments, 0, line, column), 0, false, this.values.expectExpression(arguments, 1, line, column), this.values.expectExpression(arguments, 2, line, column), line, column)));
+        }
+
+        if (name == "Expr::index") {
+            return this.context.factory().expressionValue(this.context.program().addExpression(this.ast.simpleExpression("index", "", 0, false, this.values.expectExpression(arguments, 0, line, column), this.values.expectExpression(arguments, 1, line, column), line, column)));
+        }
+
+        if (name == "Expr::range") {
+            return this.context.factory().expressionValue(this.context.program().addExpression(this.ast.simpleExpression("range", "..", 0, false, this.values.expectExpression(arguments, 0, line, column), this.values.expectExpression(arguments, 1, line, column), line, column)));
+        }
+
+        if (name == "Block::of") {
+            return this.context.factory().blockValue(this.values.expectStatementList(arguments, 0, line, column));
+        }
+
+        if (name == "Block::empty") {
+            return this.context.factory().blockValue(this.ast.emptyStatements());
+        }
+
+        if (name == "MethodAST::create") {
+            String methodName = this.values.expectString(arguments, 0, line, column);
+            String returnType = this.values.expectString(arguments, 1, line, column);
+            List<Parameter> parameters = this.values.expectParameterList(arguments, 2, line, column);
+            List<Statement> statements = this.values.expectBlock(arguments, 3, line, column);
+            return this.context.factory().methodValue(MethodDeclaration("", methodName, returnType, parameters, statements, false, false, line, column));
+        }
+
+        if (name == "FieldAST::create") {
+            String fieldName = this.values.expectString(arguments, 0, line, column);
+            String typeName = this.values.expectString(arguments, 1, line, column);
+            Int initializer = 0;
+
+            if (arguments.length() > 2) {
+                initializer = this.values.expectExpression(arguments, 2, line, column);
+            }
+
+            return this.context.factory().fieldValue(FieldDeclaration(fieldName, typeName, initializer, line, column));
+        }
+
+        if (name == "ParamAST::create") {
+            String parameterName = this.values.expectString(arguments, 0, line, column);
+            String typeName = this.values.expectString(arguments, 1, line, column);
+            return this.context.factory().parameterValue(Parameter(parameterName, typeName, line, column));
+        }
+
+        return this.context.error("unknown builder " + name, line, column);
+    }
+
+
+}
