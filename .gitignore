@@ -32,8 +32,6 @@ stdlib/**/*.log
 !runtime/**
 !tests/
 !tests/**
-!docs/
-!docs/**
 !demos/
 !demos/**
 !examples/
